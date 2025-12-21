@@ -11,7 +11,7 @@ export const useEventSystem = () => {
     executeScript, 
     addLog, 
     players, 
-    currentPlayerIndex,
+    activePlayerId,
     map,
     incrementOmenCount
   } = useGameStore();
@@ -24,80 +24,68 @@ export const useEventSystem = () => {
     drawCard('EVENT');
   }, [drawCard]);
 
-  /**
-   * The "Brain" of the resolution engine.
-   * Calculates success/failure and executes script actions.
-   */
   const resolveEventResult = useCallback((event: EventCard, total: number) => {
     if (event.interaction.type !== 'ATTRIBUTE_CHECK') return;
 
     const { difficulty, success, failure } = event.interaction;
     const passed = total >= difficulty;
     
-    // 1. Feedback
     addLog(
-      `Rolled ${total} vs Target ${difficulty}. ${passed ? 'Success!' : 'Failure...'}`, 
+      `投掷结果: ${total} (目标: ${difficulty})。 ${passed ? '成功！' : '失败...'}`, 
       passed ? 'success' : 'alert'
     );
 
-    // 2. Execute Effects
     const outcomeActions = passed ? success : failure;
     executeScript(outcomeActions);
 
-    // 3. Finalize
-    // Mark tile as resolved
-    const player = players[currentPlayerIndex];
+    const player = players[activePlayerId];
     const tileKey = `${player.position.x},${player.position.y}`;
     const updatedMap = { ...map };
     
-    // Only mark if we are indeed standing on that tile (usually true)
     if (updatedMap[tileKey]) {
         updatedMap[tileKey] = { ...updatedMap[tileKey], hasEventTriggered: true };
     }
 
-    // Update state to close modal and roll UI
     setState({
         activeCard: null,
         activeRoll: null,
-        lastRollResult: total, // Keep result for a moment if needed, or null
+        lastRollResult: total,
         map: updatedMap,
-        turnPhase: 'DONE' // Event usually ends movement
+        turnPhase: 'DONE'
     });
-  }, [addLog, executeScript, players, currentPlayerIndex, map, setState]);
+  }, [addLog, executeScript, players, activePlayerId, map, setState]);
 
-  /**
-   * Handles Item/Omen pickup from the modal.
-   * Manages inventory and Haunt Roll triggers.
-   */
   const resolveItemPickup = useCallback((item: Item) => {
-    // 1. Add to inventory
-    const player = players[currentPlayerIndex];
-    const newPlayers = [...players];
-    newPlayers[currentPlayerIndex].items.push(item);
+    const player = players[activePlayerId];
+    const newPlayers = { ...players };
+    newPlayers[activePlayerId] = {
+        ...newPlayers[activePlayerId],
+        items: [...newPlayers[activePlayerId].items, item]
+    };
     
-    addLog(`${player.character.name} acquired ${item.name}.`, 'success');
+    addLog(`${player.character.name} 获得了 ${item.name}。`, 'success');
 
-    // 2. Mark tile as resolved
     const tileKey = `${player.position.x},${player.position.y}`;
+    const currentTile = map[tileKey];
     const updatedMap = { ...map };
     if (updatedMap[tileKey]) {
         updatedMap[tileKey] = { ...updatedMap[tileKey], hasEventTriggered: true };
     }
 
-    // 3. Logic Branch: Omen vs Item
     if (item.type === 'OMEN') {
         incrementOmenCount();
-        addLog(`Omen found. The house grows restless...`, 'narrative');
+        addLog(`发现了预兆。大厦变得更加躁动不安...`, 'narrative');
         
-        // Trigger Haunt Roll Phase
         setState({
             players: newPlayers,
             map: updatedMap,
             activeCard: null,
-            phase: GamePhase.HauntRoll
+            phase: GamePhase.HauntRoll,
+            // 记录作祟上下文
+            lastTriggeredOmenId: item.id,
+            lastTriggeredTileId: currentTile.defId
         });
     } else {
-        // Normal Item: End Turn
         setState({
             players: newPlayers,
             map: updatedMap,
@@ -105,17 +93,13 @@ export const useEventSystem = () => {
             turnPhase: 'DONE'
         });
     }
-  }, [players, currentPlayerIndex, map, addLog, incrementOmenCount, setState]);
+  }, [players, activePlayerId, map, addLog, incrementOmenCount, setState]);
 
-  /**
-   * Bridges the UI to the Store.
-   * Sets up the active roll and provides the callback to resolve it.
-   */
   const initiateEventRoll = useCallback((event: EventCard) => {
     if (event.interaction.type !== 'ATTRIBUTE_CHECK') return;
     
     const attr = event.interaction.attribute;
-    const player = players[currentPlayerIndex];
+    const player = players[activePlayerId];
     const diceCount = player.character.attributes[attr].current;
 
     const rollData: ActiveRoll = {
@@ -127,7 +111,7 @@ export const useEventSystem = () => {
     };
 
     setState({ activeRoll: rollData });
-  }, [players, currentPlayerIndex, resolveEventResult, setState]);
+  }, [players, activePlayerId, resolveEventResult, setState]);
 
   return { 
     triggerEvent,

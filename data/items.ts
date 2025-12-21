@@ -2,71 +2,76 @@
 import { Item, AttributeName } from '../types';
 
 export const ITEMS_DB: Record<string, Item> = {
-  // --- Items ---
   'item_revolver': {
     id: 'item_revolver',
-    name: 'Rusty Revolver',
-    description: 'An old service weapon. It feels heavy and reliable.',
+    name: '生锈的左轮手枪',
+    description: '一把旧式勤务武器。握在手里沉稳可靠。',
     icon: 'Crosshair',
     type: 'WEAPON',
     usage: {
-      actionLabel: 'Shoot',
+      actionLabel: '开火',
       isConsumable: false,
       target: 'OPPONENT',
       effects: [
-        { type: 'narrative_log', message: 'You fire the revolver! (Combat not implemented)' }
+        { type: 'narrative_log', message: '你开火了！（战斗系统尚未上线）' }
       ]
     },
-    passiveEffects: [{ type: 'buff', text: '+2 Might (Attack)' }]
+    passiveEffects: [{ type: 'buff', text: '攻击时力量 +2' }]
   },
   'item_amulet': {
     id: 'item_amulet',
-    name: 'Holy Amulet',
-    description: 'It radiates a faint warmth against your chest.',
+    name: '神圣护身符',
+    description: '它在你的胸口散发着淡淡的暖意。',
     icon: 'Gem',
     type: 'PASSIVE',
-    passiveEffects: [{ type: 'buff', text: '+1 Sanity' }]
+    passiveEffects: [{ type: 'buff', text: '理智 +1' }]
   },
   'item_adrenaline': {
     id: 'item_adrenaline',
-    name: 'Adrenaline Shot',
-    description: 'Emergency medical stimulant. Use with caution.',
+    name: '肾上腺素针剂',
+    description: '紧急医疗兴奋剂。请谨慎使用。',
     icon: 'Syringe',
     type: 'CONSUMABLE',
     usage: {
-      actionLabel: 'Inject',
+      actionLabel: '注射',
       isConsumable: true,
       target: 'SELF',
       effects: [
-        { type: 'modify_stat', attribute: AttributeName.Speed, amount: 2, message: 'You feel a surge of energy!' },
+        { type: 'modify_stat', attribute: AttributeName.Speed, amount: 2, message: '你感到一股力量涌遍全身！' },
         { type: 'modify_stat', attribute: AttributeName.Might, amount: 1 }
       ]
     }
   },
-
-  // --- Omens ---
+  'omen_crystal_ball': {
+    id: 'omen_crystal_ball',
+    name: '水晶球',
+    description: '球体深处闪烁着不详的微光，仿佛在揭示未来的终局。',
+    icon: 'Eye',
+    type: 'OMEN',
+    passiveEffects: [{ type: 'buff', text: '知识 +2，理智 -1' }]
+  },
   'omen_girl': {
     id: 'omen_girl',
-    name: 'Girl in the Mirror',
-    description: 'The reflection mimics you... almost perfectly. It wants to help.',
+    name: '镜中少女',
+    description: '镜中的倒影模仿着你... 几乎完美。她似乎想帮忙。',
     icon: 'User',
     type: 'OMEN',
-    passiveEffects: [{ type: 'buff', text: '+1 Knowledge' }]
+    passiveEffects: [{ type: 'buff', text: '知识 +1' }]
   },
   'omen_book': {
     id: 'omen_book',
-    name: 'Book of the Dead',
-    description: 'Bound in something that feels distressingly like skin.',
+    name: '亡灵之书',
+    description: '封面的质感摸起来像极了人皮，让人感到极度不安。',
     icon: 'BookOpen',
     type: 'OMEN',
-    passiveEffects: [{ type: 'buff', text: '+2 Knowledge, -1 Sanity' }]
+    passiveEffects: [{ type: 'buff', text: '知识 +2，理智 -1' }]
   },
   'omen_ring': {
     id: 'omen_ring',
-    name: 'Ring of Solomon',
-    description: 'Inscribed with symbols that make your eyes water.',
+    name: '所罗门之戒',
+    description: '上面刻满了令你双眼酸涩流泪的符号。',
     icon: 'Circle',
     type: 'OMEN',
-    passiveEffects: [{ type: 'buff', text: '+1 Sanity' }]
+    passiveEffects: [{ type: 'buff', text: '理智 +1' }]
   }
 };

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { Footprints, ArrowRightCircle, Hourglass } from 'lucide-react';
@@ -9,30 +10,26 @@ const TurnControl: React.FC = () => {
     nextTurn, 
     turnPhase, 
     players, 
-    currentPlayerIndex,
+    activePlayerId,
     activeCard 
   } = useGameStore();
   
-  const currentPlayer = players[currentPlayerIndex];
+  const activePlayer = players[activePlayerId];
+  if (!activePlayer) return null;
 
-  if (!currentPlayer) return null;
-
-  // Calculate max moves for visualization
-  const maxMoves = currentPlayer.character.attributes.speed.current;
+  const maxMoves = activePlayer.character.attributes.speed.current;
 
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-4">
-      
-      {/* Turn Status Badge */}
       <motion.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        key={currentPlayer.id} // Re-animate on player switch
+        key={activePlayerId}
         className="flex items-center gap-3 px-6 py-2 bg-zinc-900/90 border border-zinc-700 rounded-full shadow-2xl backdrop-blur-md"
       >
         <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-        <span className="text-sm font-bold uppercase tracking-widest text-zinc-300">
-          {currentPlayer.character.name}
+        <span className="text-sm font-bold tracking-widest text-zinc-300">
+          {activePlayer.character.name}
         </span>
         <span className="text-zinc-600">|</span>
         <span className={`text-xs font-bold uppercase tracking-wider ${
@@ -40,19 +37,16 @@ const TurnControl: React.FC = () => {
           turnPhase === 'DONE' ? 'text-zinc-500' : 
           'text-indigo-400'
         }`}>
-          {turnPhase === 'EVENT_RESOLVING' ? 'Resolving Event' : 
-           turnPhase === 'DONE' ? 'Turn Ended' : 'Action Phase'}
+          {turnPhase === 'EVENT_RESOLVING' ? '事件结算中' : 
+           turnPhase === 'DONE' ? '回合已结束' : '行动阶段'}
         </span>
       </motion.div>
 
-      {/* Main Control Bar */}
       <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 p-2 rounded-xl shadow-2xl">
-        
-        {/* Moves Display */}
         <div className="px-4 flex flex-col items-center justify-center min-w-[100px]">
           <div className="flex items-center gap-1 mb-1">
             <Footprints size={14} className="text-zinc-500" />
-            <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Moves</span>
+            <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">移动力</span>
           </div>
           <div className="flex gap-1">
             {Array.from({ length: maxMoves }).map((_, i) => (
@@ -70,7 +64,6 @@ const TurnControl: React.FC = () => {
 
         <div className="w-px h-10 bg-zinc-800 mx-2" />
 
-        {/* End Turn Button */}
         <button
           onClick={nextTurn}
           disabled={turnPhase === 'EVENT_RESOLVING' || !!activeCard}
@@ -84,17 +77,16 @@ const TurnControl: React.FC = () => {
         >
           {turnPhase === 'DONE' ? (
              <>
-               <span>Confirm End</span>
+               <span>确认结束</span>
                <ArrowRightCircle size={18} className="group-hover:translate-x-1 transition-transform" />
              </>
           ) : (
              <>
-               <span>End Turn</span>
+               <span>结束回合</span>
                <Hourglass size={18} className="text-zinc-400 group-hover:text-black transition-colors" />
              </>
           )}
         </button>
-
       </div>
     </div>
   );

@@ -2,28 +2,44 @@
 import { create } from 'zustand';
 import { 
   Player, TileInstance, TileDef, GamePhase, Direction, 
-  CardDef, CardSymbol, LogEntry, AttributeName, TurnPhase, ScriptAction, Item, ActiveRoll 
+  CardDef, CardSymbol, LogEntry, AttributeName, TurnPhase, ScriptAction, Item, ActiveRoll, DirectionalEdges,
+  Scenario
 } from '../types';
+import { ActionDefinition } from '../types/Logic';
 import { 
   MOCK_CHARACTERS, STARTING_TILE, TILE_DECK, 
   MOCK_EVENTS_DECK, MOCK_ITEMS_DECK, MOCK_OMENS_DECK 
 } from '../constants';
-import { EVENTS_DB } from '../data/events'; // Import DB for specific lookups
+import { EVENTS_DB } from '../data/events';
 import { ITEMS_DB } from '../data/items';
-import { rollDice } from '../utils/dice';
+import { SCENARIOS_DB } from '../data/scenarios';
+import { getScenarioId } from '../data/hauntMatrix';
+import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
+import { evaluateCondition, executeEffects, GameContext, resolveTargets } from '../utils/logicEngine';
+
+interface CombatState {
+  attackerId: string;
+  defenderId: string;
+  attribute: AttributeName;
+  attackerRoll?: number;
+  defenderRoll?: number;
+  phase: 'ATTACKING' | 'DEFENDING' | 'RESOLUTION';
+}
 
 interface GameState {
   phase: GamePhase;
   turnPhase: TurnPhase;
   turnIndex: number;
-  players: Player[];
-  currentPlayerIndex: number;
-  map: Record<string, TileInstance>; // Key is "x,y"
+  
+  players: Record<string, Player>;
+  playerIds: string[];
+  activePlayerId: string;
+
+  map: Record<string, TileInstance>;
   tileDeck: TileDef[];
   logs: LogEntry[];
   movesRemaining: number;
   
-  // Card System (Active card can be Event or Item pickup)
   activeCard: CardDef | Item | null;
   decks: {
     EVENT: CardDef[];
@@ -32,53 +48,75 @@ interface GameState {
   };
   lastRollResult: number | null;
 
-  // Dice System
   activeRoll: ActiveRoll | null;
+  activeCombat: CombatState | null;
 
-  // Haunt State
   omenCount: number;
   isHauntActive: boolean;
+  currentScenario: Scenario | null;
+  traitorId: string | null;
+  
+  // Haunt Context
+  lastTriggeredOmenId: string | null;
+  lastTriggeredTileId: string | null;
 
-  // Placement State
   pendingTile: TileDef | null;
   pendingTileRotation: number;
   pendingTargetPosition: { x: number, y: number } | null;
   pendingMoveDirection: Direction | null;
 
-  // Interaction State
   hoveredTileId: string | null;
   isInventoryOpen: boolean;
+  isInteractionModalOpen: boolean;
 
-  // Actions
+  activeFeedback: { message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' } | null;
+
   initializeGame: () => void;
   nextTurn: () => void;
   movePlayer: (direction: Direction) => void;
   rotatePendingTile: () => void;
   confirmTilePlacement: () => void;
+  cancelTilePlacement: () => void;
   drawCard: (type: CardSymbol) => void;
-  triggerSpecificEvent: (eventId: string) => void; // New Action
+  triggerSpecificEvent: (eventId: string) => void;
   triggerStatRoll: () => void;
-  resolveDiceRoll: (total: number) => void; // Callback from UI
+  resolveDiceRoll: (total: number) => void;
   applyCardOutcome: () => void;
   incrementOmenCount: () => void;
   performHauntRoll: () => void; 
+  startHaunt: () => void;
   addLog: (text: string, type?: LogEntry['type']) => void;
   setHoveredTileId: (id: string | null) => void;
   
-  // Script Engine
+  showFeedback: (message: string, type?: 'error' | 'info' | 'warning' | 'turn' | 'death') => void;
+
   executeScript: (actions: ScriptAction[]) => void;
+  handlePlayerDeath: (playerId: string) => void;
+  pickupItemFromTile: (itemId: string) => void;
+  giveItem: (fromId: string, toId: string, itemId: string) => void;
+
+  startCombat: (attackerId: string, defenderId: string, attribute: AttributeName) => void;
+  resolveCombatDamage: () => void;
+  resolveCombatSteal: (itemId: string) => void;
+  cancelCombat: () => void;
+
+  debugForceHaunt: () => void;
+
+  executeLogicAction: (action: ActionDefinition) => void;
+
   setState: (partial: Partial<GameState> | ((state: GameState) => Partial<GameState>)) => void;
 
-  // Inventory Actions
+  inventoryOpen: () => void; 
   toggleInventory: () => void;
+  toggleInteractionModal: () => void;
   useItem: (itemId: string) => void;
   dropItem: (itemId: string) => void;
   
-  // Helpers
+  interactWithWall: (direction: Direction) => void;
+  cancelActiveRoll: () => void;
+
   isPlacementValid: () => boolean;
 }
-
-// --- Helpers ---
 
 const getOpposite = (dir: Direction): Direction => {
   switch (dir) {
@@ -89,79 +127,103 @@ const getOpposite = (dir: Direction): Direction => {
   }
 };
 
-const getRotatedOpenings = (openings: Direction[], rotation: number): Direction[] => {
-  const rotationSteps = rotation / 90;
-  const dirs = [Direction.North, Direction.East, Direction.South, Direction.West];
-  
-  return openings.map(dir => {
-    const currentIndex = dirs.indexOf(dir);
-    const newIndex = (currentIndex + rotationSteps) % 4;
-    return dirs[newIndex];
-  });
+const getRotatedEdges = (edges: DirectionalEdges, rotation: number): DirectionalEdges => {
+  const r = ((rotation % 360) + 360) % 360;
+  if (r === 0) return edges;
+  let newEdges = { ...edges };
+  const steps = r / 90;
+  for (let i = 0; i < steps; i++) {
+    const temp = { ...newEdges };
+    newEdges[Direction.East] = temp[Direction.North];
+    newEdges[Direction.South] = temp[Direction.East];
+    newEdges[Direction.West] = temp[Direction.South];
+    newEdges[Direction.North] = temp[Direction.West];
+  }
+  return newEdges;
 };
 
-const areConnected = (fromDir: Direction, toTileOpenings: Direction[]): boolean => {
+const areConnected = (fromDir: Direction, toTileEdges: DirectionalEdges): boolean => {
   const incomingDir = getOpposite(fromDir);
-  return toTileOpenings.includes(incomingDir);
+  const targetEdge = toTileEdges[incomingDir];
+  return targetEdge !== 'WALL';
 };
-
-// --- Store ---
 
 export const useGameStore = create<GameState>((set, get) => ({
   phase: GamePhase.Exploration,
   turnPhase: 'MOVING',
   turnIndex: 1,
-  players: [],
-  currentPlayerIndex: 0,
+  players: {},
+  playerIds: [],
+  activePlayerId: '',
   map: {},
   tileDeck: [],
   logs: [],
   movesRemaining: 0,
-  
   activeCard: null,
-  decks: {
-    EVENT: [],
-    ITEM: [],
-    OMEN: [],
-  },
+  decks: { EVENT: [], ITEM: [], OMEN: [] },
   lastRollResult: null,
   activeRoll: null,
-
+  activeCombat: null,
   omenCount: 0,
   isHauntActive: false,
-
-  // Placement State
+  currentScenario: null,
+  traitorId: null,
+  lastTriggeredOmenId: null,
+  lastTriggeredTileId: null,
   pendingTile: null,
   pendingTileRotation: 0,
   pendingTargetPosition: null,
   pendingMoveDirection: null,
-
-  // Interaction State
   hoveredTileId: null,
   isInventoryOpen: false,
+  isInteractionModalOpen: false,
+  activeFeedback: null,
+
+  showFeedback: (message: string, type = 'error') => {
+    set({ activeFeedback: { message, type } });
+    const duration = (type === 'turn' || type === 'death') ? 2500 : 2000;
+    setTimeout(() => {
+      if (get().activeFeedback?.message === message) {
+        set({ activeFeedback: null });
+      }
+    }, duration);
+  },
 
   initializeGame: () => {
-    // Setup initial map
     const startTile: TileInstance = {
       instanceId: 'start_instance',
       defId: STARTING_TILE.id,
       x: 0,
       y: 0,
       rotation: 0,
-      openings: STARTING_TILE.openings,
-      hasEventTriggered: true, // Start tile usually doesn't trigger events
+      edges: STARTING_TILE.edges,
+      hasEventTriggered: true,
+      visibility: 'VISIBLE',
+      droppedItems: []
     };
 
-    // Setup players (Mocking 1 player for now)
-    const p1: Player = {
-      id: 'p1',
-      character: MOCK_CHARACTERS[0],
-      position: { x: 0, y: 0 },
-      items: [],
-    };
+    const playersDict: Record<string, Player> = {};
+    const ids: string[] = [];
+
+    MOCK_CHARACTERS.forEach((char, index) => {
+      const id = `p${index + 1}`;
+      ids.push(id);
+      playersDict[id] = {
+        id,
+        character: char,
+        position: { x: 0, y: 0 },
+        items: [],
+        buffs: [],
+        skills: [],
+        isDead: false,
+        team: 'UNASSIGNED'
+      };
+    });
 
     set({
-      players: [p1],
+      players: playersDict,
+      playerIds: ids,
+      activePlayerId: ids[0],
       map: { "0,0": startTile },
       tileDeck: [...TILE_DECK].sort(() => Math.random() - 0.5),
       decks: {
@@ -172,493 +234,693 @@ export const useGameStore = create<GameState>((set, get) => ({
       logs: [{
         id: 'init_log',
         timestamp: Date.now(),
-        text: 'The heavy doors of the mansion slam shut behind you. There is no turning back.',
+        text: '大厦沉重的大门在你们身后砰然关上。',
         type: 'narrative'
       }],
-      movesRemaining: p1.character.attributes[AttributeName.Speed].current,
+      movesRemaining: playersDict[ids[0]].character.attributes[AttributeName.Speed].current,
       turnIndex: 1,
       turnPhase: 'MOVING',
       phase: GamePhase.Exploration,
       pendingTile: null,
-      pendingTargetPosition: null,
-      pendingMoveDirection: null,
-      hoveredTileId: null,
       activeCard: null,
       lastRollResult: null,
       activeRoll: null,
+      activeCombat: null,
       omenCount: 0,
       isHauntActive: false,
+      currentScenario: null,
+      traitorId: null,
+      lastTriggeredOmenId: null,
+      lastTriggeredTileId: null,
       isInventoryOpen: false,
+      isInteractionModalOpen: false,
     });
   },
 
   nextTurn: () => {
     const state = get();
-    // Resolve any pending cards automatically if forced next turn (safety)
-    if (state.activeCard) {
-      state.addLog("Turn ended forcefully while event was active.", 'alert');
+    const currentIndex = state.playerIds.indexOf(state.activePlayerId);
+    
+    let nextIndex = (currentIndex + 1) % state.playerIds.length;
+    let nextId = state.playerIds[nextIndex];
+    let attempts = 0;
+    
+    while (state.players[nextId].isDead && attempts < state.playerIds.length) {
+      nextIndex = (nextIndex + 1) % state.playerIds.length;
+      nextId = state.playerIds[nextIndex];
+      attempts++;
     }
 
-    const nextIndex = (state.currentPlayerIndex + 1) % state.players.length;
-    const nextPlayer = state.players[nextIndex];
+    if (attempts === state.playerIds.length) {
+      set({ phase: GamePhase.GameOver });
+      state.addLog("大厦赢了。所有人都在黑暗中陨落了...", 'alert');
+      state.showFeedback("游戏结束：全员阵亡", "death");
+      return;
+    }
+
+    const nextPlayer = state.players[nextId];
     const speed = nextPlayer.character.attributes[AttributeName.Speed].current;
 
     set({
-      currentPlayerIndex: nextIndex,
+      activePlayerId: nextId,
       movesRemaining: speed,
       turnPhase: 'MOVING',
       turnIndex: state.turnIndex + 1,
-      activeCard: null, // Clear any hanging event
+      activeCard: null,
       lastRollResult: null,
-      pendingTile: null, // Clear any pending placement
+      pendingTile: null,
+      activeRoll: null,
+      activeCombat: null,
+      phase: state.phase === GamePhase.GameOver ? GamePhase.GameOver : (state.isHauntActive ? GamePhase.Haunt : GamePhase.Exploration),
+      isInventoryOpen: false,
+      isInteractionModalOpen: false,
     });
-    
-    state.addLog(`Turn ${state.turnIndex + 1}: ${nextPlayer.character.name}'s turn.`, 'info');
+
+    state.showFeedback(`${nextPlayer.character.name} 的回合`, 'turn');
+    state.addLog(`第 ${state.turnIndex + 1} 回合：${nextPlayer.character.name} 开始行动。`, 'info');
   },
 
   movePlayer: (direction: Direction) => {
     const state = get();
-    // Prevent moving if already handling an event, placement, roll, or turn is done
-    if (state.activeCard || state.pendingTile || state.activeRoll || state.turnPhase === 'DONE' || state.phase === GamePhase.HauntRoll) return;
+    if (state.activeCard || state.pendingTile || state.activeRoll || state.phase === GamePhase.HauntRoll || state.activeCombat) {
+        state.showFeedback("等待当前交互完成", "warning");
+        return;
+    }
+    
+    if (state.turnPhase === 'DONE') {
+        state.showFeedback("你的回合已结束", "warning");
+        return;
+    }
     
     if (state.movesRemaining <= 0) {
-      state.addLog("You are exhausted and cannot move further this turn.", "alert");
+      state.showFeedback("体力已耗尽", "error");
       return;
     }
 
-    const player = state.players[state.currentPlayerIndex];
+    const player = state.players[state.activePlayerId];
     const currentTile = state.map[`${player.position.x},${player.position.y}`];
+    const currentEdge = currentTile.edges[direction];
     
-    // 1. Check Exit from current tile
-    if (!currentTile.openings.includes(direction)) {
-      state.addLog("There is no door in that direction.", "alert");
+    if (currentEdge === 'WALL' && !player.buffs.includes('PHASING')) {
+      state.showFeedback("前方无路", "error");
       return;
     }
 
-    // Calculate Target
     let newX = player.position.x;
     let newY = player.position.y;
     if (direction === Direction.North) newY--;
-    if (direction === Direction.South) newY++;
-    if (direction === Direction.East) newX++;
-    if (direction === Direction.West) newX--;
+    else if (direction === Direction.South) newY++;
+    // Fix: Updated variable name to 'newX' to match local variable definition
+    else if (direction === Direction.East) newX++;
+    else if (direction === Direction.West) newX--;
 
     const targetKey = `${newX},${newY}`;
     const existingTile = state.map[targetKey];
 
     if (existingTile) {
-      // --- Case A: Move to Known Room ---
-      if (!areConnected(direction, existingTile.openings)) {
-        state.addLog("The door is blocked from the other side.", "alert");
+      if (!areConnected(direction, existingTile.edges) && !player.buffs.includes('PHASING')) {
+        state.showFeedback("这扇门无法开启", "error");
         return;
       }
       
-      const newPlayers = [...state.players];
-      newPlayers[state.currentPlayerIndex].position = { x: newX, y: newY };
-      
-      const newMoves = state.movesRemaining - 1;
+      const newPlayers = { ...state.players };
+      newPlayers[state.activePlayerId] = {
+          ...newPlayers[state.activePlayerId],
+          position: { x: newX, y: newY }
+      };
 
-      // Check for Trigger on Entry (if not already triggered)
-      let nextPhase = state.turnPhase;
+      const newMoves = state.movesRemaining - 1;
+      let nextPhase: TurnPhase = 'MOVING';
       const def = TILE_DECK.find(t => t.id === existingTile.defId) || STARTING_TILE;
       
       if (!existingTile.hasEventTriggered && (def.cardSymbol || def.eventTrigger)) {
-          // Stop movement to resolve event
-          set({ movesRemaining: 0 }); // Consume all moves for event
+          set({ movesRemaining: 0 }); 
           nextPhase = 'EVENT_RESOLVING';
-          
-          if (def.eventTrigger) {
-              get().triggerSpecificEvent(def.eventTrigger);
-          } else if (def.cardSymbol) {
-              get().drawCard(def.cardSymbol);
-          }
+          if (def.eventTrigger) get().triggerSpecificEvent(def.eventTrigger);
+          else if (def.cardSymbol) get().drawCard(def.cardSymbol);
       }
       
-      set({ 
-        players: newPlayers, 
-        movesRemaining: newMoves,
-        turnPhase: newMoves === 0 ? 'DONE' : nextPhase
-      });
-      state.addLog(`Moved ${direction} into ${def.name}.`, 'info');
-
+      set({ players: newPlayers, movesRemaining: newMoves, turnPhase: (newMoves === 0 && nextPhase !== 'EVENT_RESOLVING') ? 'DONE' : nextPhase });
+      state.addLog(`${player.character.name} 进入了 ${def.name}。`, 'info');
     } else {
-      // --- Case B: Explore New Room (Stop & Place) ---
       if (state.tileDeck.length === 0) {
-        state.addLog("You have explored the entire floor...", "alert");
+        state.showFeedback("大厦已无处探索", "error");
         return;
       }
-
-      // Draw Card
       const nextTileDef = state.tileDeck[0];
-      const remainingDeck = state.tileDeck.slice(1);
-
-      // Consume Move Point immediately for the "Action" of exploring
       set({
         movesRemaining: state.movesRemaining - 1,
-        tileDeck: remainingDeck,
+        tileDeck: state.tileDeck.slice(1),
         pendingTile: nextTileDef,
         pendingTileRotation: 0,
         pendingTargetPosition: { x: newX, y: newY },
         pendingMoveDirection: direction
       });
-
-      state.addLog("You peer into the darkness... Place the room.", "info");
     }
   },
 
-  rotatePendingTile: () => {
-    const { pendingTileRotation } = get();
-    set({ pendingTileRotation: (pendingTileRotation + 90) % 360 });
-  },
-
-  isPlacementValid: () => {
+  handlePlayerDeath: (playerId: string) => {
     const state = get();
-    const { pendingTile, pendingTileRotation, pendingMoveDirection } = state;
-    if (!pendingTile || !pendingMoveDirection) return false;
+    const player = state.players[playerId];
+    if (!player || player.isDead) return;
 
-    // Check connectivity back to source
-    const requiredOpening = getOpposite(pendingMoveDirection);
-    const rotatedOpenings = getRotatedOpenings(pendingTile.openings, pendingTileRotation);
+    const playerPos = `${player.position.x},${player.position.y}`;
+    const tile = state.map[playerPos];
 
-    return rotatedOpenings.includes(requiredOpening);
+    const updatedTile = {
+      ...tile,
+      droppedItems: [...tile.droppedItems, ...player.items]
+    };
+
+    const newPlayers = { ...state.players };
+    newPlayers[playerId] = {
+      ...newPlayers[playerId],
+      isDead: true,
+      items: []
+    };
+
+    set({
+      players: newPlayers,
+      map: { ...state.map, [playerPos]: updatedTile },
+      turnPhase: 'DONE',
+      activeCard: null,
+      activeRoll: null,
+      activeCombat: null,
+      isInteractionModalOpen: false,
+    });
+
+    state.addLog(`${player.character.name} 在大厦中殒落了... 随身物品散落了一地。`, 'alert');
+    state.showFeedback(`${player.character.name} 已阵亡`, 'death');
   },
+
+  pickupItemFromTile: (itemId: string) => {
+    const state = get();
+    const player = state.players[state.activePlayerId];
+    const playerPos = `${player.position.x},${player.position.y}`;
+    const tile = state.map[playerPos];
+    
+    const itemIndex = tile.droppedItems.findIndex(i => i.id === itemId);
+    if (itemIndex === -1) return;
+
+    const item = tile.droppedItems[itemIndex];
+    const newDroppedItems = tile.droppedItems.filter((_, i) => i !== itemIndex);
+    
+    const newPlayers = { ...state.players };
+    newPlayers[state.activePlayerId] = {
+      ...newPlayers[state.activePlayerId],
+      items: [...newPlayers[state.activePlayerId].items, item]
+    };
+
+    set({
+      players: newPlayers,
+      map: { ...state.map, [playerPos]: { ...tile, droppedItems: newDroppedItems } }
+    });
+    state.addLog(`捡起了掉落在地上的 ${item.name}。`, 'success');
+  },
+
+  giveItem: (fromId: string, toId: string, itemId: string) => {
+    const state = get();
+    const fromPlayer = state.players[fromId];
+    const toPlayer = state.players[toId];
+    if (!fromPlayer || !toPlayer) return;
+
+    const itemIndex = fromPlayer.items.findIndex(i => i.id === itemId);
+    if (itemIndex === -1) return;
+
+    const item = fromPlayer.items[itemIndex];
+    const newFromItems = fromPlayer.items.filter((_, i) => i !== itemIndex);
+    const newToItems = [...toPlayer.items, item];
+
+    const newPlayers = { ...state.players };
+    newPlayers[fromId] = { ...fromPlayer, items: newFromItems };
+    newPlayers[toId] = { ...toPlayer, items: newToItems };
+
+    set({ players: newPlayers, isInteractionModalOpen: false });
+    state.addLog(`${fromPlayer.character.name} 将 ${item.name} 交给了 ${toPlayer.character.name}。`, 'info');
+  },
+
+  startCombat: (attackerId, defenderId, attribute) => {
+    const state = get();
+    const attacker = state.players[attackerId];
+    const attackerDice = attacker.character.attributes[attribute].current;
+
+    set({
+      isInteractionModalOpen: false,
+      activeCombat: { attackerId, defenderId, attribute, phase: 'ATTACKING' },
+      activeRoll: {
+        id: 'combat_attack',
+        attributeName: `${attacker.character.name} 的进攻 (${attribute})`,
+        numberOfDice: attackerDice,
+        onComplete: (total) => {
+          const s = get();
+          const defender = s.players[defenderId];
+          const defenderDice = defender.character.attributes[attribute].current;
+          
+          set({
+            activeCombat: { ...s.activeCombat!, attackerRoll: total, phase: 'DEFENDING' },
+            activeRoll: {
+              id: 'combat_defense',
+              attributeName: `${defender.character.name} 的防御 (${attribute})`,
+              numberOfDice: defenderDice,
+              onComplete: (defTotal) => {
+                set(prev => ({
+                  activeCombat: { ...prev.activeCombat!, defenderRoll: defTotal, phase: 'RESOLUTION' },
+                  activeRoll: null
+                }));
+              }
+            }
+          });
+        }
+      }
+    });
+  },
+
+  resolveCombatDamage: () => {
+    const state = get();
+    const combat = state.activeCombat;
+    if (!combat || combat.attackerRoll === undefined || combat.defenderRoll === undefined) return;
+
+    const damage = Math.max(0, combat.attackerRoll - combat.defenderRoll);
+    if (damage > 0) {
+      get().executeScript([{
+        type: 'modify_stat',
+        target: combat.defenderId,
+        attribute: AttributeName.Might,
+        amount: -damage,
+        message: `战斗中受到了 ${damage} 点伤害！`
+      }]);
+    } else {
+      state.addLog("进攻被化解了，未造成伤害。", 'info');
+    }
+
+    set({ activeCombat: null, turnPhase: 'DONE' });
+  },
+
+  resolveCombatSteal: (itemId) => {
+    const state = get();
+    const combat = state.activeCombat;
+    if (!combat) return;
+
+    const attacker = state.players[combat.attackerId];
+    const defender = state.players[combat.defenderId];
+    const itemIndex = defender.items.findIndex(i => i.id === itemId);
+    if (itemIndex === -1) return;
+
+    const item = defender.items[itemIndex];
+    const newDefenderItems = defender.items.filter((_, i) => i !== itemIndex);
+    const newAttackerItems = [...attacker.items, item];
+
+    const newPlayers = { ...state.players };
+    newPlayers[combat.defenderId] = { ...defender, items: newDefenderItems };
+    newPlayers[combat.attackerId] = { ...attacker, items: newAttackerItems };
+
+    set({ players: newPlayers, activeCombat: null, turnPhase: 'DONE' });
+    state.addLog(`${attacker.character.name} 趁乱偷走了 ${defender.character.name} 的 ${item.name}！`, 'success');
+  },
+
+  cancelCombat: () => set({ activeCombat: null, activeRoll: null }),
+
+  debugForceHaunt: () => {
+    const state = get();
+    set({
+      isHauntActive: true,
+      phase: GamePhase.HauntReveal,
+      omenCount: Math.max(state.omenCount, 6),
+      activeCard: null,
+      activeRoll: null,
+      activeCombat: null,
+      pendingTile: null,
+      isInteractionModalOpen: false,
+    });
+    state.addLog("系统协议强制覆盖：作祟序列启动。", "alert");
+    state.showFeedback("强制开启作祟模式", "warning");
+  },
+
+  executeScript: (actions: ScriptAction[]) => {
+      const state = get();
+      const newPlayers = { ...state.players };
+      const currentPlayerId = state.activePlayerId;
+      
+      let deathTriggeredIds: string[] = [];
+
+      actions.forEach(action => {
+          const targetId = action.target === 'self' || !action.target ? currentPlayerId : action.target;
+          const player = newPlayers[targetId];
+          if (!player) return;
+
+          switch(action.type) {
+              case 'modify_stat': {
+                  if (action.attribute && action.amount) {
+                      const attr = player.character.attributes[action.attribute];
+                      const newVal = attr.current + action.amount;
+                      
+                      if (newVal <= attr.floor) {
+                          deathTriggeredIds.push(targetId);
+                          attr.current = attr.floor;
+                      } else {
+                          attr.current = Math.min(attr.max, newVal);
+                      }
+                      
+                      if (action.message) state.addLog(action.message, action.amount > 0 ? 'success' : 'alert');
+                  }
+                  break;
+              }
+              case 'heal': {
+                  if (action.attribute && action.amount) {
+                      const attr = player.character.attributes[action.attribute];
+                      attr.current = Math.min(attr.max, attr.current + action.amount);
+                  }
+                  break;
+              }
+              case 'add_item': {
+                  if (action.itemId) {
+                      const item = ITEMS_DB[action.itemId];
+                      if (item) {
+                          player.items.push(item);
+                          state.addLog(`获得了 ${item.name}`, 'success');
+                      }
+                  }
+                  break;
+              }
+              case 'move_player': {
+                  if (action.location === 'basement') state.addLog("你掉到了地下室！", 'alert');
+                  break;
+              }
+              case 'narrative_log': {
+                  if (action.message) state.addLog(action.message, 'narrative');
+                  break;
+              }
+          }
+      });
+
+      set({ players: newPlayers });
+
+      deathTriggeredIds.forEach(id => {
+          get().handlePlayerDeath(id);
+      });
+  },
+
+  executeLogicAction: (action: ActionDefinition) => {
+    const state = get();
+    const context: GameContext = {
+      state: state,
+      activePlayerId: state.activePlayerId
+    };
+
+    if (action.condition && !evaluateCondition(action.condition, context)) {
+      state.showFeedback(`无法执行: ${action.name} (条件未满足)`, 'warning');
+      return;
+    }
+
+    state.addLog(`执行技能: ${action.name}`, 'info');
+    executeEffects(action.effects, context);
+  },
+
+  rotatePendingTile: () => set(s => ({ pendingTileRotation: (s.pendingTileRotation + 90) % 360 })),
 
   confirmTilePlacement: () => {
     const state = get();
     if (!state.isPlacementValid()) {
-      state.addLog("Cannot place tile: Doors do not align.", "alert");
-      return;
+        state.showFeedback("门必须相连", "error");
+        return;
     }
-
-    const { pendingTile, pendingTileRotation, pendingTargetPosition, players, currentPlayerIndex } = state;
+    const { pendingTile, pendingTileRotation, pendingTargetPosition } = state;
     if (!pendingTile || !pendingTargetPosition) return;
 
-    // Create Tile Instance
-    const rotatedOpenings = getRotatedOpenings(pendingTile.openings, pendingTileRotation);
-    const newTile: TileInstance = {
-      instanceId: `tile_${Date.now()}`,
-      defId: pendingTile.id,
-      x: pendingTargetPosition.x,
-      y: pendingTargetPosition.y,
-      rotation: pendingTileRotation,
-      openings: rotatedOpenings,
-      hasEventTriggered: false
+    const newTileInstance: TileInstance = {
+        instanceId: `tile_${Date.now()}`,
+        defId: pendingTile.id,
+        x: pendingTargetPosition.x,
+        y: pendingTargetPosition.y,
+        rotation: pendingTileRotation,
+        edges: getRotatedEdges(pendingTile.edges, pendingTileRotation),
+        hasEventTriggered: false,
+        visibility: 'VISIBLE',
+        droppedItems: []
     };
 
-    // Place Tile & Move Player
-    const targetKey = `${newTile.x},${newTile.y}`;
-    const newPlayers = [...players];
-    newPlayers[currentPlayerIndex].position = { x: newTile.x, y: newTile.y };
+    const newPlayers = { ...state.players };
+    newPlayers[state.activePlayerId] = {
+        ...newPlayers[state.activePlayerId],
+        position: { x: newTileInstance.x, y: newTileInstance.y }
+    };
 
-    // Determine next state
-    let nextPhase: TurnPhase = state.movesRemaining === 0 ? 'DONE' : 'MOVING';
-    let nextMoves = state.movesRemaining;
-    
-    // --- Card Trigger Logic ---
-    if (pendingTile.cardSymbol || pendingTile.eventTrigger) {
-      // Force stop
-      nextMoves = 0;
-      nextPhase = 'EVENT_RESOLVING';
-      
-      state.addLog(`Something is in this room...`, 'narrative');
+    let nextTurnPhase: TurnPhase = 'DONE';
+    if (pendingTile.eventTrigger) {
+        nextTurnPhase = 'EVENT_RESOLVING';
+        get().triggerSpecificEvent(pendingTile.eventTrigger);
+    } else if (pendingTile.cardSymbol) {
+        nextTurnPhase = 'EVENT_RESOLVING';
+        get().drawCard(pendingTile.cardSymbol);
     }
 
     set({
-      map: { ...state.map, [targetKey]: newTile },
-      players: newPlayers,
+        map: { ...state.map, [`${newTileInstance.x},${newTileInstance.y}`]: newTileInstance },
+        players: newPlayers,
+        pendingTile: null,
+        pendingTargetPosition: null,
+        pendingMoveDirection: null,
+        turnPhase: nextTurnPhase,
+        movesRemaining: 0 
+    });
+    state.addLog(`探索发现了 ${pendingTile.name}。`, 'success');
+  },
+
+  isPlacementValid: () => {
+    const { pendingTile, pendingTileRotation, pendingTargetPosition, pendingMoveDirection, map } = get();
+    if (!pendingTile || !pendingTargetPosition || !pendingMoveDirection) return false;
+    if (map[`${pendingTargetPosition.x},${pendingTargetPosition.y}`]) return false;
+    const rotatedEdges = getRotatedEdges(pendingTile.edges, pendingTileRotation);
+    return rotatedEdges[getOpposite(pendingMoveDirection)] !== 'WALL';
+  },
+
+  cancelTilePlacement: () => {
+    const state = get();
+    if (!state.pendingTile) return;
+    set({
+      tileDeck: [state.pendingTile, ...state.tileDeck],
       pendingTile: null,
       pendingTargetPosition: null,
       pendingMoveDirection: null,
       pendingTileRotation: 0,
-      movesRemaining: nextMoves,
-      turnPhase: nextPhase,
+      movesRemaining: state.movesRemaining + 1,
     });
-
-    state.addLog(`Discovered ${pendingTile.name}.`, 'narrative');
-
-    // Trigger Draw or Specific Event
-    if (pendingTile.eventTrigger) {
-        get().triggerSpecificEvent(pendingTile.eventTrigger);
-    } else if (pendingTile.cardSymbol) {
-        get().drawCard(pendingTile.cardSymbol);
-    }
   },
 
   drawCard: (type: CardSymbol) => {
-    const state = get();
-    
-    if (type === 'EVENT') {
-        const deck = state.decks.EVENT;
-        if (deck.length === 0) {
-            state.addLog(`The EVENT deck is empty!`, 'alert');
-            set({ turnPhase: 'DONE' });
-            return;
-        }
-        const drawnCard = deck[0];
-        set({
-            activeCard: drawnCard,
-            decks: { ...state.decks, EVENT: deck.slice(1) },
-            lastRollResult: null,
-        });
-        state.addLog(`Drew EVENT: ${drawnCard.title}`, 'info');
-
-    } else {
-        // Handle Item/Omen (They are Items now, not CardDefs)
-        const deck = type === 'OMEN' ? state.decks.OMEN : state.decks.ITEM;
-        if (deck.length === 0) {
-            state.addLog(`The ${type} deck is empty!`, 'alert');
-            set({ turnPhase: 'DONE' });
-            return;
-        }
-        const drawnItem = deck[0];
-        
-        // Update Decks
-        const newDecks = { ...state.decks };
-        if (type === 'OMEN') newDecks.OMEN = deck.slice(1);
-        else newDecks.ITEM = deck.slice(1);
-
-        set({
-            activeCard: drawnItem,
-            decks: newDecks,
-            lastRollResult: null,
-        });
-        state.addLog(`Found ${type}: ${drawnItem.name}`, 'info');
-    }
+      const state = get();
+      const deck = state.decks[type];
+      if (deck.length === 0) {
+          state.addLog(`${type} 牌组已空！`, 'alert');
+          set({ turnPhase: 'DONE' });
+          return;
+      }
+      set({ activeCard: deck[0], decks: { ...state.decks, [type]: deck.slice(1) } });
   },
 
   triggerSpecificEvent: (eventId: string) => {
-    const state = get();
-    const event = EVENTS_DB[eventId];
-    
-    if (!event) {
-        state.addLog(`Script Error: Event '${eventId}' not found.`, 'alert');
-        set({ turnPhase: 'DONE' });
-        return;
-    }
-
-    set({
-        activeCard: event,
-        lastRollResult: null,
-        turnPhase: 'EVENT_RESOLVING',
-        movesRemaining: 0 // Stop movement
-    });
-    state.addLog(`Triggered: ${event.title}`, 'info');
+      const event = EVENTS_DB[eventId];
+      if (event) set({ activeCard: event });
   },
 
-  triggerStatRoll: () => {
-    const state = get();
-    const activeCard = state.activeCard;
-
-    // Ensure it's an event with an attribute check
-    if (!activeCard || activeCard.type !== 'EVENT' || activeCard.interaction.type !== 'ATTRIBUTE_CHECK') return;
-
-    const player = state.players[state.currentPlayerIndex];
-    const statName = activeCard.interaction.attribute;
-    const statValue = player.character.attributes[statName].current;
-    
-    // Instead of resolving immediately, set activeRoll state
-    set({
-      activeRoll: {
-        id: `roll_${Date.now()}`,
-        attributeName: statName,
-        numberOfDice: statValue,
-        targetValue: activeCard.interaction.difficulty,
-        onComplete: (total) => state.resolveDiceRoll(total)
-      }
-    });
-  },
-
-  resolveDiceRoll: (total: number) => {
-    const state = get();
-    
-    // 1. Update Game State with result
-    set({ 
-      lastRollResult: total, 
-      activeRoll: null // Close the dice UI
-    });
-
-    const activeCard = state.activeCard;
-    if (activeCard && activeCard.type === 'EVENT' && activeCard.interaction.type === 'ATTRIBUTE_CHECK') {
-      const target = activeCard.interaction.difficulty;
-      const passed = total >= target;
-      state.addLog(`Rolled ${total} (Target: ${target}). ${passed ? 'Success' : 'Failure'}.`, passed ? 'success' : 'alert');
-    }
-  },
-
-  executeScript: (actions: ScriptAction[]) => {
-    const state = get();
-    const newPlayers = [...state.players];
-    const currentPlayer = newPlayers[state.currentPlayerIndex];
-    
-    actions.forEach(action => {
-        // modify_stat
-        if (action.type === 'modify_stat' && action.attribute) {
-            const attr = currentPlayer.character.attributes[action.attribute];
-            let newIndex = attr.index + (action.amount || 0);
-            
-            // Clamp
-            if (newIndex < 0) newIndex = 0; 
-            if (newIndex >= attr.values.length) newIndex = attr.values.length - 1;
-            
-            attr.index = newIndex;
-            attr.current = attr.values[newIndex];
-            
-            const changeText = (action.amount || 0) > 0 ? 'increased' : 'decreased';
-            state.addLog(`${currentPlayer.character.name}'s ${action.attribute} ${changeText}. Now ${attr.current}.`, action.amount! > 0 ? 'success' : 'alert');
-        }
-
-        // heal
-        if (action.type === 'heal' && action.attribute) {
-            const attr = currentPlayer.character.attributes[action.attribute];
-            let newIndex = attr.index + (action.amount || 1);
-            // Cap at max (length - 1)
-            if (newIndex >= attr.values.length) newIndex = attr.values.length - 1;
-            
-            attr.index = newIndex;
-            attr.current = attr.values[newIndex];
-            state.addLog(`${currentPlayer.character.name} healed ${action.attribute}.`, 'success');
-        }
-
-        // add_item
-        if (action.type === 'add_item' && action.itemId) {
-            const item = ITEMS_DB[action.itemId];
-            if (item) {
-                currentPlayer.items.push(item);
-                state.addLog(`Obtained ${item.name}`, 'success');
-            } else {
-                console.warn(`Item ${action.itemId} not found in DB`);
-            }
-        }
-
-        // move_player
-        if (action.type === 'move_player') {
-            // Simplified teleport logic - usually would need specific logic for "Basement Landing"
-            if (action.location === 'basement') {
-                 // Try to find basement landing
-                 const landing = Object.values(state.map).find(t => t.defId === 'tile_basement_landing');
-                 if (landing) {
-                     currentPlayer.position = { x: landing.x, y: landing.y };
-                     state.addLog("You were moved to the Basement Landing.", 'alert');
-                 } else {
-                     state.addLog("You fall into darkness... (Basement Landing not found)", 'alert');
-                 }
-            }
-        }
-
-        // narrative_log
-        if (action.type === 'narrative_log' && action.message) {
-            state.addLog(action.message, 'info');
-        }
-    });
-
-    set({ players: newPlayers });
-  },
-
-  setState: (updater) => set(updater),
-  
-  incrementOmenCount: () => set(state => ({ omenCount: state.omenCount + 1 })),
-
-  applyCardOutcome: () => {
-    // Legacy support, mostly moved to useEventSystem
-    const state = get();
-    const active = state.activeCard;
-    if (!active) return;
-    set({ activeCard: null, turnPhase: 'DONE' });
-  },
+  triggerStatRoll: () => {}, 
+  resolveDiceRoll: () => {},
+  applyCardOutcome: () => {},
+  incrementOmenCount: () => set(s => ({ omenCount: s.omenCount + 1 })),
 
   performHauntRoll: () => {
+      const state = get();
+      set({ 
+        activeRoll: {
+          id: 'haunt_roll',
+          attributeName: '作祟检定',
+          numberOfDice: 6,
+          targetValue: state.omenCount,
+          onComplete: (total) => {
+              if (total < state.omenCount) {
+                  set({ 
+                    isHauntActive: true, 
+                    phase: GamePhase.HauntReveal, 
+                    activeRoll: null, 
+                    lastRollResult: total 
+                  });
+              } else {
+                  set({ 
+                    phase: GamePhase.Exploration,
+                    activeRoll: null, 
+                    lastRollResult: total, 
+                    turnPhase: 'DONE' 
+                  });
+              }
+          }
+        }
+      });
+  },
+
+  startHaunt: () => {
     const state = get();
     
-    // Instead of instant calc, trigger the UI
-    set({
-      activeRoll: {
-        id: `haunt_roll_${Date.now()}`,
-        attributeName: 'Haunt Roll',
-        numberOfDice: 6,
-        targetValue: state.omenCount, // Not strictly a target in "Success" sense, but threshold
-        onComplete: (total) => {
-            set({ activeRoll: null, lastRollResult: total });
-            
-            const hauntTriggered = total < get().omenCount;
-            
-            get().addLog(`Haunt Roll: ${total} (Omens: ${get().omenCount})`, hauntTriggered ? 'alert' : 'success');
+    // Determine the scenario using the matrix
+    const omenId = state.lastTriggeredOmenId || '';
+    const tileDefId = state.lastTriggeredTileId || '';
+    const scenarioId = getScenarioId(omenId, tileDefId);
+    
+    const selectedScenario = SCENARIOS_DB[scenarioId] || SCENARIOS_DB['haunt_00'];
+    
+    // Determine Traitor with refined logic
+    const traitorId = resolveTraitor(selectedScenario, state.activePlayerId, state.players);
 
-            if (hauntTriggered) {
-                set({ 
-                    phase: GamePhase.HauntReveal,
-                    isHauntActive: true
-                });
-            } else {
-                set({ 
-                    phase: GamePhase.Exploration,
-                    turnPhase: 'DONE'
-                });
-                get().addLog(`The house settles... for now.`, 'narrative');
-            }
-        }
+    // Update player teams and heal traitor
+    const updatedPlayers = { ...state.players };
+    Object.keys(updatedPlayers).forEach(id => {
+      if (id === traitorId) {
+        updatedPlayers[id].team = 'TRAITOR';
+        updatedPlayers[id] = healTraitor(updatedPlayers[id]);
+      } else {
+        updatedPlayers[id].team = 'HERO';
       }
     });
-  },
-
-  addLog: (text: string, type: LogEntry['type'] = 'info') => {
-    const newLog: LogEntry = {
-      id: Math.random().toString(36),
-      timestamp: Date.now(),
-      text,
-      type
-    };
-    set(state => ({ logs: [newLog, ...state.logs] }));
-  },
-
-  setHoveredTileId: (id: string | null) => {
-    set({ hoveredTileId: id });
-  },
-
-  toggleInventory: () => {
-    set(state => ({ isInventoryOpen: !state.isInventoryOpen }));
-  },
-
-  useItem: (itemId: string) => {
-    const state = get();
-
-    if (state.activeCard || state.turnPhase === 'EVENT_RESOLVING') {
-        state.addLog("You cannot use items while an event is resolving!", 'alert');
-        return;
-    }
-
-    const newPlayers = [...state.players];
-    const currentPlayer = newPlayers[state.currentPlayerIndex];
-    const itemIndex = currentPlayer.items.findIndex(i => i.id === itemId);
-
-    if (itemIndex === -1) return;
-
-    const item = currentPlayer.items[itemIndex];
-    if (!item.usage) return;
-
-    get().executeScript(item.usage.effects);
-
-    if (item.usage.isConsumable) {
-        currentPlayer.items.splice(itemIndex, 1);
-        state.addLog(`${item.name} was consumed.`, 'info');
-    }
 
     set({ 
-        players: newPlayers,
-        isInventoryOpen: false 
+      phase: GamePhase.Haunt,
+      currentScenario: selectedScenario,
+      traitorId: traitorId,
+      players: updatedPlayers
     });
+
+    state.addLog(`剧本已揭晓：${selectedScenario.name}`, "alert");
+    state.addLog(selectedScenario.introText, "narrative");
+    
+    const traitor = updatedPlayers[traitorId];
+    state.addLog(`叛徒已经产生：${traitor.character.name}。英雄们，团结起来！`, "alert");
+    state.addLog(`${traitor.character.name} 感到一股恶兆之力充满了全身，伤口已经愈合。`, 'narrative');
   },
 
-  dropItem: (itemId: string) => {
+  addLog: (text, type = 'info') => {
+      set(s => ({ logs: [{ id: Date.now().toString(), timestamp: Date.now(), text, type }, ...s.logs] }));
+  },
+
+  setHoveredTileId: (id) => set({ hoveredTileId: id }),
+
+  setState: (fn) => set(fn),
+  inventoryOpen: () => set({ isInventoryOpen: true }),
+  toggleInventory: () => set(s => ({ isInventoryOpen: !s.isInventoryOpen })),
+  toggleInteractionModal: () => set(s => ({ isInteractionModalOpen: !s.isInteractionModalOpen })),
+  
+  useItem: (itemId) => {
       const state = get();
-      const newPlayers = [...state.players];
-      const currentPlayer = newPlayers[state.currentPlayerIndex];
-      const itemIndex = currentPlayer.items.findIndex(i => i.id === itemId);
+      const player = state.players[state.activePlayerId];
+      if (player.isDead) return;
       
-      if (itemIndex > -1) {
-          const item = currentPlayer.items[itemIndex];
-          currentPlayer.items.splice(itemIndex, 1);
-          state.addLog(`${item.name} was dropped.`, 'info');
-          set({ players: newPlayers });
+      const itemIndex = player.items.findIndex(i => i.id === itemId);
+      if (itemIndex === -1) return;
+      const item = player.items[itemIndex];
+      if (item.usage?.effects) {
+          get().executeScript(item.usage.effects);
+          if (item.usage.isConsumable) {
+              const newPlayers = { ...state.players };
+              newPlayers[state.activePlayerId].items.splice(itemIndex, 1);
+              set({ players: newPlayers });
+          }
+          set({ isInventoryOpen: false });
       }
-  }
+  },
+
+  dropItem: (itemId) => {
+      const state = get();
+      const player = state.players[state.activePlayerId];
+      const playerPos = `${player.position.x},${player.position.y}`;
+      const tile = state.map[playerPos];
+      
+      const itemIndex = player.items.findIndex(i => i.id === itemId);
+      if (itemIndex === -1) return;
+
+      const item = player.items[itemIndex];
+      const newItems = player.items.filter((_, i) => i !== itemIndex);
+      
+      const newPlayers = { ...state.players };
+      newPlayers[state.activePlayerId].items = newItems;
+
+      const updatedTile = {
+          ...tile,
+          droppedItems: [...tile.droppedItems, item]
+      };
+
+      set({ 
+          players: newPlayers, 
+          map: { ...state.map, [playerPos]: updatedTile } 
+      });
+      state.addLog(`放下了物品 ${item.name}。`, 'info');
+  },
+
+  interactWithWall: (direction) => {
+      const state = get();
+      const player = state.players[state.activePlayerId];
+      if (player.isDead) return;
+      
+      const hasPickaxe = player.items.some(i => i.id === 'item_pickaxe');
+      const might = player.character.attributes[AttributeName.Might].current;
+      
+      if (hasPickaxe || might > 5) {
+          const newPlayers = { ...state.players };
+          if (!hasPickaxe) {
+             const attr = newPlayers[state.activePlayerId].character.attributes[AttributeName.Might];
+             attr.current = Math.max(attr.floor, attr.current - 1);
+          }
+          set({ players: newPlayers });
+          
+          const currentTile = state.map[`${player.position.x},${player.position.y}`];
+          const updatedCurrent = { ...currentTile, edges: { ...currentTile.edges, [direction]: 'RUBBLE' } };
+          const newMap = { ...state.map, [`${updatedCurrent.x},${updatedCurrent.y}`]: updatedCurrent as TileInstance };
+
+          let nx = player.position.x, ny = player.position.y;
+          if (direction === Direction.North) ny--;
+          else if (direction === Direction.South) ny++;
+          else if (direction === Direction.East) nx++;
+          else if (direction === Direction.West) nx--;
+          
+          const neighbor = newMap[`${nx},${ny}`];
+          if (neighbor) {
+             const updatedNeighbor = { ...neighbor, edges: { ...neighbor.edges, [getOpposite(direction)]: 'RUBBLE' } };
+             newMap[`${nx},${ny}`] = updatedNeighbor as TileInstance;
+          }
+          set({ map: newMap });
+          return;
+      }
+      
+      const knowledge = player.character.attributes[AttributeName.Knowledge].current;
+      set({ 
+        activeRoll: {
+          id: 'search_wall',
+          attributeName: '知识',
+          numberOfDice: knowledge,
+          targetValue: 4,
+          isCancellable: true,
+          onComplete: (total) => {
+              if (total >= 4) {
+                  const s = get();
+                  const p = s.players[s.activePlayerId];
+                  const t = s.map[`${p.position.x},${p.position.y}`];
+                  const ut = { ...t, edges: { ...t.edges, [direction]: 'SECRET_DOOR' } };
+                  const nm = { ...s.map, [`${ut.x},${ut.y}`]: ut as TileInstance };
+                  
+                  let nx = p.position.x, ny = p.position.y;
+                  if (direction === Direction.North) ny--;
+                  else if (direction === Direction.South) ny++;
+                  else if (direction === Direction.East) nx++;
+                  else if (direction === Direction.West) nx--;
+                  const n = nm[`${nx},${ny}`];
+                  if (n) {
+                      nm[`${nx},${ny}`] = { ...n, edges: { ...n.edges, [getOpposite(direction)]: 'SECRET_DOOR' } } as TileInstance;
+                  }
+                  set({ map: nm, activeRoll: null, lastRollResult: total, turnPhase: 'DONE' });
+              } else {
+                  set({ activeRoll: null, lastRollResult: total, turnPhase: 'DONE' });
+              }
+          }
+        }
+      });
+  },
+  
+  cancelActiveRoll: () => set({ activeRoll: null })
 }));

@@ -1,21 +1,21 @@
+
 import React, { useEffect, useMemo } from 'react';
 import { useGameStore } from '../store/gameStore';
 import TileCard from './TileCard';
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw, Check, X } from 'lucide-react';
-import { Direction, TileInstance } from '../types';
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw, Check, X, XCircle } from 'lucide-react';
+import { Direction, TileInstance, DirectionalEdges } from '../types';
 
 const TILE_SIZE = 140;
 
 const MapGrid: React.FC = () => {
   const { 
-    map, players, currentPlayerIndex, movePlayer, activeCard,
+    map, players, activePlayerId, movePlayer, activeCard,
     pendingTile, pendingTargetPosition, pendingTileRotation, rotatePendingTile, confirmTilePlacement, isPlacementValid,
-    setHoveredTileId
+    setHoveredTileId, cancelTilePlacement
   } = useGameStore();
 
-  const currentPlayer = players[currentPlayerIndex];
+  const activePlayer = players[activePlayerId];
 
-  // Keyboard Shortcuts for Placement
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (pendingTile) {
@@ -23,182 +23,98 @@ const MapGrid: React.FC = () => {
         if (e.key === 'Enter' || e.key === ' ') {
             if (isPlacementValid()) confirmTilePlacement();
         }
-      } else if (!activeCard) {
-          // Optional: WASD movement?
+        if (e.key === 'Escape') cancelTilePlacement();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pendingTile, rotatePendingTile, confirmTilePlacement, isPlacementValid, activeCard]);
+  }, [pendingTile, rotatePendingTile, confirmTilePlacement, isPlacementValid, activeCard, cancelTilePlacement]);
 
-  // Derived state for Ghost Tile
   const ghostTileInstance: TileInstance | null = useMemo(() => {
     if (!pendingTile || !pendingTargetPosition) return null;
-    
-    // We need to calculate openings for the visual representation
-    // This duplicates logic slightly from store, but keeps visualization responsive
-    const rotationSteps = pendingTileRotation / 90;
-    const dirs = [Direction.North, Direction.East, Direction.South, Direction.West];
-    const rotatedOpenings = pendingTile.openings.map(dir => {
-        const currentIndex = dirs.indexOf(dir);
-        const newIndex = (currentIndex + rotationSteps) % 4;
-        return dirs[newIndex];
-    });
-
+    const rotateEdges = (edges: DirectionalEdges, rotation: number): DirectionalEdges => {
+        const r = ((rotation % 360) + 360) % 360;
+        if (r === 0) return edges;
+        let newEdges = { ...edges };
+        const steps = r / 90;
+        for (let i = 0; i < steps; i++) {
+            const temp = { ...newEdges };
+            newEdges[Direction.East] = temp[Direction.North];
+            newEdges[Direction.South] = temp[Direction.East];
+            newEdges[Direction.West] = temp[Direction.South];
+            newEdges[Direction.North] = temp[Direction.West];
+        }
+        return newEdges;
+    };
+    // Fix: Added missing 'droppedItems' property to match TileInstance interface
     return {
         instanceId: 'ghost',
         defId: pendingTile.id,
         x: pendingTargetPosition.x,
         y: pendingTargetPosition.y,
         rotation: pendingTileRotation,
-        openings: rotatedOpenings,
-        hasEventTriggered: false
+        edges: rotateEdges(pendingTile.edges, pendingTileRotation),
+        hasEventTriggered: false,
+        visibility: 'VISIBLE',
+        droppedItems: []
     };
   }, [pendingTile, pendingTargetPosition, pendingTileRotation]);
 
   const isValid = isPlacementValid();
-
-  if (!currentPlayer) {
-    return (
-        <div className="relative w-full h-full bg-[#0c0c0e] overflow-hidden flex items-center justify-center">
-            <div className="text-zinc-500 text-xs tracking-widest uppercase animate-pulse">Initializing Protocol...</div>
-        </div>
-    );
-  }
+  if (!activePlayer) return <div className="relative w-full h-full bg-[#0c0c0e] flex items-center justify-center text-zinc-500 uppercase tracking-widest animate-pulse">协议启动中...</div>;
 
   return (
     <div className="relative w-full h-full bg-[#0c0c0e] overflow-hidden flex items-center justify-center">
-      {/* Grid Background */}
-      <div 
-        className="absolute inset-0 opacity-10 pointer-events-none"
-        style={{
-          backgroundImage: 'radial-gradient(#333 1px, transparent 1px)',
-          backgroundSize: '20px 20px'
-        }}
-      />
-
-      {/* Map Container */}
-      <div 
-        className="relative transition-transform duration-500 ease-in-out"
-        style={{
-          width: 0, 
-          height: 0,
-          transform: `translate(${-currentPlayer.position.x * TILE_SIZE}px, ${-currentPlayer.position.y * TILE_SIZE}px)`
-        }}
-      >
-        {/* Placed Tiles */}
+      <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#333 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+      <div className="relative transition-transform duration-500 ease-in-out" style={{ width: 0, height: 0, transform: `translate(${-activePlayer.position.x * TILE_SIZE}px, ${-activePlayer.position.y * TILE_SIZE}px)` }}>
         {Object.values(map).map((tile: TileInstance) => {
-          const isPlayerHere = currentPlayer.position.x === tile.x && currentPlayer.position.y === tile.y;
-          const key = `${tile.x},${tile.y}`;
-          
+          // 找出当前在这个地块上的所有玩家
+          const playersOnThisTile = Object.values(players).filter(p => p.position.x === tile.x && p.position.y === tile.y);
+          const isActivePlayerHere = activePlayer.position.x === tile.x && activePlayer.position.y === tile.y;
+
           return (
-            <div
-              key={tile.instanceId}
-              className="absolute transition-all duration-500"
-              style={{
-                left: tile.x * TILE_SIZE,
-                top: tile.y * TILE_SIZE,
-                width: 128,
-                height: 128
-              }}
-              onMouseEnter={() => setHoveredTileId(key)}
-              onMouseLeave={() => setHoveredTileId(null)}
-            >
-              <TileCard 
-                tile={tile} 
-                isActive={isPlayerHere} 
-                hasPlayer={isPlayerHere}
-              />
+            <div key={tile.instanceId} className="absolute transition-all duration-500" style={{ left: tile.x * TILE_SIZE, top: tile.y * TILE_SIZE, width: 128, height: 128 }} onMouseEnter={() => setHoveredTileId(`${tile.x},${tile.y}`)} onMouseLeave={() => setHoveredTileId(null)}>
+              <TileCard tile={tile} isActive={isActivePlayerHere} playersOnTile={playersOnThisTile} />
             </div>
           );
         })}
 
-        {/* Ghost Tile (Placement Mode) */}
         {ghostTileInstance && (
-            <div
-                className={`absolute transition-all duration-200 z-50`}
-                style={{
-                    left: ghostTileInstance.x * TILE_SIZE,
-                    top: ghostTileInstance.y * TILE_SIZE,
-                    width: 128,
-                    height: 128
-                }}
-            >
-                <div className={`
-                    w-full h-full rounded-sm transition-all duration-300
-                    ${isValid ? 'ring-2 ring-emerald-500 ring-offset-2 ring-offset-black shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'ring-2 ring-red-500 ring-offset-2 ring-offset-black opacity-50 grayscale'}
-                `}>
-                    <TileCard 
-                        tile={ghostTileInstance} 
-                        isActive={false} 
-                        hasPlayer={false}
-                    />
+            <div className="absolute transition-all duration-200 z-50" style={{ left: ghostTileInstance.x * TILE_SIZE, top: ghostTileInstance.y * TILE_SIZE, width: 128, height: 128 }}>
+                <div className={`w-full h-full rounded-sm transition-all duration-300 ${isValid ? 'ring-2 ring-emerald-500 ring-offset-2 ring-offset-black shadow-lg' : 'ring-2 ring-red-500 opacity-50 grayscale'}`}>
+                    <TileCard tile={ghostTileInstance} isActive={false} playersOnTile={[]} />
                 </div>
             </div>
         )}
 
-        {/* Movement Controls (Hidden during placement) */}
         {!activeCard && !pendingTile && (
-            <div 
-            className="absolute z-20 w-32 h-32 pointer-events-none"
-            style={{
-                left: currentPlayer.position.x * TILE_SIZE,
-                top: currentPlayer.position.y * TILE_SIZE,
-            }}
-            >
-                <button onClick={() => movePlayer(Direction.North)} className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto transition-colors border border-zinc-600">
-                    <ArrowUp size={16} />
-                </button>
-                <button onClick={() => movePlayer(Direction.South)} className="absolute -bottom-12 left-1/2 -translate-x-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto transition-colors border border-zinc-600">
-                    <ArrowDown size={16} />
-                </button>
-                <button onClick={() => movePlayer(Direction.West)} className="absolute top-1/2 -left-12 -translate-y-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto transition-colors border border-zinc-600">
-                    <ArrowLeft size={16} />
-                </button>
-                <button onClick={() => movePlayer(Direction.East)} className="absolute top-1/2 -right-12 -translate-y-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto transition-colors border border-zinc-600">
-                    <ArrowRight size={16} />
-                </button>
+            <div className="absolute z-20 w-32 h-32 pointer-events-none" style={{ left: activePlayer.position.x * TILE_SIZE, top: activePlayer.position.y * TILE_SIZE }}>
+                <button onClick={() => movePlayer(Direction.North)} className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto border border-zinc-600"><ArrowUp size={16} /></button>
+                <button onClick={() => movePlayer(Direction.South)} className="absolute -bottom-12 left-1/2 -translate-x-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto border border-zinc-600"><ArrowDown size={16} /></button>
+                <button onClick={() => movePlayer(Direction.West)} className="absolute top-1/2 -left-12 -translate-y-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto border border-zinc-600"><ArrowLeft size={16} /></button>
+                <button onClick={() => movePlayer(Direction.East)} className="absolute top-1/2 -right-12 -translate-y-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto border border-zinc-600"><ArrowRight size={16} /></button>
             </div>
         )}
       </div>
 
-      {/* Placement Controls Overlay */}
       {pendingTile && (
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-zinc-900/90 p-3 rounded-lg border border-zinc-700 backdrop-blur shadow-2xl z-50">
             <div className="flex flex-col items-center mr-2">
-                <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-wider mb-1">Rotate</span>
-                <button 
-                    onClick={rotatePendingTile}
-                    className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-200 border border-zinc-600 transition-colors"
-                    title="Rotate (R)"
-                >
-                    <RotateCw size={20} />
-                </button>
+                <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-wider mb-1">旋转</span>
+                <button onClick={rotatePendingTile} className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-200 border border-zinc-600 transition-colors" title="旋转 (R)"><RotateCw size={20} /></button>
             </div>
-
             <div className="w-px h-10 bg-zinc-700 mx-2" />
-
             <div className="flex flex-col items-center">
-                <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-wider mb-1">Confirm</span>
-                <button 
-                    onClick={confirmTilePlacement}
-                    disabled={!isValid}
-                    className={`
-                        p-3 rounded border flex items-center gap-2 font-bold text-sm transition-all
-                        ${isValid 
-                            ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.4)]' 
-                            : 'bg-zinc-800 border-zinc-600 text-zinc-500 cursor-not-allowed'}
-                    `}
-                    title="Place (Space/Enter)"
-                >
+                <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-wider mb-1">确认</span>
+                <button onClick={confirmTilePlacement} disabled={!isValid} className={`p-3 rounded border flex items-center gap-2 font-bold text-sm transition-all ${isValid ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white' : 'bg-zinc-800 border-zinc-600 text-zinc-500 cursor-not-allowed'}`}>
                     {isValid ? <Check size={20} /> : <X size={20} />}
-                    <span>PLACE ROOM</span>
+                    <span>放置房间</span>
                 </button>
             </div>
-            
-            {/* Context Helper */}
-            <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-max text-xs text-zinc-400 bg-black/50 px-2 py-1 rounded backdrop-blur">
-                {isValid ? 'Placement Valid' : 'Doors must align'}
+            <div className="w-px h-10 bg-zinc-700 mx-2" />
+            <div className="flex flex-col items-center">
+                <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-wider mb-1">取消</span>
+                <button onClick={cancelTilePlacement} className="p-3 bg-zinc-800 hover:bg-red-900/30 rounded text-zinc-400 hover:text-red-400 border border-zinc-600 hover:border-red-900 transition-colors" title="取消 (Esc)"><XCircle size={20} /></button>
             </div>
         </div>
       )}

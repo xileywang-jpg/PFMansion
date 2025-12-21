@@ -25,15 +25,35 @@ export enum AttributeName {
   Knowledge = 'knowledge',
 }
 
+// --- Scenario System ---
+
+export type TraitorRule = 'TRIGGER_PLAYER' | 'HIGHEST_MIGHT' | 'LOWEST_SANITY' | 'SPECIFIC_CHAR_ID';
+
+export interface ScenarioSecrets {
+  objective: string;
+  setupText: string;
+  abilities?: string[];
+}
+
+export interface Scenario {
+  id: string;
+  name: string;
+  introText: string;
+  traitorRule: TraitorRule;
+  traitorRuleValue?: string; // For SPECIFIC_CHAR_ID
+  traitorInfo: ScenarioSecrets;
+  heroInfo: ScenarioSecrets;
+}
+
 // --- Character System ---
 
 export interface Attribute {
   current: number;
-  base: number; // Starting value
-  floor: number; // Value at which character dies or is stunned
-  max: number; // Maximum possible value
-  values: number[]; // Array of possible values for this stat (like the physical board game tracks)
-  index: number; // Current index in the values array
+  base: number; 
+  floor: number; 
+  max: number; 
+  values: number[]; 
+  index: number; 
 }
 
 export interface CharacterDef {
@@ -42,14 +62,21 @@ export interface CharacterDef {
   description: string;
   portraitUrl?: string;
   attributes: Record<AttributeName, Attribute>;
-  traits: string[]; // e.g., "Lucky", "Brute"
+  traits: string[]; 
 }
+
+export type PlayerTeam = 'HERO' | 'TRAITOR' | 'UNASSIGNED';
 
 export interface Player {
   id: string;
   character: CharacterDef;
   position: { x: number; y: number };
-  items: Item[]; // Inventory holds Items
+  items: Item[]; 
+  isDead: boolean;
+  team: PlayerTeam;
+  
+  buffs: string[]; 
+  skills: string[]; 
 }
 
 // --- Map & Tile System ---
@@ -65,20 +92,33 @@ export type TileEffectType = 'buff' | 'debuff' | 'trigger' | 'item';
 export interface TileEffect {
   type: TileEffectType;
   text: string;
-  icon?: string; // Icon name for UI
+  icon?: string; 
+}
+
+export type EdgeType = 
+  | 'OPEN'          
+  | 'WALL'          
+  | 'RUBBLE'        
+  | 'SECRET_DOOR';  
+
+export interface DirectionalEdges {
+  [Direction.North]: EdgeType;
+  [Direction.East]: EdgeType;
+  [Direction.South]: EdgeType;
+  [Direction.West]: EdgeType;
 }
 
 export interface TileDef {
   id: string;
   name: string;
   description: string;
-  floors: FloorLevel[]; // Which floors this tile can be placed on
-  openings: Direction[]; // Static definitions of where doors are
+  floors: FloorLevel[]; 
+  edges: DirectionalEdges; 
   type: 'room' | 'corridor' | 'special';
-  cardSymbol?: CardSymbol; // The symbol on the floor (Event, Item, Omen)
-  eventTrigger?: string; // Legacy: ID of a specific event
-  icon?: string; // Icon name for UI
-  effects?: TileEffect[]; // Passive effects or rules for this room
+  cardSymbol?: CardSymbol; 
+  eventTrigger?: string; 
+  icon?: string; 
+  effects?: TileEffect[]; 
 }
 
 export interface TileInstance {
@@ -86,55 +126,53 @@ export interface TileInstance {
   defId: string;
   x: number;
   y: number;
-  rotation: number; // 0, 90, 180, 270
-  openings: Direction[]; // Calculated based on rotation
+  rotation: number; 
+  edges: DirectionalEdges; 
   hasEventTriggered: boolean;
+  visibility: 'HIDDEN' | 'FOG' | 'VISIBLE';
+  droppedItems: Item[]; 
 }
 
 // --- Card & Item System ---
 
 export type CardSymbol = 'EVENT' | 'ITEM' | 'OMEN';
 
-// Interaction Types
 export type InteractionType = 'ATTRIBUTE_CHECK' | 'CHOICE';
 
+export interface EventInteractionDef {
+  type: 'ATTRIBUTE_CHECK';
+  attribute: AttributeName;
+  difficulty: number; 
+  success: ScriptAction[]; 
+  failure: ScriptAction[]; 
+}
+
 export type EventInteraction = 
-  | {
-      type: 'ATTRIBUTE_CHECK';
-      attribute: AttributeName;
-      difficulty: number; // e.g., Roll 4+
-      success: ScriptAction[]; 
-      failure: ScriptAction[]; 
-    }
+  | EventInteractionDef
   | {
       type: 'CHOICE';
       options: { label: string; effects: ScriptAction[] }[];
     };
 
-// Events are one-time scripts
 export interface EventCard {
   id: string;
   type: 'EVENT';
   title: string;
-  description: string; // Flavor text
+  description: string; 
   flavorText?: string;
   icon?: string;
   triggerType?: 'ON_ENTER'; 
-  
-  // New Complex Logic
   interaction: EventInteraction;
 }
 
-// Alias for backwards compatibility or generic usage
 export type CardDef = EventCard;
 
-// Items are persistent objects
 export type ItemType = 'WEAPON' | 'CONSUMABLE' | 'PASSIVE' | 'OMEN';
 
 export interface ItemUsage {
-  actionLabel: string; // e.g., "Drink", "Shoot", "Bandage"
-  isConsumable: boolean; // True = Destroy after use
-  effects: ScriptAction[]; // Effects when used
+  actionLabel: string; 
+  isConsumable: boolean; 
+  effects: ScriptAction[]; 
   target?: 'SELF' | 'OPPONENT' | 'TILE';
 }
 
@@ -142,20 +180,20 @@ export interface Item {
   id: string;
   name: string;
   description: string;
-  icon: string; // Lucide icon name
+  icon: string; 
   type: ItemType;
   usage?: ItemUsage;
-  passiveEffects?: TileEffect[]; // Effects just by holding it
+  passiveEffects?: TileEffect[]; 
 }
 
-// --- Scripting & Event Engine (JSON Serializable) ---
+// --- Scripting & Event Engine ---
 
 export type ConditionType = 'stat_check' | 'has_item' | 'tile_check' | 'dice_roll';
 export type ActionType = 'modify_stat' | 'move_player' | 'add_item' | 'trigger_haunt' | 'narrative_log' | 'heal';
 
 export interface ScriptCondition {
   type: ConditionType;
-  target?: string; // 'self' or specific player ID
+  target?: string; 
   attribute?: AttributeName;
   value?: number;
   operator?: '>' | '<' | '==' | '>=' | '<=';
@@ -164,14 +202,13 @@ export interface ScriptCondition {
 
 export interface ScriptAction {
   type: ActionType;
-  target?: string; // 'self', 'all', or specific player ID
+  target?: string; 
   attribute?: AttributeName;
   amount?: number;
   itemId?: string;
   message?: string;
   hauntId?: string;
-  // For move_player
-  location?: 'basement' | 'ground' | 'upper'; // simple placeholder logic
+  location?: 'basement' | 'ground' | 'upper'; 
 }
 
 export interface LogEntry {
@@ -183,8 +220,9 @@ export interface LogEntry {
 
 export interface ActiveRoll {
   id: string;
-  attributeName: string; // 'Might' or 'Haunt Roll'
+  attributeName: string; 
   numberOfDice: number;
-  targetValue?: number; // Optional success threshold
+  targetValue?: number; 
+  isCancellable?: boolean; 
   onComplete: (total: number) => void;
 }

@@ -9,10 +9,14 @@ import TileInspector from './components/TileInspector';
 import HauntRollModal from './components/HauntRollModal';
 import HauntReveal from './components/HauntReveal';
 import InventoryModal from './components/InventoryModal';
+import InteractionModal from './components/InteractionModal';
+import CombatResolution from './components/CombatResolution';
 import DiceRoller from './components/DiceRoller';
+import FeedbackToast from './components/FeedbackToast';
+import { Bug } from 'lucide-react';
 
 const App: React.FC = () => {
-  const { initializeGame } = useGameStore();
+  const { initializeGame, debugForceHaunt, isHauntActive } = useGameStore();
 
   useEffect(() => {
     initializeGame();
@@ -27,9 +31,21 @@ const App: React.FC = () => {
             <h1 className="text-3xl font-serif-display text-white tracking-tighter opacity-80">
                 MANSION <span className="text-indigo-500">PROTOCOL</span>
             </h1>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-[0.3em] mt-1">
-                Sector 4 // Exploration Phase
-            </p>
+            <div className="flex items-center gap-4 mt-1">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-[0.3em]">
+                    Sector 4 // {isHauntActive ? 'Haunt Phase' : 'Exploration Phase'}
+                </p>
+                {!isHauntActive && (
+                    <button 
+                      onClick={debugForceHaunt}
+                      className="pointer-events-auto flex items-center gap-1.5 px-2 py-0.5 bg-indigo-900/20 hover:bg-indigo-900/40 text-indigo-500 border border-indigo-900/30 rounded text-[9px] font-bold uppercase transition-all"
+                      title="强制进入作祟模式"
+                    >
+                      <Bug size={10} />
+                      调试: 触发作祟
+                    </button>
+                )}
+            </div>
         </div>
         
         <MapGrid />
@@ -37,6 +53,7 @@ const App: React.FC = () => {
         {/* Floating UI Elements */}
         <TileInspector />
         <TurnControl />
+        <FeedbackToast />
       </div>
 
       {/* Right Sidebar */}
@@ -47,6 +64,8 @@ const App: React.FC = () => {
       <HauntRollModal />
       <HauntReveal />
       <InventoryModal />
+      <InteractionModal />
+      <CombatResolution />
       <DiceRoller />
 
       {/* Scanline Effect (Atmosphere) */}
