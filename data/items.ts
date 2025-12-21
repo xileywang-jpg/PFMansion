@@ -18,6 +18,15 @@ export const ITEMS_DB: Record<string, Item> = {
     },
     passiveEffects: [{ type: 'buff', text: '攻击时力量 +2' }]
   },
+  'item_dagger': {
+    id: 'item_dagger',
+    name: '祭祀匕首',
+    description: '刀刃上刻有奇怪的凹槽，似乎渴望着鲜血。',
+    icon: 'Sword',
+    type: 'WEAPON',
+    grantedSkills: ['skill_vampiric_strike'],
+    passiveEffects: [{ type: 'buff', text: '获得技能：嗜血打击' }]
+  },
   'item_amulet': {
     id: 'item_amulet',
     name: '神圣护身符',

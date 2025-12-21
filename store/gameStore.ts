@@ -13,6 +13,7 @@ import {
 import { EVENTS_DB } from '../data/events';
 import { ITEMS_DB } from '../data/items';
 import { SCENARIOS_DB } from '../data/scenarios';
+import { SKILL_TREES } from '../data/skillTrees';
 import { getScenarioId } from '../data/hauntMatrix';
 import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
 import { evaluateCondition, executeEffects, GameContext, resolveTargets } from '../utils/logicEngine';
@@ -68,6 +69,7 @@ interface GameState {
   hoveredTileId: string | null;
   isInventoryOpen: boolean;
   isInteractionModalOpen: boolean;
+  isSkillTreeOpen: boolean; // New state
 
   activeFeedback: { message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' } | null;
 
@@ -103,12 +105,14 @@ interface GameState {
   debugForceHaunt: () => void;
 
   executeLogicAction: (action: ActionDefinition) => void;
+  unlockSkillNode: (nodeId: string) => void; // New action
 
   setState: (partial: Partial<GameState> | ((state: GameState) => Partial<GameState>)) => void;
 
   inventoryOpen: () => void; 
   toggleInventory: () => void;
   toggleInteractionModal: () => void;
+  toggleSkillTree: () => void; // New toggle
   useItem: (itemId: string) => void;
   dropItem: (itemId: string) => void;
   
@@ -177,6 +181,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   hoveredTileId: null,
   isInventoryOpen: false,
   isInteractionModalOpen: false,
+  isSkillTreeOpen: false,
   activeFeedback: null,
 
   showFeedback: (message: string, type = 'error') => {
@@ -208,6 +213,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     MOCK_CHARACTERS.forEach((char, index) => {
       const id = `p${index + 1}`;
       ids.push(id);
+      
+      // Calculate initial skill points based on Knowledge attribute (simple game mechanic)
+      const initialSkillPoints = char.attributes[AttributeName.Knowledge].current;
+
       playersDict[id] = {
         id,
         character: char,
@@ -216,7 +225,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         buffs: [],
         skills: [],
         isDead: false,
-        team: 'UNASSIGNED'
+        team: 'UNASSIGNED',
+        skillPoints: initialSkillPoints,
+        unlockedSkillNodes: []
       };
     });
 
@@ -254,6 +265,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastTriggeredTileId: null,
       isInventoryOpen: false,
       isInteractionModalOpen: false,
+      isSkillTreeOpen: false,
     });
   },
 
@@ -279,11 +291,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const nextPlayer = state.players[nextId];
+    // Simple mechanic: Gain 1 skill point every 3 turns
+    const shouldGainSkillPoint = (state.turnIndex + 1) % 3 === 0;
+    if (shouldGainSkillPoint) {
+        state.addLog(`${nextPlayer.character.name} 在探索中获得了新的领悟 (+1 技能点)`, 'success');
+        const newPlayers = { ...state.players };
+        newPlayers[nextId].skillPoints += 1;
+        set({ players: newPlayers });
+    }
+
     const speed = nextPlayer.character.attributes[AttributeName.Speed].current;
+    // Apply speed buffs from skill tree if any (simplified)
+    const bonusSpeed = nextPlayer.buffs.includes('移动速度 +1') ? 1 : 0;
 
     set({
       activePlayerId: nextId,
-      movesRemaining: speed,
+      movesRemaining: speed + bonusSpeed,
       turnPhase: 'MOVING',
       turnIndex: state.turnIndex + 1,
       activeCard: null,
@@ -294,6 +317,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       phase: state.phase === GamePhase.GameOver ? GamePhase.GameOver : (state.isHauntActive ? GamePhase.Haunt : GamePhase.Exploration),
       isInventoryOpen: false,
       isInteractionModalOpen: false,
+      isSkillTreeOpen: false,
     });
 
     state.showFeedback(`${nextPlayer.character.name} 的回合`, 'turn');
@@ -330,7 +354,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     let newY = player.position.y;
     if (direction === Direction.North) newY--;
     else if (direction === Direction.South) newY++;
-    // Fix: Updated variable name to 'newX' to match local variable definition
     else if (direction === Direction.East) newX++;
     else if (direction === Direction.West) newX--;
 
@@ -407,6 +430,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       activeRoll: null,
       activeCombat: null,
       isInteractionModalOpen: false,
+      isSkillTreeOpen: false,
     });
 
     state.addLog(`${player.character.name} 在大厦中殒落了... 随身物品散落了一地。`, 'alert');
@@ -462,6 +486,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   startCombat: (attackerId, defenderId, attribute) => {
     const state = get();
     const attacker = state.players[attackerId];
+    const defender = state.players[defenderId];
+
+    if (!defender || defender.isDead) {
+        state.showFeedback("无法攻击已阵亡的目标", "error");
+        return;
+    }
+
     const attackerDice = attacker.character.attributes[attribute].current;
 
     set({
@@ -471,6 +502,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: 'combat_attack',
         attributeName: `${attacker.character.name} 的进攻 (${attribute})`,
         numberOfDice: attackerDice,
+        isCancellable: true,
         onComplete: (total) => {
           const s = get();
           const defender = s.players[defenderId];
@@ -572,7 +604,10 @@ export const useGameStore = create<GameState>((set, get) => ({
               case 'modify_stat': {
                   if (action.attribute && action.amount) {
                       const attr = player.character.attributes[action.attribute];
-                      const newVal = attr.current + action.amount;
+                      const damageMitigation = player.buffs.includes('伤害减免 +1') && action.amount < 0 ? 1 : 0;
+                      const actualAmount = action.amount < 0 ? Math.min(0, action.amount + damageMitigation) : action.amount;
+
+                      const newVal = attr.current + actualAmount;
                       
                       if (newVal <= attr.floor) {
                           deathTriggeredIds.push(targetId);
@@ -581,7 +616,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                           attr.current = Math.min(attr.max, newVal);
                       }
                       
-                      if (action.message) state.addLog(action.message, action.amount > 0 ? 'success' : 'alert');
+                      if (action.message) state.addLog(action.message, actualAmount > 0 ? 'success' : 'alert');
                   }
                   break;
               }
@@ -634,6 +669,45 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     state.addLog(`执行技能: ${action.name}`, 'info');
     executeEffects(action.effects, context);
+  },
+  
+  unlockSkillNode: (nodeId: string) => {
+      const state = get();
+      const player = state.players[state.activePlayerId];
+      
+      // Find the node
+      let nodeToUnlock = null;
+      for (const tree of SKILL_TREES) {
+          const found = tree.nodes.find(n => n.id === nodeId);
+          if (found) {
+              nodeToUnlock = found;
+              break;
+          }
+      }
+      
+      if (!nodeToUnlock) return;
+      
+      if (player.skillPoints < nodeToUnlock.cost) {
+          state.showFeedback("技能点不足", "error");
+          return;
+      }
+      
+      const newPlayers = { ...state.players };
+      const updatedPlayer = newPlayers[state.activePlayerId];
+      
+      updatedPlayer.skillPoints -= nodeToUnlock.cost;
+      updatedPlayer.unlockedSkillNodes.push(nodeId);
+      
+      if (nodeToUnlock.grantsBuff) {
+          updatedPlayer.buffs.push(nodeToUnlock.grantsBuff);
+      }
+      
+      if (nodeToUnlock.grantsSkillId) {
+          updatedPlayer.skills.push(nodeToUnlock.grantsSkillId);
+      }
+      
+      set({ players: newPlayers });
+      state.addLog(`${updatedPlayer.character.name} 习得了 ${nodeToUnlock.name}。`, 'success');
   },
 
   rotatePendingTile: () => set(s => ({ pendingTileRotation: (s.pendingTileRotation + 90) % 360 })),
@@ -806,7 +880,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   inventoryOpen: () => set({ isInventoryOpen: true }),
   toggleInventory: () => set(s => ({ isInventoryOpen: !s.isInventoryOpen })),
   toggleInteractionModal: () => set(s => ({ isInteractionModalOpen: !s.isInteractionModalOpen })),
-  
+  toggleSkillTree: () => set(s => ({ isSkillTreeOpen: !s.isSkillTreeOpen })),
+
   useItem: (itemId) => {
       const state = get();
       const player = state.players[state.activePlayerId];
@@ -922,5 +997,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
   },
   
-  cancelActiveRoll: () => set({ activeRoll: null })
+  cancelActiveRoll: () => {
+    const state = get();
+    // If we are in active combat and cancel the roll, we should likely cancel the combat state too
+    if (state.activeCombat) {
+        set({ activeRoll: null, activeCombat: null });
+        state.addLog("已取消战斗行动。", "info");
+    } else {
+        set({ activeRoll: null });
+    }
+  }
 }));

@@ -1,0 +1,60 @@
+
+import { ActionDefinition } from '../types/Logic';
+
+export const SKILLS_DB: Record<string, ActionDefinition> = {
+  'skill_vampiric_strike': {
+    id: 'skill_vampiric_strike',
+    name: '嗜血打击',
+    description: '只有持有匕首时可用。对最近的敌人造成 2 点物理伤害，若成功伤害则回复 1 点力量。',
+    condition: {
+      op: 'HAS_ITEM',
+      itemId: 'item_dagger'
+    },
+    effects: [
+      {
+        type: 'MODIFY_STAT',
+        target: { type: 'NEAREST_ENEMY' },
+        stat: 'might',
+        amount: -2
+      },
+      {
+        type: 'IF',
+        condition: {
+          op: 'GT',
+          stat: 'might',
+          value: 0
+        },
+        then: [
+          {
+            type: 'MODIFY_STAT',
+            target: { type: 'SELF' },
+            stat: 'might',
+            amount: 1
+          }
+        ]
+      }
+    ]
+  },
+  'skill_sprint': {
+    id: 'skill_sprint',
+    name: '肾上腺素爆发',
+    description: '消耗 1 点理智，换取 3 点临时移动力。',
+    condition: {
+        op: 'GT',
+        stat: 'sanity',
+        value: 1
+    },
+    effects: [
+        { type: 'MODIFY_STAT', target: { type: 'SELF' }, stat: 'sanity', amount: -1 },
+        { type: 'MODIFY_STAT', target: { type: 'SELF' }, stat: 'speed', amount: 3 }
+    ]
+  },
+  'skill_meditate': {
+    id: 'skill_meditate',
+    name: '冥想',
+    description: '在原地休息，恢复 1 点理智。',
+    effects: [
+        { type: 'MODIFY_STAT', target: { type: 'SELF' }, stat: 'sanity', amount: 1 }
+    ]
+  }
+};

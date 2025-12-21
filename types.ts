@@ -45,6 +45,28 @@ export interface Scenario {
   heroInfo: ScenarioSecrets;
 }
 
+// --- Skill Tree System ---
+
+export interface SkillNode {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  icon: string;
+  prerequisites?: string[]; // IDs of parent nodes that must be unlocked first
+  requiredTrait?: string; // Specific character trait required (e.g., "Strong")
+  grantsSkillId?: string; // Active skill ID from SKILLS_DB
+  grantsBuff?: string; // Passive effect text
+  position: { row: number; col: number }; // For visual layout
+}
+
+export interface SkillTreeCategory {
+  id: string;
+  name: string;
+  description: string;
+  nodes: SkillNode[];
+}
+
 // --- Character System ---
 
 export interface Attribute {
@@ -63,6 +85,7 @@ export interface CharacterDef {
   portraitUrl?: string;
   attributes: Record<AttributeName, Attribute>;
   traits: string[]; 
+  initialSkills?: string[]; // Skills the character starts with (IDs from SKILLS_DB)
 }
 
 export type PlayerTeam = 'HERO' | 'TRAITOR' | 'UNASSIGNED';
@@ -76,7 +99,11 @@ export interface Player {
   team: PlayerTeam;
   
   buffs: string[]; 
-  skills: string[]; 
+  skills: string[]; // Acquired skill IDs (not including item skills)
+  
+  // Progression
+  skillPoints: number;
+  unlockedSkillNodes: string[]; // IDs of unlocked nodes from SkillTree
 }
 
 // --- Map & Tile System ---
@@ -184,6 +211,7 @@ export interface Item {
   type: ItemType;
   usage?: ItemUsage;
   passiveEffects?: TileEffect[]; 
+  grantedSkills?: string[]; // IDs of ActionDefinition granted by this item
 }
 
 // --- Scripting & Event Engine ---

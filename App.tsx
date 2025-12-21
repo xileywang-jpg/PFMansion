@@ -13,6 +13,7 @@ import InteractionModal from './components/InteractionModal';
 import CombatResolution from './components/CombatResolution';
 import DiceRoller from './components/DiceRoller';
 import FeedbackToast from './components/FeedbackToast';
+import SkillTreeModal from './components/SkillTreeModal';
 import { Bug } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -65,6 +66,7 @@ const App: React.FC = () => {
       <HauntReveal />
       <InventoryModal />
       <InteractionModal />
+      <SkillTreeModal />
       <CombatResolution />
       <DiceRoller />
 

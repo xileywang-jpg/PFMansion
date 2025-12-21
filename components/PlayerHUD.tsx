@@ -5,7 +5,7 @@ import { AttributeName, GamePhase } from '../types';
 import { PLAYER_COLORS } from '../constants';
 import { Brain, Zap, Dumbbell, Eye, Skull, Backpack, Gem, Crosshair, Syringe, User, Ghost, Users, ShieldAlert, Target, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { VAMPIRIC_STRIKE } from '../data/exampleSkill';
+import { SKILLS_DB } from '../data/skills';
 
 const AttributeRow: React.FC<{ label: string, value: number, max: number, icon: any, isDead: boolean }> = ({ label, value, max, icon: Icon, isDead }) => (
   <div className="flex items-center gap-3 mb-3 group">
@@ -28,7 +28,7 @@ const AttributeRow: React.FC<{ label: string, value: number, max: number, icon: 
 );
 
 const PlayerHUD: React.FC = () => {
-  const { players, playerIds, activePlayerId, logs, toggleInventory, toggleInteractionModal, phase, currentScenario, executeLogicAction } = useGameStore();
+  const { players, playerIds, activePlayerId, logs, toggleInventory, toggleInteractionModal, phase, currentScenario, executeLogicAction, toggleSkillTree } = useGameStore();
   const player = players[activePlayerId];
   const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
 
@@ -41,6 +41,20 @@ const PlayerHUD: React.FC = () => {
       p.position.y === player.position.y
     );
   }, [players, player, activePlayerId]);
+
+  const availableSkills = useMemo(() => {
+    if (!player) return [];
+    
+    // Skills from items
+    const itemSkills = player.items.flatMap(item => item.grantedSkills || []);
+    
+    // Skills from character (intrinsic/acquired)
+    const characterSkills = player.character.initialSkills || [];
+    const acquiredSkills = player.skills || [];
+
+    const allSkillIds = Array.from(new Set([...itemSkills, ...characterSkills, ...acquiredSkills]));
+    return allSkillIds.map(id => SKILLS_DB[id]).filter(Boolean);
+  }, [player]);
 
   if (!player) return null;
 
@@ -82,6 +96,13 @@ const PlayerHUD: React.FC = () => {
             </div>
         </div>
         <p className="text-xs text-zinc-500 italic leading-relaxed relative z-10">{player.character.description}</p>
+        
+        {/* Traits Badges */}
+        <div className="flex flex-wrap gap-1 mt-3 relative z-10">
+            {player.character.traits.map(t => (
+                <span key={t} className="px-1.5 py-0.5 bg-zinc-800 text-zinc-400 border border-zinc-700 rounded text-[9px] font-bold uppercase">{t}</span>
+            ))}
+        </div>
       </div>
 
       {/* Scenario Objective Area (Collapsible for hot-seat privacy) */}
@@ -134,25 +155,55 @@ const PlayerHUD: React.FC = () => {
         </div>
       )}
 
-      {/* Skills Section (Logic Driven) */}
+      {/* Skills Section */}
       <div className="p-6 border-b border-zinc-800 bg-zinc-900/20">
-        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2 mb-4">
-            <Zap size={12} /> 技能序列
-        </h3>
-        <div className="space-y-2">
+        <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                <Zap size={12} /> 技能序列
+            </h3>
             <button 
-                onClick={() => executeLogicAction(VAMPIRIC_STRIKE)}
+                onClick={toggleSkillTree}
                 disabled={player.isDead}
-                className="w-full flex items-center gap-3 p-3 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-indigo-500 hover:bg-indigo-900/10 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-[9px] px-2 py-0.5 bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 hover:bg-emerald-900/50 rounded font-bold uppercase transition-all"
             >
-                <div className="p-2 bg-indigo-900/20 text-indigo-400 rounded-md group-hover:bg-indigo-900/40">
-                    <Zap size={16} />
-                </div>
-                <div className="flex-1 text-left">
-                    <div className="text-xs font-bold text-zinc-200">{VAMPIRIC_STRIKE.name}</div>
-                    <div className="text-[9px] text-zinc-500 uppercase">Logic Sequence // Dagger Required</div>
-                </div>
+                技能树 ({player.skillPoints} SP)
             </button>
+        </div>
+        <div className="space-y-2">
+            {availableSkills.length > 0 ? (
+                availableSkills.map((skill) => (
+                    <button 
+                        key={skill.id}
+                        onClick={() => executeLogicAction(skill)}
+                        disabled={player.isDead}
+                        className="w-full flex items-center gap-3 p-3 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-indigo-500 hover:bg-indigo-900/10 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <div className="p-2 bg-indigo-900/20 text-indigo-400 rounded-md group-hover:bg-indigo-900/40">
+                            <Zap size={16} />
+                        </div>
+                        <div className="flex-1 text-left">
+                            <div className="text-xs font-bold text-zinc-200">{skill.name}</div>
+                            <div className="text-[9px] text-zinc-500 uppercase truncate max-w-[150px]">{skill.description}</div>
+                        </div>
+                    </button>
+                ))
+            ) : (
+                <div className="text-[10px] text-zinc-600 italic text-center py-2 border border-dashed border-zinc-800 rounded">
+                    暂无可用的主动技能
+                </div>
+            )}
+            
+            {/* Show Passive Buffs from Tree */}
+            {player.buffs.filter(b => b.includes('+') || b.includes('免疫') || b.includes('减免')).length > 0 && (
+                 <div className="mt-2 pt-2 border-t border-zinc-800/50">
+                    <span className="text-[9px] text-zinc-600 font-bold uppercase block mb-1">被动效果生效中</span>
+                    <div className="flex flex-wrap gap-1">
+                        {player.buffs.map((buff, i) => (
+                            <span key={i} className="text-[9px] px-1.5 py-0.5 bg-zinc-800/80 text-zinc-400 rounded border border-zinc-700/50">{buff}</span>
+                        ))}
+                    </div>
+                 </div>
+            )}
         </div>
       </div>
 
