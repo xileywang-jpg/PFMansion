@@ -69,7 +69,8 @@ interface GameState {
   hoveredTileId: string | null;
   isInventoryOpen: boolean;
   isInteractionModalOpen: boolean;
-  isSkillTreeOpen: boolean; // New state
+  isSkillTreeOpen: boolean; 
+  inspectPlayerId: string | null; // New: ID of player currently being inspected
 
   activeFeedback: { message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' } | null;
 
@@ -105,14 +106,19 @@ interface GameState {
   debugForceHaunt: () => void;
 
   executeLogicAction: (action: ActionDefinition) => void;
-  unlockSkillNode: (nodeId: string) => void; // New action
+  unlockSkillNode: (nodeId: string) => void; 
 
   setState: (partial: Partial<GameState> | ((state: GameState) => Partial<GameState>)) => void;
 
   inventoryOpen: () => void; 
   toggleInventory: () => void;
   toggleInteractionModal: () => void;
-  toggleSkillTree: () => void; // New toggle
+  toggleSkillTree: () => void; 
+  
+  // New actions for inspection
+  openInspection: (playerId: string) => void;
+  closeInspection: () => void;
+
   useItem: (itemId: string) => void;
   dropItem: (itemId: string) => void;
   
@@ -182,6 +188,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   isInventoryOpen: false,
   isInteractionModalOpen: false,
   isSkillTreeOpen: false,
+  inspectPlayerId: null,
   activeFeedback: null,
 
   showFeedback: (message: string, type = 'error') => {
@@ -266,6 +273,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       isInventoryOpen: false,
       isInteractionModalOpen: false,
       isSkillTreeOpen: false,
+      inspectPlayerId: null,
     });
   },
 
@@ -318,6 +326,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       isInventoryOpen: false,
       isInteractionModalOpen: false,
       isSkillTreeOpen: false,
+      inspectPlayerId: null,
     });
 
     state.showFeedback(`${nextPlayer.character.name} 的回合`, 'turn');
@@ -881,6 +890,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   toggleInventory: () => set(s => ({ isInventoryOpen: !s.isInventoryOpen })),
   toggleInteractionModal: () => set(s => ({ isInteractionModalOpen: !s.isInteractionModalOpen })),
   toggleSkillTree: () => set(s => ({ isSkillTreeOpen: !s.isSkillTreeOpen })),
+  
+  openInspection: (playerId) => set({ inspectPlayerId: playerId }),
+  closeInspection: () => set({ inspectPlayerId: null }),
 
   useItem: (itemId) => {
       const state = get();

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Users, Gift, Gem, Skull, Crosshair, Syringe, User, Swords } from 'lucide-react';
@@ -21,6 +21,13 @@ const InteractionModal: React.FC = () => {
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const activePlayer = players[activePlayerId];
 
+  // Reset selection when modal opens
+  useEffect(() => {
+    if (isInteractionModalOpen) {
+      setSelectedPartnerId(null);
+    }
+  }, [isInteractionModalOpen]);
+
   // Get other living players in the same room
   const otherPlayersInRoom = useMemo(() => {
     if (!activePlayer) return [];
@@ -32,9 +39,15 @@ const InteractionModal: React.FC = () => {
     );
   }, [players, activePlayer, activePlayerId]);
 
-  if (!isInteractionModalOpen || !activePlayer) return null;
+  // Validate selected partner exists in the room
+  const partner = useMemo(() => {
+      if (!selectedPartnerId) return null;
+      const p = players[selectedPartnerId];
+      const isValid = otherPlayersInRoom.some(op => op.id === selectedPartnerId);
+      return isValid ? p : null;
+  }, [selectedPartnerId, players, otherPlayersInRoom]);
 
-  const partner = selectedPartnerId ? players[selectedPartnerId] : null;
+  if (!isInteractionModalOpen || !activePlayer) return null;
 
   const getItemIcon = (item: Item, size: number = 20) => {
     switch (item.type) {
@@ -46,15 +59,15 @@ const InteractionModal: React.FC = () => {
   };
 
   const handleGive = (itemId: string) => {
-    if (!selectedPartnerId) return;
-    giveItem(activePlayerId, selectedPartnerId, itemId);
+    if (!partner) return;
+    giveItem(activePlayerId, partner.id, itemId);
     setSelectedPartnerId(null);
   };
 
   const handleAttack = () => {
-    if (!selectedPartnerId) return;
+    if (!partner) return;
     // Default to Might combat
-    startCombat(activePlayerId, selectedPartnerId, AttributeName.Might);
+    startCombat(activePlayerId, partner.id, AttributeName.Might);
   };
 
   const isHaunt = phase === GamePhase.Haunt;

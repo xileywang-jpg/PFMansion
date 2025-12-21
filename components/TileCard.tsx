@@ -14,7 +14,7 @@ interface TileCardProps {
 }
 
 const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) => {
-  const { players, activePlayerId, interactWithWall, pickupItemFromTile, playerIds } = useGameStore();
+  const { players, activePlayerId, interactWithWall, pickupItemFromTile, playerIds, openInspection } = useGameStore();
   
   const def = tile.defId === STARTING_TILE.id 
     ? STARTING_TILE 
@@ -156,9 +156,9 @@ const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) =>
           </div>
       )}
 
-      {/* 玩家标记 */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
-        <div className="flex flex-wrap items-center justify-center gap-1">
+      {/* 玩家标记 - 现在可点击查看 */}
+      <div className="absolute inset-0 flex items-center justify-center p-4 z-30 pointer-events-none">
+        <div className="flex flex-wrap items-center justify-center gap-1 pointer-events-auto">
             {playersOnTile.map(p => {
                 const playerIndex = playerIds.indexOf(p.id);
                 const pColor = playerIndex !== -1 ? PLAYER_COLORS[playerIndex] : '#ffffff';
@@ -166,9 +166,14 @@ const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) =>
                     <motion.div 
                         key={p.id}
                         layoutId={`player-${p.id}`}
-                        className={`w-4 h-4 rounded-full border border-white/50 shadow-lg relative flex items-center justify-center overflow-hidden`}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            openInspection(p.id);
+                        }}
+                        className={`w-4 h-4 rounded-full border border-white/50 shadow-lg relative flex items-center justify-center overflow-hidden cursor-pointer hover:scale-125 transition-transform`}
                         style={{ backgroundColor: pColor }}
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        title={`查看 ${p.character.name}`}
                     >
                         {p.isDead && (
                             <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
@@ -183,7 +188,7 @@ const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) =>
       
       {/* 事件指示器 */}
       {def.cardSymbol && !tile.hasEventTriggered && (
-        <div className="absolute top-1 right-1 flex items-center justify-center">
+        <div className="absolute top-1 right-1 flex items-center justify-center z-10">
            <div className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_rgba(234,179,8,0.5)] ${
              def.cardSymbol === 'OMEN' ? 'bg-emerald-500' : 
              def.cardSymbol === 'ITEM' ? 'bg-indigo-500' : 'bg-yellow-600'

@@ -14,6 +14,7 @@ import CombatResolution from './components/CombatResolution';
 import DiceRoller from './components/DiceRoller';
 import FeedbackToast from './components/FeedbackToast';
 import SkillTreeModal from './components/SkillTreeModal';
+import PlayerInspectionModal from './components/PlayerInspectionModal';
 import { Bug } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -67,6 +68,7 @@ const App: React.FC = () => {
       <InventoryModal />
       <InteractionModal />
       <SkillTreeModal />
+      <PlayerInspectionModal />
       <CombatResolution />
       <DiceRoller />
 
