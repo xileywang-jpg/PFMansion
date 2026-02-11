@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Users, Gift, Gem, Skull, Crosshair, Syringe, User, Swords } from 'lucide-react';
+import { X, Users, Gift, Gem, Skull, Crosshair, Syringe, User, Swords, Zap } from 'lucide-react';
 import { Item, Player, AttributeName, GamePhase } from '../types';
 import { PLAYER_COLORS } from '../constants';
 
@@ -13,6 +13,7 @@ const InteractionModal: React.FC = () => {
     players, 
     activePlayerId, 
     giveItem,
+    useItem,
     startCombat,
     playerIds,
     phase
@@ -62,6 +63,13 @@ const InteractionModal: React.FC = () => {
     if (!partner) return;
     giveItem(activePlayerId, partner.id, itemId);
     setSelectedPartnerId(null);
+  };
+
+  const handleUseOn = (itemId: string) => {
+      if (!partner) return;
+      useItem(itemId, partner.id);
+      setSelectedPartnerId(null);
+      toggleInteractionModal();
   };
 
   const handleAttack = () => {
@@ -163,32 +171,49 @@ const InteractionModal: React.FC = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <span className="text-[9px] uppercase font-bold text-zinc-600 tracking-wider">赠送物品</span>
+                    <span className="text-[9px] uppercase font-bold text-zinc-600 tracking-wider">背包物品</span>
                     {activePlayer.items.length === 0 ? (
                       <div className="text-xs text-zinc-600 italic py-8 text-center border border-dashed border-zinc-800 rounded">
-                        你没有任何可赠送的物品
+                        你没有任何可用的物品
                       </div>
                     ) : (
-                      activePlayer.items.map(item => (
-                        <div 
-                          key={item.id}
-                          className="flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800 rounded-lg group hover:border-zinc-600 transition-all"
-                        >
-                          <div className={`p-2 rounded ${item.type === 'OMEN' ? 'bg-emerald-900/20 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}>
-                            {getItemIcon(item, 18)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-zinc-200 truncate">{item.name}</div>
-                            <div className="text-[9px] text-zinc-500 uppercase">{item.type}</div>
-                          </div>
-                          <button 
-                            onClick={() => handleGive(item.id)}
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors"
+                      activePlayer.items.map(item => {
+                        // Check if item can be used on opponent (or partner)
+                        const canUse = item.usage?.target === 'OPPONENT'; 
+                        // Note: Logic allows targeting 'SELECTED_PARTNER' via OPPONENT flag for now in simple items
+
+                        return (
+                          <div 
+                            key={item.id}
+                            className="flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800 rounded-lg group hover:border-zinc-600 transition-all"
                           >
-                            给予
-                          </button>
-                        </div>
-                      ))
+                            <div className={`p-2 rounded ${item.type === 'OMEN' ? 'bg-emerald-900/20 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}>
+                              {getItemIcon(item, 18)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-bold text-zinc-200 truncate">{item.name}</div>
+                              <div className="text-[9px] text-zinc-500 uppercase">{item.type}</div>
+                            </div>
+                            <div className="flex gap-1">
+                                <button 
+                                  onClick={() => handleGive(item.id)}
+                                  className="bg-zinc-700 hover:bg-zinc-600 text-zinc-200 px-2 py-1.5 rounded text-[9px] font-bold uppercase tracking-wider transition-colors"
+                                >
+                                  给予
+                                </button>
+                                {canUse && (
+                                    <button 
+                                      onClick={() => handleUseOn(item.id)}
+                                      className="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-500/20 px-2 py-1.5 rounded text-[9px] font-bold uppercase tracking-wider transition-colors"
+                                      title={item.usage?.actionLabel || "使用"}
+                                    >
+                                      <Zap size={12} />
+                                    </button>
+                                )}
+                            </div>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 </>

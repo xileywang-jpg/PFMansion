@@ -104,6 +104,9 @@ export interface Player {
   // Progression
   skillPoints: number;
   unlockedSkillNodes: string[]; // IDs of unlocked nodes from SkillTree
+  
+  // History
+  personalLogs: LogEntry[];
 }
 
 // --- Map & Tile System ---
@@ -217,7 +220,7 @@ export interface Item {
 // --- Scripting & Event Engine ---
 
 export type ConditionType = 'stat_check' | 'has_item' | 'tile_check' | 'dice_roll';
-export type ActionType = 'modify_stat' | 'move_player' | 'add_item' | 'trigger_haunt' | 'narrative_log' | 'heal';
+export type ActionType = 'modify_stat' | 'move_player' | 'add_item' | 'draw_card' | 'trigger_haunt' | 'narrative_log' | 'heal';
 
 export interface ScriptCondition {
   type: ConditionType;
@@ -234,6 +237,7 @@ export interface ScriptAction {
   attribute?: AttributeName;
   amount?: number;
   itemId?: string;
+  deck?: CardSymbol;
   message?: string;
   hauntId?: string;
   location?: 'basement' | 'ground' | 'upper'; 
@@ -253,4 +257,12 @@ export interface ActiveRoll {
   targetValue?: number; 
   isCancellable?: boolean; 
   onComplete: (total: number) => void;
+}
+
+export interface EventOutcome {
+  title: string;
+  description: string;
+  type: 'success' | 'failure';
+  roll: number;
+  target: number;
 }

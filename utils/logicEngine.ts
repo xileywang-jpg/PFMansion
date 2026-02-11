@@ -1,11 +1,13 @@
 
 import { Condition, Effect, TargetSelector } from '../types/Logic';
 import { Player, AttributeName } from '../types';
+import { ITEMS_DB } from '../data/items';
 
 export interface GameContext {
   state: any; // useGameStore state
   activePlayerId: string;
   currentTargetId?: string; // Contextual target for conditions
+  selectedPartnerId?: string; // For Interaction Modal context
 }
 
 /**
@@ -19,7 +21,7 @@ const getDistance = (p1: { x: number; y: number }, p2: { x: number; y: number })
  * Resolves a TargetSelector into actual player IDs.
  */
 export const resolveTargets = (selector: TargetSelector, context: GameContext): string[] => {
-  const { state, activePlayerId } = context;
+  const { state, activePlayerId, selectedPartnerId } = context;
   const players = state.players as Record<string, Player>;
   const self = players[activePlayerId];
 
@@ -28,6 +30,9 @@ export const resolveTargets = (selector: TargetSelector, context: GameContext): 
   switch (selector.type) {
     case 'SELF':
       return [activePlayerId];
+
+    case 'SELECTED_PARTNER':
+      return selectedPartnerId ? [selectedPartnerId] : [];
 
     case 'ALL_OTHERS':
       return Object.keys(players).filter(id => id !== activePlayerId && !players[id].isDead);
@@ -119,6 +124,9 @@ export const evaluateCondition = (condition: Condition, context: GameContext): b
     case 'IS_TRAITOR':
       return player.team === 'TRAITOR';
 
+    case 'IS_ALIVE':
+      return !player.isDead;
+
     default:
       return false;
   }
@@ -140,16 +148,74 @@ export const executeEffects = (effects: Effect[], context: GameContext): void =>
             target: tid,
             attribute: effect.stat as AttributeName,
             amount: effect.amount,
-            message: `[Logic] ${effect.stat} 修改了 ${effect.amount}`
+            message: `[Logic] ${effect.stat} 变更 ${effect.amount > 0 ? '+' : ''}${effect.amount}`
           }]);
+        });
+        break;
+      }
+
+      case 'DAMAGE': {
+        const targets = resolveTargets(effect.target, context);
+        targets.forEach(tid => {
+            // Damage usually targets Might unless specified
+            state.executeScript([{
+                type: 'modify_stat',
+                target: tid,
+                attribute: AttributeName.Might, 
+                amount: -Math.abs(effect.amount),
+                message: `[Logic] 受到 ${effect.amount} 点伤害`
+            }]);
+        });
+        break;
+      }
+
+      case 'HEAL': {
+        const targets = resolveTargets(effect.target, context);
+        targets.forEach(tid => {
+            state.executeScript([{
+                type: 'heal',
+                target: tid,
+                attribute: effect.stat as AttributeName,
+                amount: Math.abs(effect.amount)
+            }]);
         });
         break;
       }
 
       case 'MOVE': {
         const targets = resolveTargets(effect.target, context);
-        // Movement logic depends on game implementation, for now we log it
-        state.addLog(`[Logic] 移动指令: 目标 [${targets.join(', ')}] 移动 ${effect.steps} 步。`, 'info');
+        state.addLog(`[Logic] 移动指令: 目标 [${targets.join(', ')}] 移动 ${effect.steps} 步 (暂未实装物理移动)。`, 'info');
+        break;
+      }
+
+      case 'TELEPORT': {
+        const targets = resolveTargets(effect.target, context);
+        targets.forEach(tid => {
+             const location = effect.location === 'BASEMENT' ? 'basement' : 'ground'; // Simple mapping
+             state.executeScript([{
+                 type: 'move_player',
+                 target: tid,
+                 location: location
+             }]);
+        });
+        break;
+      }
+
+      case 'ADD_ITEM': {
+          const targets = resolveTargets(effect.target, context);
+          targets.forEach(tid => {
+             state.executeScript([{
+                 type: 'add_item',
+                 target: tid,
+                 itemId: effect.itemId
+             }]);
+          });
+          break;
+      }
+
+      case 'REMOVE_ITEM': {
+        // Not implemented in executeScript yet, implement directly here or extend script
+        state.addLog(`[Logic] 尝试移除物品 ${effect.itemId} (需扩展底层支持)`, 'warning');
         break;
       }
 
@@ -164,9 +230,16 @@ export const executeEffects = (effects: Effect[], context: GameContext): void =>
         break;
       }
 
+      case 'LOG': {
+          state.addLog(effect.message, effect.style || 'info');
+          break;
+      }
+
       case 'IF': {
-        // Advanced: we want to evaluate the condition against the target of the previous stat modification
-        // if possible. For simple DSL support, we'll try to guess the target context.
+        // We attempt to resolve a primary target to evaluate the condition against.
+        // Default to active player if condition doesn't specify target implicitly?
+        // For simple DSL, we use the global context active player or if we are iterating targets in a parent scope (complex)
+        // Here we just use the current context.
         if (evaluateCondition(effect.condition, context)) {
           executeEffects(effect.then, context);
         } else if (effect.else) {

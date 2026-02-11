@@ -3,34 +3,50 @@ import React, { useMemo, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { AttributeName, GamePhase } from '../types';
 import { PLAYER_COLORS } from '../constants';
-import { Brain, Zap, Dumbbell, Eye, Skull, Backpack, Gem, Crosshair, Syringe, User, Ghost, Users, ShieldAlert, Target, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Brain, Zap, Dumbbell, Eye, Skull, Backpack, Gem, Crosshair, Syringe, User, Ghost, Users, ShieldAlert, Target, Sparkles, ChevronDown, ChevronUp, History, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SKILLS_DB } from '../data/skills';
 
-const AttributeRow: React.FC<{ label: string, value: number, max: number, icon: any, isDead: boolean }> = ({ label, value, max, icon: Icon, isDead }) => (
-  <div className="flex items-center gap-3 mb-3 group">
-    <div className={`p-2 rounded-md border transition-colors ${isDead ? 'bg-zinc-900 border-zinc-800' : 'bg-zinc-800 border-zinc-700 group-hover:border-zinc-500'}`}>
-      <Icon size={16} className={isDead ? 'text-zinc-700' : 'text-zinc-400'} />
-    </div>
-    <div className="flex-1">
-        <div className="flex justify-between text-xs uppercase tracking-widest text-zinc-500 mb-1">
-            <span className={isDead ? 'text-zinc-700' : ''}>{label}</span>
-            <span className={`font-bold ${isDead ? 'text-zinc-800' : 'text-zinc-300'}`}>{value}</span>
+const AttributeRow: React.FC<{ label: string, current: number, effective: number, max: number, icon: any, isDead: boolean }> = ({ label, current, effective, max, icon: Icon, isDead }) => {
+    const hasBonus = effective > current;
+    const hasPenalty = effective < current;
+
+    return (
+      <div className="flex items-center gap-3 mb-3 group">
+        <div className={`p-2 rounded-md border transition-colors ${isDead ? 'bg-zinc-900 border-zinc-800' : 'bg-zinc-800 border-zinc-700 group-hover:border-zinc-500'}`}>
+          <Icon size={16} className={isDead ? 'text-zinc-700' : 'text-zinc-400'} />
         </div>
-        <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
-            <div 
-                className={`h-full transition-all duration-500 ${isDead ? 'bg-zinc-800' : 'bg-zinc-400'}`} 
-                style={{ width: `${(value / 8) * 100}%` }} 
-            />
+        <div className="flex-1">
+            <div className="flex justify-between text-xs uppercase tracking-widest text-zinc-500 mb-1">
+                <span className={isDead ? 'text-zinc-700' : ''}>{label}</span>
+                <span className={`font-bold flex items-center gap-1 ${isDead ? 'text-zinc-800' : 'text-zinc-300'}`}>
+                    {effective}
+                    {!isDead && hasBonus && <span className="text-[9px] text-emerald-500">(+{effective - current})</span>}
+                    {!isDead && hasPenalty && <span className="text-[9px] text-red-500">({effective - current})</span>}
+                </span>
+            </div>
+            <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden relative">
+                <div 
+                    className={`h-full absolute top-0 left-0 transition-all duration-500 ${isDead ? 'bg-zinc-800' : 'bg-zinc-400'}`} 
+                    style={{ width: `${(current / 8) * 100}%` }} 
+                />
+                {!isDead && hasBonus && (
+                    <div 
+                        className="h-full absolute top-0 bg-emerald-500/50"
+                        style={{ left: `${(current / 8) * 100}%`, width: `${((effective - current) / 8) * 100}%` }}
+                    />
+                )}
+            </div>
         </div>
-    </div>
-  </div>
-);
+      </div>
+    );
+};
 
 const PlayerHUD: React.FC = () => {
-  const { players, playerIds, activePlayerId, logs, toggleInventory, toggleInteractionModal, phase, currentScenario, executeLogicAction, toggleSkillTree } = useGameStore();
+  const { players, playerIds, activePlayerId, logs, toggleInventory, toggleInteractionModal, phase, currentScenario, executeLogicAction, toggleSkillTree, getEffectiveAttributeValue } = useGameStore();
   const player = players[activePlayerId];
   const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
+  const [logTab, setLogTab] = useState<'global' | 'personal'>('global');
 
   const otherPlayersInRoom = useMemo(() => {
     if (!player) return [];
@@ -61,6 +77,8 @@ const PlayerHUD: React.FC = () => {
   const playerColor = PLAYER_COLORS[playerIds.indexOf(activePlayerId)];
   const isHauntPhase = phase === GamePhase.Haunt;
   const isTraitor = player.team === 'TRAITOR';
+  
+  const activeLogs = logTab === 'global' ? logs : player.personalLogs || [];
 
   return (
     <div className="w-80 h-full bg-zinc-950/90 border-l border-zinc-800 flex flex-col backdrop-blur-sm z-30 shadow-2xl overflow-hidden">
@@ -223,10 +241,38 @@ const PlayerHUD: React.FC = () => {
             )}
         </div>
         
-        <AttributeRow label="力量" value={player.character.attributes[AttributeName.Might].current} max={8} icon={Dumbbell} isDead={player.isDead} />
-        <AttributeRow label="速度" value={player.character.attributes[AttributeName.Speed].current} max={8} icon={Zap} isDead={player.isDead} />
-        <AttributeRow label="理智" value={player.character.attributes[AttributeName.Sanity].current} max={8} icon={Brain} isDead={player.isDead} />
-        <AttributeRow label="知识" value={player.character.attributes[AttributeName.Knowledge].current} max={8} icon={Eye} isDead={player.isDead} />
+        <AttributeRow 
+            label="力量" 
+            current={player.character.attributes[AttributeName.Might].current} 
+            effective={getEffectiveAttributeValue(player.id, AttributeName.Might)}
+            max={8} 
+            icon={Dumbbell} 
+            isDead={player.isDead} 
+        />
+        <AttributeRow 
+            label="速度" 
+            current={player.character.attributes[AttributeName.Speed].current} 
+            effective={getEffectiveAttributeValue(player.id, AttributeName.Speed)}
+            max={8} 
+            icon={Zap} 
+            isDead={player.isDead} 
+        />
+        <AttributeRow 
+            label="理智" 
+            current={player.character.attributes[AttributeName.Sanity].current} 
+            effective={getEffectiveAttributeValue(player.id, AttributeName.Sanity)}
+            max={8} 
+            icon={Brain} 
+            isDead={player.isDead} 
+        />
+        <AttributeRow 
+            label="知识" 
+            current={player.character.attributes[AttributeName.Knowledge].current} 
+            effective={getEffectiveAttributeValue(player.id, AttributeName.Knowledge)}
+            max={8} 
+            icon={Eye} 
+            isDead={player.isDead} 
+        />
       </div>
 
       <div className="p-4 bg-zinc-900/30 border-b border-zinc-800 min-h-[120px]">
@@ -271,25 +317,42 @@ const PlayerHUD: React.FC = () => {
       </div>
 
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="p-4 bg-zinc-900/50 border-b border-zinc-800">
-            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                <Skull size={12} /> 叙事日志
-            </h3>
+        <div className="p-2 bg-zinc-900/50 border-b border-zinc-800 flex gap-2">
+            <button 
+                onClick={() => setLogTab('global')}
+                className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded transition-colors ${logTab === 'global' ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-600 hover:text-zinc-400'}`}
+            >
+                <div className="flex items-center justify-center gap-2">
+                    <Radio size={12} /> 全球叙事
+                </div>
+            </button>
+            <button 
+                onClick={() => setLogTab('personal')}
+                className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded transition-colors ${logTab === 'personal' ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-600 hover:text-zinc-400'}`}
+            >
+                <div className="flex items-center justify-center gap-2">
+                    <History size={12} /> 个人履历
+                </div>
+            </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {logs.map((log) => (
-            <div key={log.id} className={`text-sm leading-relaxed ${
-                log.type === 'narrative' ? 'text-indigo-200 font-serif-display italic opacity-90' :
-                log.type === 'alert' ? 'text-red-400' :
-                log.type === 'success' ? 'text-emerald-400' :
-                'text-zinc-400'
-            }`}>
-              <span className="opacity-50 text-[10px] mr-2 font-mono">
-                  {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit'})}
-              </span>
-              {log.text}
-            </div>
-          ))}
+          {activeLogs.length === 0 ? (
+              <div className="text-center py-8 text-zinc-600 text-xs italic">暂无记录</div>
+          ) : (
+              activeLogs.map((log) => (
+                <div key={log.id} className={`text-sm leading-relaxed ${
+                    log.type === 'narrative' ? 'text-indigo-200 font-serif-display italic opacity-90' :
+                    log.type === 'alert' ? 'text-red-400' :
+                    log.type === 'success' ? 'text-emerald-400' :
+                    'text-zinc-400'
+                }`}>
+                  <span className="opacity-50 text-[10px] mr-2 font-mono">
+                      {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit'})}
+                  </span>
+                  {log.text}
+                </div>
+              ))
+          )}
         </div>
       </div>
     </div>

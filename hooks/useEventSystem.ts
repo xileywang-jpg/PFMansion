@@ -10,10 +10,12 @@ export const useEventSystem = () => {
     setState, 
     executeScript, 
     addLog, 
+    addPersonalLog,
     players, 
     activePlayerId,
     map,
-    incrementOmenCount
+    incrementOmenCount,
+    getEffectiveAttributeValue
   } = useGameStore();
 
   const triggerEvent = useCallback((eventId: string) => {
@@ -34,8 +36,18 @@ export const useEventSystem = () => {
       `投掷结果: ${total} (目标: ${difficulty})。 ${passed ? '成功！' : '失败...'}`, 
       passed ? 'success' : 'alert'
     );
+    addPersonalLog(
+        activePlayerId,
+        `进行 ${event.interaction.attribute} 检定: 结果 ${total} ${passed ? '(成功)' : '(失败)'}`,
+        passed ? 'success' : 'alert'
+    );
 
     const outcomeActions = passed ? success : failure;
+    
+    // Generate feedback text from action messages
+    const outcomes = outcomeActions.filter(a => a.message).map(a => a.message);
+    const resultText = outcomes.length > 0 ? outcomes.join(' ') : (passed ? "你安然无恙。" : "你遭遇了不幸。");
+
     executeScript(outcomeActions);
 
     const player = players[activePlayerId];
@@ -47,13 +59,20 @@ export const useEventSystem = () => {
     }
 
     setState({
-        activeCard: null,
+        // activeCard: null, // Don't clear activeCard yet, so the modal stays open
         activeRoll: null,
         lastRollResult: total,
         map: updatedMap,
-        turnPhase: 'DONE'
+        // turnPhase: 'DONE', // Don't finish turn yet
+        eventOutcome: {
+            title: passed ? '检定成功' : '检定失败',
+            description: resultText,
+            type: passed ? 'success' : 'failure',
+            roll: total,
+            target: difficulty
+        }
     });
-  }, [addLog, executeScript, players, activePlayerId, map, setState]);
+  }, [addLog, addPersonalLog, executeScript, players, activePlayerId, map, setState]);
 
   const resolveItemPickup = useCallback((item: Item) => {
     const player = players[activePlayerId];
@@ -64,6 +83,7 @@ export const useEventSystem = () => {
     };
     
     addLog(`${player.character.name} 获得了 ${item.name}。`, 'success');
+    addPersonalLog(activePlayerId, `拾取了 ${item.name}。`, 'success');
 
     const tileKey = `${player.position.x},${player.position.y}`;
     const currentTile = map[tileKey];
@@ -93,14 +113,14 @@ export const useEventSystem = () => {
             turnPhase: 'DONE'
         });
     }
-  }, [players, activePlayerId, map, addLog, incrementOmenCount, setState]);
+  }, [players, activePlayerId, map, addLog, addPersonalLog, incrementOmenCount, setState]);
 
   const initiateEventRoll = useCallback((event: EventCard) => {
     if (event.interaction.type !== 'ATTRIBUTE_CHECK') return;
     
     const attr = event.interaction.attribute;
-    const player = players[activePlayerId];
-    const diceCount = player.character.attributes[attr].current;
+    // Fix: Use effective attribute value including items and buffs
+    const diceCount = getEffectiveAttributeValue(activePlayerId, attr);
 
     const rollData: ActiveRoll = {
         id: `evt_${event.id}_${Date.now()}`,
@@ -111,7 +131,7 @@ export const useEventSystem = () => {
     };
 
     setState({ activeRoll: rollData });
-  }, [players, activePlayerId, resolveEventResult, setState]);
+  }, [players, activePlayerId, resolveEventResult, setState, getEffectiveAttributeValue]);
 
   return { 
     triggerEvent,

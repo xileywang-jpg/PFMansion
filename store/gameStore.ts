@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { 
   Player, TileInstance, TileDef, GamePhase, Direction, 
   CardDef, CardSymbol, LogEntry, AttributeName, TurnPhase, ScriptAction, Item, ActiveRoll, DirectionalEdges,
-  Scenario
+  Scenario, EventOutcome
 } from '../types';
 import { ActionDefinition } from '../types/Logic';
 import { 
@@ -52,6 +52,8 @@ interface GameState {
   activeRoll: ActiveRoll | null;
   activeCombat: CombatState | null;
 
+  eventOutcome: EventOutcome | null;
+
   omenCount: number;
   isHauntActive: boolean;
   currentScenario: Scenario | null;
@@ -70,7 +72,7 @@ interface GameState {
   isInventoryOpen: boolean;
   isInteractionModalOpen: boolean;
   isSkillTreeOpen: boolean; 
-  inspectPlayerId: string | null; // New: ID of player currently being inspected
+  inspectPlayerId: string | null;
 
   activeFeedback: { message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' } | null;
 
@@ -85,10 +87,15 @@ interface GameState {
   triggerStatRoll: () => void;
   resolveDiceRoll: (total: number) => void;
   applyCardOutcome: () => void;
+  acknowledgeEventOutcome: () => void;
+  resolveEventChoice: (actions: ScriptAction[]) => void;
   incrementOmenCount: () => void;
   performHauntRoll: () => void; 
   startHaunt: () => void;
   addLog: (text: string, type?: LogEntry['type']) => void;
+  // NEW: Personal Log
+  addPersonalLog: (playerId: string, text: string, type?: LogEntry['type']) => void;
+
   setHoveredTileId: (id: string | null) => void;
   
   showFeedback: (message: string, type?: 'error' | 'info' | 'warning' | 'turn' | 'death') => void;
@@ -105,7 +112,7 @@ interface GameState {
 
   debugForceHaunt: () => void;
 
-  executeLogicAction: (action: ActionDefinition) => void;
+  executeLogicAction: (action: ActionDefinition, selectedPartnerId?: string) => void;
   unlockSkillNode: (nodeId: string) => void; 
 
   setState: (partial: Partial<GameState> | ((state: GameState) => Partial<GameState>)) => void;
@@ -115,17 +122,18 @@ interface GameState {
   toggleInteractionModal: () => void;
   toggleSkillTree: () => void; 
   
-  // New actions for inspection
   openInspection: (playerId: string) => void;
   closeInspection: () => void;
 
-  useItem: (itemId: string) => void;
+  useItem: (itemId: string, targetId?: string) => void;
   dropItem: (itemId: string) => void;
   
   interactWithWall: (direction: Direction) => void;
   cancelActiveRoll: () => void;
 
   isPlacementValid: () => boolean;
+  // NEW: Helper to get effective attribute value (Base + Buffs)
+  getEffectiveAttributeValue: (playerId: string, attribute: AttributeName) => number;
 }
 
 const getOpposite = (dir: Direction): Direction => {
@@ -158,6 +166,30 @@ const areConnected = (fromDir: Direction, toTileEdges: DirectionalEdges): boolea
   return targetEdge !== 'WALL';
 };
 
+// Simple parser for Chinese attribute text to Enum
+const parseAttributeFromText = (text: string): { attr: AttributeName, value: number } | null => {
+  let attr: AttributeName | null = null;
+  if (text.includes('力量')) attr = AttributeName.Might;
+  else if (text.includes('速度') || text.includes('移动')) attr = AttributeName.Speed;
+  else if (text.includes('理智')) attr = AttributeName.Sanity;
+  else if (text.includes('知识')) attr = AttributeName.Knowledge;
+
+  if (!attr) return null;
+
+  // Extract +/- number
+  const match = text.match(/([+-]\d+)/);
+  if (match) {
+    return { attr, value: parseInt(match[0]) };
+  }
+  // Handle cases like "移动速度 +1" which might be parsed as "Speed +1" logic
+  if (text.includes('+') && !text.includes('-')) {
+      const num = text.split('+')[1];
+      if (num) return { attr, value: parseInt(num) };
+  }
+  
+  return null;
+};
+
 export const useGameStore = create<GameState>((set, get) => ({
   phase: GamePhase.Exploration,
   turnPhase: 'MOVING',
@@ -174,6 +206,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastRollResult: null,
   activeRoll: null,
   activeCombat: null,
+  eventOutcome: null,
   omenCount: 0,
   isHauntActive: false,
   currentScenario: null,
@@ -201,6 +234,39 @@ export const useGameStore = create<GameState>((set, get) => ({
     }, duration);
   },
 
+  getEffectiveAttributeValue: (playerId: string, attribute: AttributeName): number => {
+      const state = get();
+      const player = state.players[playerId];
+      if (!player) return 0;
+
+      // 1. Base value from slider
+      let total = player.character.attributes[attribute].current;
+
+      // 2. Passive buffs from Items
+      player.items.forEach(item => {
+          if (item.passiveEffects) {
+              item.passiveEffects.forEach(eff => {
+                  if (eff.type === 'buff') {
+                      const parsed = parseAttributeFromText(eff.text);
+                      if (parsed && parsed.attr === attribute) {
+                          total += parsed.value;
+                      }
+                  }
+              });
+          }
+      });
+
+      // 3. Passive buffs from Skill Tree
+      player.buffs.forEach(buffText => {
+          const parsed = parseAttributeFromText(buffText);
+          if (parsed && parsed.attr === attribute) {
+              total += parsed.value;
+          }
+      });
+
+      return Math.max(0, total);
+  },
+
   initializeGame: () => {
     const startTile: TileInstance = {
       instanceId: 'start_instance',
@@ -221,7 +287,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       const id = `p${index + 1}`;
       ids.push(id);
       
-      // Calculate initial skill points based on Knowledge attribute (simple game mechanic)
       const initialSkillPoints = char.attributes[AttributeName.Knowledge].current;
 
       playersDict[id] = {
@@ -234,7 +299,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         isDead: false,
         team: 'UNASSIGNED',
         skillPoints: initialSkillPoints,
-        unlockedSkillNodes: []
+        unlockedSkillNodes: [],
+        personalLogs: [{
+            id: 'init_log',
+            timestamp: Date.now(),
+            text: '进入了大厦。',
+            type: 'info'
+        }]
       };
     });
 
@@ -264,6 +335,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastRollResult: null,
       activeRoll: null,
       activeCombat: null,
+      eventOutcome: null,
       omenCount: 0,
       isHauntActive: false,
       currentScenario: null,
@@ -275,6 +347,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       isSkillTreeOpen: false,
       inspectPlayerId: null,
     });
+  },
+
+  addLog: (text, type = 'info') => {
+      set(s => ({ logs: [{ id: Date.now().toString(), timestamp: Date.now(), text, type }, ...s.logs] }));
+  },
+
+  addPersonalLog: (playerId, text, type = 'info') => {
+      set(s => {
+          const player = s.players[playerId];
+          if (!player) return {};
+          const newLogs = [{ id: Date.now().toString(), timestamp: Date.now(), text, type }, ...player.personalLogs];
+          return {
+              players: {
+                  ...s.players,
+                  [playerId]: { ...player, personalLogs: newLogs }
+              }
+          };
+      });
   },
 
   nextTurn: () => {
@@ -299,22 +389,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const nextPlayer = state.players[nextId];
-    // Simple mechanic: Gain 1 skill point every 3 turns
     const shouldGainSkillPoint = (state.turnIndex + 1) % 3 === 0;
     if (shouldGainSkillPoint) {
         state.addLog(`${nextPlayer.character.name} 在探索中获得了新的领悟 (+1 技能点)`, 'success');
+        get().addPersonalLog(nextId, '随着探索深入，获得了 1 点技能点 (SP)。', 'success');
         const newPlayers = { ...state.players };
         newPlayers[nextId].skillPoints += 1;
         set({ players: newPlayers });
     }
 
-    const speed = nextPlayer.character.attributes[AttributeName.Speed].current;
-    // Apply speed buffs from skill tree if any (simplified)
-    const bonusSpeed = nextPlayer.buffs.includes('移动速度 +1') ? 1 : 0;
+    // Use calculated speed
+    const effectiveSpeed = get().getEffectiveAttributeValue(nextId, AttributeName.Speed);
 
     set({
       activePlayerId: nextId,
-      movesRemaining: speed + bonusSpeed,
+      movesRemaining: effectiveSpeed,
       turnPhase: 'MOVING',
       turnIndex: state.turnIndex + 1,
       activeCard: null,
@@ -322,6 +411,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       pendingTile: null,
       activeRoll: null,
       activeCombat: null,
+      eventOutcome: null,
       phase: state.phase === GamePhase.GameOver ? GamePhase.GameOver : (state.isHauntActive ? GamePhase.Haunt : GamePhase.Exploration),
       isInventoryOpen: false,
       isInteractionModalOpen: false,
@@ -416,6 +506,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = state.players[playerId];
     if (!player || player.isDead) return;
 
+    get().addPersonalLog(playerId, '遭受了致命伤害，不幸阵亡。', 'alert');
+
     const playerPos = `${player.position.x},${player.position.y}`;
     const tile = state.map[playerPos];
 
@@ -469,6 +561,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       map: { ...state.map, [playerPos]: { ...tile, droppedItems: newDroppedItems } }
     });
     state.addLog(`捡起了掉落在地上的 ${item.name}。`, 'success');
+    get().addPersonalLog(state.activePlayerId, `拾取了 ${item.name}。`, 'success');
   },
 
   giveItem: (fromId: string, toId: string, itemId: string) => {
@@ -490,6 +583,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     set({ players: newPlayers, isInteractionModalOpen: false });
     state.addLog(`${fromPlayer.character.name} 将 ${item.name} 交给了 ${toPlayer.character.name}。`, 'info');
+    get().addPersonalLog(fromId, `将 ${item.name} 交给了 ${toPlayer.character.name}。`, 'info');
+    get().addPersonalLog(toId, `收到了 ${fromPlayer.character.name} 给予的 ${item.name}。`, 'success');
   },
 
   startCombat: (attackerId, defenderId, attribute) => {
@@ -502,7 +597,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         return;
     }
 
-    const attackerDice = attacker.character.attributes[attribute].current;
+    // Use effective value for combat roll
+    let attackerDice = get().getEffectiveAttributeValue(attackerId, attribute);
+    
+    // Check combat-specific buffs from items (hardcoded check for demo purposes as parser is simple)
+    // Example: Revolver adds to Might only during attack
+    if (attribute === AttributeName.Might) {
+        const hasRevolver = attacker.items.some(i => i.id === 'item_revolver');
+        if (hasRevolver) attackerDice += 2;
+    }
 
     set({
       isInteractionModalOpen: false,
@@ -515,7 +618,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         onComplete: (total) => {
           const s = get();
           const defender = s.players[defenderId];
-          const defenderDice = defender.character.attributes[attribute].current;
+          // Use effective value for defense
+          const defenderDice = s.getEffectiveAttributeValue(defenderId, attribute);
           
           set({
             activeCombat: { ...s.activeCombat!, attackerRoll: total, phase: 'DEFENDING' },
@@ -550,8 +654,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         amount: -damage,
         message: `战斗中受到了 ${damage} 点伤害！`
       }]);
+      
+      const attackerName = state.players[combat.attackerId].character.name;
+      get().addPersonalLog(combat.defenderId, `被 ${attackerName} 攻击，受到了 ${damage} 点物理伤害。`, 'alert');
+      get().addPersonalLog(combat.attackerId, `成功攻击了 ${state.players[combat.defenderId].character.name}，造成 ${damage} 点伤害。`, 'success');
+      
     } else {
       state.addLog("进攻被化解了，未造成伤害。", 'info');
+      get().addPersonalLog(combat.attackerId, `对 ${state.players[combat.defenderId].character.name} 的攻击失败。`, 'info');
     }
 
     set({ activeCombat: null, turnPhase: 'DONE' });
@@ -577,6 +687,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     set({ players: newPlayers, activeCombat: null, turnPhase: 'DONE' });
     state.addLog(`${attacker.character.name} 趁乱偷走了 ${defender.character.name} 的 ${item.name}！`, 'success');
+    get().addPersonalLog(combat.attackerId, `从 ${defender.character.name} 身上偷走了 ${item.name}。`, 'success');
+    get().addPersonalLog(combat.defenderId, `${item.name} 被 ${attacker.character.name} 偷走了！`, 'alert');
   },
 
   cancelCombat: () => set({ activeCombat: null, activeRoll: null }),
@@ -605,17 +717,28 @@ export const useGameStore = create<GameState>((set, get) => ({
       let deathTriggeredIds: string[] = [];
 
       actions.forEach(action => {
+          // If we are executing conditional logic from CHOICE, action may have logic-style 'IF'
+          // We need to support basic logic execution here too, or delegate to logicEngine
+          // For now, we support the standard ScriptAction types + simplified logic hooks
+
           const targetId = action.target === 'self' || !action.target ? currentPlayerId : action.target;
           const player = newPlayers[targetId];
-          if (!player) return;
+          if (!player && action.target !== 'all') return; // Basic validation
 
           switch(action.type) {
+              case 'draw_card': {
+                  if (action.deck) {
+                      state.drawCard(action.deck);
+                  }
+                  break;
+              }
               case 'modify_stat': {
                   if (action.attribute && action.amount) {
                       const attr = player.character.attributes[action.attribute];
                       const damageMitigation = player.buffs.includes('伤害减免 +1') && action.amount < 0 ? 1 : 0;
                       const actualAmount = action.amount < 0 ? Math.min(0, action.amount + damageMitigation) : action.amount;
 
+                      const oldVal = attr.current;
                       const newVal = attr.current + actualAmount;
                       
                       if (newVal <= attr.floor) {
@@ -625,6 +748,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                           attr.current = Math.min(attr.max, newVal);
                       }
                       
+                      if (actualAmount !== 0) {
+                          get().addPersonalLog(targetId, `${action.attribute} ${actualAmount > 0 ? '+' : ''}${actualAmount} (当前: ${attr.current})`, actualAmount > 0 ? 'success' : 'alert');
+                      }
+                      
                       if (action.message) state.addLog(action.message, actualAmount > 0 ? 'success' : 'alert');
                   }
                   break;
@@ -632,7 +759,11 @@ export const useGameStore = create<GameState>((set, get) => ({
               case 'heal': {
                   if (action.attribute && action.amount) {
                       const attr = player.character.attributes[action.attribute];
+                      const oldVal = attr.current;
                       attr.current = Math.min(attr.max, attr.current + action.amount);
+                      if (attr.current !== oldVal) {
+                           get().addPersonalLog(targetId, `${action.attribute} 恢复了 ${action.amount} 点。`, 'success');
+                      }
                   }
                   break;
               }
@@ -642,18 +773,24 @@ export const useGameStore = create<GameState>((set, get) => ({
                       if (item) {
                           player.items.push(item);
                           state.addLog(`获得了 ${item.name}`, 'success');
+                          get().addPersonalLog(targetId, `获得了物品: ${item.name}。`, 'success');
                       }
                   }
                   break;
               }
               case 'move_player': {
                   if (action.location === 'basement') state.addLog("你掉到了地下室！", 'alert');
+                  // Todo: actual implementation of teleport to basement tile
                   break;
               }
               case 'narrative_log': {
                   if (action.message) state.addLog(action.message, 'narrative');
                   break;
               }
+              // Basic support for logic embedded in events (like "IF HAS_ITEM")
+              // In a real scenario, we'd use logicEngine entirely, but here we bridge.
+              // We'll rely on logicEngine for complex skill execution, but event scripts are simple.
+              // If an action has a 'condition' (not in standard ScriptAction yet), we skip.
           }
       });
 
@@ -664,11 +801,41 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
   },
 
-  executeLogicAction: (action: ActionDefinition) => {
+  resolveEventChoice: (actions: ScriptAction[]) => {
+      // Execute effects
+      const state = get();
+      
+      // We need to resolve conditions in these actions if any
+      // For the Coffin event: IF HAS_ITEM
+      // Since ScriptAction definition in types.ts doesn't have IF yet, we assume the input json follows logic DSL
+      // and we convert/execute using logicEngine for the complex parts, or executeScript for simple.
+      
+      // Because we are bridging two systems (simple script vs complex logic), 
+      // let's pass it through logicEngine if it looks like logic.
+      const context: GameContext = {
+          state: state,
+          activePlayerId: state.activePlayerId
+      };
+      
+      // Adapt ScriptAction[] to Effect[] for logic engine 
+      // (This implies we should ideally unify them, but for now we cast/adapt)
+      const effects = actions as any[]; 
+      executeEffects(effects, context);
+
+      // Close modal by setting outcome
+      set({
+          eventOutcome: null, // Clear previous outcome if any
+          activeCard: null,
+          turnPhase: 'DONE'
+      });
+  },
+
+  executeLogicAction: (action: ActionDefinition, selectedPartnerId?: string) => {
     const state = get();
     const context: GameContext = {
       state: state,
-      activePlayerId: state.activePlayerId
+      activePlayerId: state.activePlayerId,
+      selectedPartnerId: selectedPartnerId
     };
 
     if (action.condition && !evaluateCondition(action.condition, context)) {
@@ -677,7 +844,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     state.addLog(`执行技能: ${action.name}`, 'info');
+    get().addPersonalLog(state.activePlayerId, `使用了技能: ${action.name}。`, 'info');
     executeEffects(action.effects, context);
+    
+    // Using a skill usually ends interaction/turn logic if needed, but here we keep it open
+    // unless it's a major action.
   },
   
   unlockSkillNode: (nodeId: string) => {
@@ -717,6 +888,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       
       set({ players: newPlayers });
       state.addLog(`${updatedPlayer.character.name} 习得了 ${nodeToUnlock.name}。`, 'success');
+      get().addPersonalLog(state.activePlayerId, `解锁了技能: ${nodeToUnlock.name}。`, 'success');
   },
 
   rotatePendingTile: () => set(s => ({ pendingTileRotation: (s.pendingTileRotation + 90) % 360 })),
@@ -767,6 +939,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         movesRemaining: 0 
     });
     state.addLog(`探索发现了 ${pendingTile.name}。`, 'success');
+    get().addPersonalLog(state.activePlayerId, `探索并进入了 ${pendingTile.name}。`, 'info');
   },
 
   isPlacementValid: () => {
@@ -809,6 +982,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   triggerStatRoll: () => {}, 
   resolveDiceRoll: () => {},
   applyCardOutcome: () => {},
+  acknowledgeEventOutcome: () => {
+     set({ 
+        activeCard: null, 
+        activeRoll: null, 
+        lastRollResult: null, 
+        eventOutcome: null, 
+        turnPhase: 'DONE' 
+     });
+  },
   incrementOmenCount: () => set(s => ({ omenCount: s.omenCount + 1 })),
 
   performHauntRoll: () => {
@@ -859,8 +1041,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (id === traitorId) {
         updatedPlayers[id].team = 'TRAITOR';
         updatedPlayers[id] = healTraitor(updatedPlayers[id]);
+        get().addPersonalLog(id, '你已被邪恶力量腐蚀，成为了叛徒。', 'alert');
       } else {
         updatedPlayers[id].team = 'HERO';
+        get().addPersonalLog(id, '作祟爆发。你必须作为英雄生存下去。', 'alert');
       }
     });
 
@@ -879,10 +1063,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     state.addLog(`${traitor.character.name} 感到一股恶兆之力充满了全身，伤口已经愈合。`, 'narrative');
   },
 
-  addLog: (text, type = 'info') => {
-      set(s => ({ logs: [{ id: Date.now().toString(), timestamp: Date.now(), text, type }, ...s.logs] }));
-  },
-
   setHoveredTileId: (id) => set({ hoveredTileId: id }),
 
   setState: (fn) => set(fn),
@@ -894,7 +1074,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   openInspection: (playerId) => set({ inspectPlayerId: playerId }),
   closeInspection: () => set({ inspectPlayerId: null }),
 
-  useItem: (itemId) => {
+  useItem: (itemId: string, targetId?: string) => {
       const state = get();
       const player = state.players[state.activePlayerId];
       if (player.isDead) return;
@@ -902,8 +1082,26 @@ export const useGameStore = create<GameState>((set, get) => ({
       const itemIndex = player.items.findIndex(i => i.id === itemId);
       if (itemIndex === -1) return;
       const item = player.items[itemIndex];
+      get().addPersonalLog(state.activePlayerId, `使用了 ${item.name}。`, 'info');
+      
+      // Check if item needs a target and none was provided
+      if (item.usage?.target === 'OPPONENT' && !targetId) {
+          state.showFeedback('该物品需要指定目标，请在交互菜单中使用。', 'warning');
+          return;
+      }
+
       if (item.usage?.effects) {
-          get().executeScript(item.usage.effects);
+          // Prepare context with specific target if needed
+          const context: GameContext = {
+              state: state,
+              activePlayerId: state.activePlayerId,
+              selectedPartnerId: targetId
+          };
+          
+          // Adapt script action to logic engine effects if possible
+          const effects = item.usage.effects as any[];
+          executeEffects(effects, context);
+
           if (item.usage.isConsumable) {
               const newPlayers = { ...state.players };
               newPlayers[state.activePlayerId].items.splice(itemIndex, 1);
@@ -938,6 +1136,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           map: { ...state.map, [playerPos]: updatedTile } 
       });
       state.addLog(`放下了物品 ${item.name}。`, 'info');
+      get().addPersonalLog(state.activePlayerId, `丢弃了 ${item.name}。`, 'info');
   },
 
   interactWithWall: (direction) => {
@@ -946,13 +1145,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (player.isDead) return;
       
       const hasPickaxe = player.items.some(i => i.id === 'item_pickaxe');
-      const might = player.character.attributes[AttributeName.Might].current;
+      const might = get().getEffectiveAttributeValue(state.activePlayerId, AttributeName.Might);
       
       if (hasPickaxe || might > 5) {
           const newPlayers = { ...state.players };
           if (!hasPickaxe) {
              const attr = newPlayers[state.activePlayerId].character.attributes[AttributeName.Might];
              attr.current = Math.max(attr.floor, attr.current - 1);
+             get().addPersonalLog(state.activePlayerId, '强行破坏墙壁导致力量 -1', 'alert');
           }
           set({ players: newPlayers });
           
@@ -975,7 +1175,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           return;
       }
       
-      const knowledge = player.character.attributes[AttributeName.Knowledge].current;
+      const knowledge = get().getEffectiveAttributeValue(state.activePlayerId, AttributeName.Knowledge);
       set({ 
         activeRoll: {
           id: 'search_wall',
