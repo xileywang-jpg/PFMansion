@@ -8,9 +8,9 @@ import { Item } from '../types';
 const InventoryModal: React.FC = () => {
   const { isInventoryOpen, toggleInventory, players, activePlayerId, useItem, dropItem } = useGameStore();
   const player = players[activePlayerId];
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
   if (!isInventoryOpen || !player) return null;
-  const selectedItem = player.items.find(i => i.id === selectedItemId);
+  const selectedItem = selectedItemIndex !== null ? player.items[selectedItemIndex] : null;
 
   const getItemIcon = (item: Item, size: number = 24) => {
     switch (item.type) {
@@ -43,8 +43,8 @@ const InventoryModal: React.FC = () => {
             <div className="flex-1 p-6 overflow-y-auto">
                 {player.items.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-zinc-600 opacity-50"><Backpack size={48} className="mb-4" /><span className="text-sm">背包是空的</span></div> : (
                     <div className="grid grid-cols-4 gap-3">
-                        {player.items.map((item) => (
-                            <button key={item.id} onClick={() => setSelectedItemId(item.id)} className={`aspect-square rounded-lg border flex items-center justify-center transition-all ${selectedItemId === item.id ? 'bg-indigo-900/30 border-indigo-500' : 'bg-zinc-800/50 border-zinc-700 hover:border-zinc-500'}`}>
+                        {player.items.map((item, idx) => (
+                            <button key={`${item.id}-${idx}`} onClick={() => setSelectedItemIndex(idx)} className={`aspect-square rounded-lg border flex items-center justify-center transition-all ${selectedItemIndex === idx ? 'bg-indigo-900/30 border-indigo-500' : 'bg-zinc-800/50 border-zinc-700 hover:border-zinc-500'}`}>
                                 <div className={`${item.type === 'OMEN' ? 'text-emerald-500' : 'text-zinc-300'}`}>{getItemIcon(item, 24)}</div>
                             </button>
                         ))}
@@ -80,7 +80,7 @@ const InventoryModal: React.FC = () => {
                     </div>
                     <div className="flex gap-3 pt-6 border-t border-zinc-800">
                         {selectedItem.usage && <button onClick={() => useItem(selectedItem.id)} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-colors shadow-lg"><ArrowUpCircle size={16} />{selectedItem.usage.actionLabel}</button>}
-                        <button onClick={() => { dropItem(selectedItem.id); setSelectedItemId(null); }} className="px-4 py-3 border border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-red-400 rounded transition-colors" title="丢弃物品"><Trash2 size={16} /></button>
+                        <button onClick={() => { dropItem(selectedItem.id); setSelectedItemIndex(null); }} className="px-4 py-3 border border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-red-400 rounded transition-colors" title="丢弃物品"><Trash2 size={16} /></button>
                     </div>
                 </div>
             ) : <div className="h-full flex flex-col items-center justify-center text-zinc-700 italic text-sm">选择一件物品以查看详情</div>}

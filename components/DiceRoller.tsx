@@ -57,7 +57,7 @@ const DiceRoller: React.FC = () => {
         <div className="flex flex-wrap justify-center gap-4 mb-10">{currentValues.map((val, idx) => renderDie(val, idx))}</div>
         <AnimatePresence mode='wait'>
             {showResult ? (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center w-full">
+                <motion.div key="result" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center w-full">
                     <div className="text-6xl font-serif-display font-bold text-white mb-2">{finalTotal}</div>
                     {activeRoll.targetValue !== undefined && (
                         <div className={`text-sm font-bold uppercase tracking-widest mb-6 px-4 py-1 rounded ${finalTotal >= activeRoll.targetValue ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400'}`}>
@@ -67,7 +67,7 @@ const DiceRoller: React.FC = () => {
                     <button onClick={() => activeRoll.onComplete(finalTotal)} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded uppercase tracking-wider text-sm transition-colors shadow-lg">继续</button>
                 </motion.div>
             ) : (
-                <div className="w-full flex flex-col gap-3">
+                <div key="rolling" className="w-full flex flex-col gap-3">
                     <button onClick={handleRoll} disabled={isRolling} className="w-full py-4 rounded font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-3 transition-all bg-zinc-100 hover:bg-white text-black">
                         {isRolling ? '投掷中...' : <><Dices size={20} /> 开始投掷</>}
                     </button>

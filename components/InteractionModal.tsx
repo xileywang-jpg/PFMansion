@@ -177,14 +177,14 @@ const InteractionModal: React.FC = () => {
                         你没有任何可用的物品
                       </div>
                     ) : (
-                      activePlayer.items.map(item => {
+                      activePlayer.items.map((item, idx) => {
                         // Check if item can be used on opponent (or partner)
                         const canUse = item.usage?.target === 'OPPONENT'; 
                         // Note: Logic allows targeting 'SELECTED_PARTNER' via OPPONENT flag for now in simple items
 
                         return (
                           <div 
-                            key={item.id}
+                            key={`${item.id}-${idx}`}
                             className="flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800 rounded-lg group hover:border-zinc-600 transition-all"
                           >
                             <div className={`p-2 rounded ${item.type === 'OMEN' ? 'bg-emerald-900/20 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}>

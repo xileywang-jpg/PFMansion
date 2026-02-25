@@ -7,8 +7,7 @@ export const TILES_DATA = [
     "type": "corridor",
     "floors": ["GROUND", "UPPER"],
     "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
-    "icon": "Footprints",
-    "cardSymbol": "EVENT"
+    "icon": "Footprints"
   },
   {
     "id": "tile_library",
@@ -18,7 +17,7 @@ export const TILES_DATA = [
     "floors": ["GROUND", "UPPER"],
     "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "WALL" },
     "icon": "Book",
-    "cardSymbol": "EVENT",
+    "cardSymbol": "OMEN",
     "effects": [
       { "type": "buff", "text": "如果你在这里结束回合，获得 1 点知识。" }
     ]
@@ -31,7 +30,7 @@ export const TILES_DATA = [
     "floors": ["GROUND"],
     "edges": { "N": "OPEN", "S": "WALL", "E": "WALL", "W": "WALL" },
     "icon": "Trees",
-    "cardSymbol": "EVENT"
+    "cardSymbol": "OMEN"
   },
   {
     "id": "tile_kitchen",
@@ -44,6 +43,19 @@ export const TILES_DATA = [
     "cardSymbol": "OMEN",
     "effects": [
       { "type": "debuff", "text": "进入时理智 -1。" }
+    ]
+  },
+  {
+    "id": "tile_chapel",
+    "name": "废弃礼拜堂",
+    "description": "彩绘玻璃窗上描绘着扭曲的圣徒。",
+    "type": "room",
+    "floors": ["GROUND", "UPPER"],
+    "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
+    "icon": "Church",
+    "cardSymbol": "OMEN",
+    "effects": [
+      { "type": "buff", "text": "理智 +1" }
     ]
   },
   {

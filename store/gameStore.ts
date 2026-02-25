@@ -350,14 +350,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   addLog: (text, type = 'info') => {
-      set(s => ({ logs: [{ id: Date.now().toString(), timestamp: Date.now(), text, type }, ...s.logs] }));
+      set(s => ({ logs: [{ id: crypto.randomUUID(), timestamp: Date.now(), text, type }, ...s.logs] }));
   },
 
   addPersonalLog: (playerId, text, type = 'info') => {
       set(s => {
           const player = s.players[playerId];
           if (!player) return {};
-          const newLogs = [{ id: Date.now().toString(), timestamp: Date.now(), text, type }, ...player.personalLogs];
+          const newLogs = [{ id: crypto.randomUUID(), timestamp: Date.now(), text, type }, ...player.personalLogs];
           return {
               players: {
                   ...s.players,
@@ -903,7 +903,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!pendingTile || !pendingTargetPosition) return;
 
     const newTileInstance: TileInstance = {
-        instanceId: `tile_${Date.now()}`,
+        instanceId: `tile_${crypto.randomUUID()}`,
         defId: pendingTile.id,
         x: pendingTargetPosition.x,
         y: pendingTargetPosition.y,
@@ -920,13 +920,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         position: { x: newTileInstance.x, y: newTileInstance.y }
     };
 
-    let nextTurnPhase: TurnPhase = 'DONE';
+    let nextTurnPhase: TurnPhase = 'MOVING';
+    let newMovesRemaining = state.movesRemaining;
+
     if (pendingTile.eventTrigger) {
         nextTurnPhase = 'EVENT_RESOLVING';
+        newMovesRemaining = 0;
         get().triggerSpecificEvent(pendingTile.eventTrigger);
     } else if (pendingTile.cardSymbol) {
         nextTurnPhase = 'EVENT_RESOLVING';
+        newMovesRemaining = 0;
         get().drawCard(pendingTile.cardSymbol);
+    } else {
+        if (newMovesRemaining === 0) nextTurnPhase = 'DONE';
     }
 
     set({
@@ -936,7 +942,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         pendingTargetPosition: null,
         pendingMoveDirection: null,
         turnPhase: nextTurnPhase,
-        movesRemaining: 0 
+        movesRemaining: newMovesRemaining 
     });
     state.addLog(`探索发现了 ${pendingTile.name}。`, 'success');
     get().addPersonalLog(state.activePlayerId, `探索并进入了 ${pendingTile.name}。`, 'info');

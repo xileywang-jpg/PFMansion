@@ -118,8 +118,34 @@ const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) =>
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.8 }} 
-      animate={{ opacity: 1, scale: 1 }} 
-      className={`relative w-32 h-32 bg-zinc-900 border-2 ${isActive ? 'border-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.05)]' : 'border-zinc-700'} ${hasActivePlayer ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-black' : ''} flex flex-col items-center justify-center text-center p-2 rounded-sm transition-all duration-300 group/tile hover:bg-zinc-800/80`}
+      animate={{ 
+        opacity: 1, 
+        scale: hasActivePlayer ? 1.05 : 1,
+        borderColor: hasActivePlayer ? 'rgba(99,102,241,0.8)' : 'rgba(39,39,42,1)',
+        boxShadow: hasActivePlayer 
+            ? "0 0 40px rgba(99,102,241,0.3)" 
+            : "0 0 0 rgba(0,0,0,0)"
+      }} 
+      whileHover={{ 
+        scale: hasActivePlayer ? 1.08 : 1.03,
+        borderColor: hasActivePlayer ? 'rgba(99,102,241,1)' : 'rgba(161,161,170,0.5)', // zinc-400 equivalent
+        boxShadow: hasActivePlayer 
+            ? "0 0 50px rgba(99,102,241,0.5)" 
+            : "0 0 25px rgba(255,255,255,0.05)"
+      }}
+      transition={{ duration: 0.3 }}
+      className={`
+        relative w-32 h-32 
+        bg-gradient-to-br from-zinc-900 to-zinc-950 
+        flex flex-col items-center justify-center text-center p-2 rounded-md 
+        group/tile border-2
+        
+        ${/* Active Player Ring Structure */ ''}
+        ${hasActivePlayer ? 'ring-2 ring-indigo-500 ring-offset-4 ring-offset-black z-20' : 'z-0'}
+        
+        ${/* Selection Highlight */ ''}
+        ${isActive ? 'z-10' : ''}
+      `}
     >
       {/* 边缘渲染 */}
       {Object.values(Direction).map(dir => renderEdge(dir))}

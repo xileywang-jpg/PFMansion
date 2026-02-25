@@ -123,7 +123,7 @@ export const useEventSystem = () => {
     const diceCount = getEffectiveAttributeValue(activePlayerId, attr);
 
     const rollData: ActiveRoll = {
-        id: `evt_${event.id}_${Date.now()}`,
+        id: `evt_${event.id}_${crypto.randomUUID()}`,
         attributeName: attr,
         numberOfDice: diceCount,
         targetValue: event.interaction.difficulty,

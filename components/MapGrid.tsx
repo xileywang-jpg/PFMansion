@@ -66,7 +66,9 @@ const MapGrid: React.FC = () => {
   return (
     <div className="relative w-full h-full bg-[#0c0c0e] overflow-hidden flex items-center justify-center">
       <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#333 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-      <div className="relative transition-transform duration-500 ease-in-out" style={{ width: 0, height: 0, transform: `translate(${-activePlayer.position.x * TILE_SIZE}px, ${-activePlayer.position.y * TILE_SIZE}px)` }}>
+      <div className="absolute inset-0 pointer-events-none z-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.8)_100%)] opacity-60" />
+      
+      <div className="relative transition-transform duration-500 ease-in-out z-10" style={{ width: 0, height: 0, transform: `translate(${-activePlayer.position.x * TILE_SIZE}px, ${-activePlayer.position.y * TILE_SIZE}px)` }}>
         {Object.values(map).map((tile: TileInstance) => {
           // 找出当前在这个地块上的所有玩家
           const playersOnThisTile = Object.values(players).filter(p => p.position.x === tile.x && p.position.y === tile.y);

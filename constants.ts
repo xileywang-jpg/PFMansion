@@ -1,7 +1,8 @@
 
 import { CharacterDef, TileDef, CardDef, AttributeName, FloorLevel, Direction, Item, DirectionalEdges } from './types';
-import { ITEMS_DB } from './data/items';
 import { EVENTS_DB } from './data/events';
+import { ITEMS_DATA } from './data/source/items';
+import { OMENS_DATA } from './data/source/omens';
 import { CHARACTERS_DATA } from './data/source/characters';
 import { TILES_DATA } from './data/source/tiles';
 
@@ -87,5 +88,5 @@ export const STARTING_TILE: TileDef = {
 export const TILE_DECK: TileDef[] = hydrateTiles(TILES_DATA);
 
 export const MOCK_EVENTS_DECK: CardDef[] = Object.values(EVENTS_DB);
-export const MOCK_ITEMS_DECK: Item[] = Object.values(ITEMS_DB).filter(i => i.type !== 'OMEN');
-export const MOCK_OMENS_DECK: Item[] = Object.values(ITEMS_DB).filter(i => i.type === 'OMEN');
+export const MOCK_ITEMS_DECK: Item[] = Object.values(ITEMS_DATA) as unknown as Item[];
+export const MOCK_OMENS_DECK: Item[] = Object.values(OMENS_DATA) as unknown as Item[];
