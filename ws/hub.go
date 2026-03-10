@@ -22,7 +22,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // 允许所有来源（生产环境应限制
+		return true // 允许所有来源（生产环境应限制）
 	},
 }
 
@@ -115,7 +115,7 @@ type Message struct {
 
 // Hub 维护所有客户端和房间
 type Hub struct {
-	gameState *game.GameState
+	gameManager *game.GameManager
 	
 	clients   map[*Client]bool
 	rooms     map[string]map[*Client]bool // roomID -> clients
@@ -128,9 +128,9 @@ type Hub struct {
 	mu sync.RWMutex
 }
 
-func NewHub(gs *game.GameState) *Hub {
+func NewHub(gs *game.GameManager) *Hub {
 	return &Hub{
-		gameState:  gs,
+		gameManager: gs,
 		clients:    make(map[*Client]bool),
 		rooms:      make(map[string]map[*Client]bool),
 		register:   make(chan *Client),
@@ -207,9 +207,14 @@ func (h *Hub) handleMessage(msg *Message) {
 		h.handleListRooms(msg)
 	case "set_ready":
 		h.handleSetReady(msg)
+	case "start_game":
+		h.handleStartGame(msg)
+	case "game_action":
+		h.handleGameAction(msg)
+	case "get_state":
+		h.handleGetState(msg)
 	default:
-		// 转发给房间内其他玩家
-		h.forwardToRoom(msg)
+		log.Printf("未知消息类型: %s", base.Type)
 	}
 }
 
@@ -224,7 +229,7 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 		return
 	}
 
-	room := h.gameState.CreateRoom(req.RoomName, req.PlayerName, msg.sessionID)
+	room := h.gameManager.CreateRoom(req.RoomName, req.PlayerName, msg.sessionID)
 	
 	msg.client.roomID = room.ID
 	
@@ -265,7 +270,7 @@ func (h *Hub) handleJoinRoom(msg *Message) {
 		return
 	}
 
-	room, err := h.gameState.JoinRoom(req.RoomId, req.PlayerName, msg.sessionID)
+	room, err := h.gameManager.JoinRoom(req.RoomId, req.PlayerName, msg.sessionID)
 	if err != nil {
 		resp := map[string]interface{}{
 			"type":    "error",
@@ -314,7 +319,7 @@ func (h *Hub) handleJoinRoom(msg *Message) {
 }
 
 func (h *Hub) handleLeaveRoom(msg *Message) {
-	roomID, playerID := h.gameState.LeaveRoom(msg.sessionID)
+	roomID, playerID := h.gameManager.LeaveRoom(msg.sessionID)
 	
 	if roomID != "" {
 		msg.client.roomID = ""
@@ -334,7 +339,7 @@ func (h *Hub) handleLeaveRoom(msg *Message) {
 }
 
 func (h *Hub) handleListRooms(msg *Message) {
-	rooms := h.gameState.ListRooms()
+	rooms := h.gameManager.ListRooms()
 	resp := map[string]interface{}{
 		"type":  "room_list",
 		"rooms": rooms,
@@ -353,7 +358,7 @@ func (h *Hub) handleSetReady(msg *Message) {
 		return
 	}
 
-	h.gameState.SetPlayerReady(msg.client.roomID, msg.client.playerID, req.Ready)
+	h.gameManager.SetPlayerReady(msg.client.roomID, msg.client.playerID, req.Ready)
 
 	// 广播给房间内所有人
 	h.broadcastToRoom(msg.client.roomID, map[string]interface{}{
@@ -363,13 +368,67 @@ func (h *Hub) handleSetReady(msg *Message) {
 	})
 }
 
-func (h *Hub) forwardToRoom(msg *Message) {
-	// 转发游戏操作给房间内其他玩家
+func (h *Hub) handleStartGame(msg *Message) {
+	err := h.gameManager.StartGame(msg.client.roomID)
+	if err != nil {
+		resp := map[string]interface{}{
+			"type":    "error",
+			"message": err.Error(),
+		}
+		data, _ := json.Marshal(resp)
+		msg.client.send <- data
+		return
+	}
+
+	// 广播游戏开始
 	h.broadcastToRoom(msg.client.roomID, map[string]interface{}{
-		"type":      "game_action",
-		"playerId": msg.client.playerID,
-		"action":   msg.data,
+		"type": "game_started",
 	})
+
+	// 发送初始游戏状态
+	h.sendGameState(msg.client.roomID)
+}
+
+func (h *Hub) handleGameAction(msg *Message) {
+	var req struct {
+		Type   string                 `json:"type"`
+		Action map[string]interface{} `json:"action"`
+	}
+	
+	if err := json.Unmarshal(msg.data, &req); err != nil {
+		return
+	}
+
+	err := h.gameManager.ProcessGameAction(msg.client.roomID, msg.client.playerID, req.Action)
+	if err != nil {
+		resp := map[string]interface{}{
+			"type":    "error",
+			"message": err.Error(),
+		}
+		data, _ := json.Marshal(resp)
+		msg.client.send <- data
+		return
+	}
+
+	// 广播更新后的游戏状态
+	h.sendGameState(msg.client.roomID)
+}
+
+func (h *Hub) handleGetState(msg *Message) {
+	h.sendGameState(msg.client.roomID)
+}
+
+func (h *Hub) sendGameState(roomID string) {
+	state, err := h.gameManager.GetGameState(roomID)
+	if err != nil {
+		return
+	}
+
+	resp := map[string]interface{}{
+		"type":  "state_sync",
+		"state": state,
+	}
+	h.broadcastToRoom(roomID, resp)
 }
 
 func (h *Hub) broadcastToRoom(roomID string, message interface{}) {
@@ -395,12 +454,12 @@ func (h *Hub) broadcastToRoom(roomID string, message interface{}) {
 	}
 }
 
-// 向指定客户端发送消息
 // Broadcast 广播消息给所有客户端
 func (h *Hub) Broadcast(message []byte) {
 	h.broadcast <- message
 }
 
+// SendToClient 向指定客户端发送消息
 func (h *Hub) SendToClient(sessionID string, message interface{}) {
 	data, err := json.Marshal(message)
 	if err != nil {

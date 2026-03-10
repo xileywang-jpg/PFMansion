@@ -15,21 +15,21 @@ import (
 )
 
 // 全局游戏状态
-var gameState *game.GameState
+var gameManager *game.GameManager
 
 func main() {
 	port := flag.String("port", "8080", "服务器监听端口")
 	dir := flag.String("dir", ".", "静态文件目录")
 	flag.Parse()
 
-	// 初始化游戏状态
-	gameState = game.NewGameState()
+	// 初始化游戏状态管理器
+	gameManager = game.NewGameManager()
 
-	// 启动游戏状态自动保存/同步协程
-	go gameState.Run()
+	// 启动游戏状态管理协程
+	go gameManager.Run()
 
 	// WebSocket hub
-	hub := ws.NewHub(gameState)
+	hub := ws.NewHub(gameManager)
 	go hub.Run()
 
 	// HTTP 处理
