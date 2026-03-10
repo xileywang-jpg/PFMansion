@@ -399,7 +399,44 @@ func (h *Hub) handleGameAction(msg *Message) {
 		return
 	}
 
-	err := h.gameManager.ProcessGameAction(msg.client.roomID, msg.client.playerID, req.Action)
+	actionType, _ := req.Action["actionType"].(string)
+	var err error
+
+	switch actionType {
+	case "move":
+		dir, _ := req.Action["direction"].(string)
+		err = h.gameManager.ProcessMove(msg.client.roomID, msg.client.playerID, dir)
+	case "end_turn":
+		err = h.gameManager.EndTurn(msg.client.roomID, msg.client.playerID)
+	case "roll_dice":
+		// 处理投骰子（前端触发，后端生成结果）
+		// 返回骰子结果给前端
+		numDice := 1
+		if nd, ok := req.Action["numDice"].(float64); ok {
+			numDice = int(nd)
+		}
+		results := h.gameManager.RollDice(numDice)
+		sum := 0
+		for _, v := range results {
+			sum += v
+		}
+		resp := map[string]interface{}{
+			"type":     "dice_result",
+			"results":  results,
+			"sum":      sum,
+			"playerId": msg.client.playerID,
+		}
+		h.broadcastToRoom(msg.client.roomID, resp)
+		return
+	case "modify_stat":
+		attr, _ := req.Action["attribute"].(string)
+		amount, _ := req.Action["amount"].(float64)
+		err = h.gameManager.ModifyStat(msg.client.roomID, msg.client.playerID, attr, int(amount))
+	default:
+		// 通用处理
+		err = h.gameManager.ProcessGameAction(msg.client.roomID, msg.client.playerID, req.Action)
+	}
+
 	if err != nil {
 		resp := map[string]interface{}{
 			"type":    "error",
