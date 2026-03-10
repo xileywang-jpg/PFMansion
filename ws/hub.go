@@ -227,7 +227,12 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 	room := h.gameState.CreateRoom(req.RoomName, req.PlayerName, msg.sessionID)
 	
 	msg.client.roomID = room.ID
-	msg.client.playerID = room.Players[req.PlayerName].ID // 需要返回正确ID
+	
+	// 获取刚创建的玩家ID
+	for _, p := range room.Players {
+		msg.client.playerID = p.ID
+		break
+	}
 	
 	// 将客户端加入房间
 	h.mu.Lock()
