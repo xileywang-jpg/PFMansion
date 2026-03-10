@@ -1,93 +1,126 @@
+// 游戏入口组件
+// 支持本地单人模式和联机模式
 
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGameStore } from './store/gameStore';
-import MapGrid from './components/MapGrid';
-import PlayerHUD from './components/PlayerHUD';
-import CardResolutionModal from './components/EventModal';
-import TurnControl from './components/TurnControl';
-import TileInspector from './components/TileInspector';
-import HauntRollModal from './components/HauntRollModal';
-import HauntReveal from './components/HauntReveal';
-import InventoryModal from './components/InventoryModal';
-import InteractionModal from './components/InteractionModal';
-import CombatResolution from './components/CombatResolution';
-import DiceRoller from './components/DiceRoller';
-import FeedbackToast from './components/FeedbackToast';
-import SkillTreeModal from './components/SkillTreeModal';
-import PlayerInspectionModal from './components/PlayerInspectionModal';
-import { Bug, Skull } from 'lucide-react';
+import { wsClient, ServerMessage } from './ws/client';
+import * as network from './ws/network';
+import { LoginScreen, LobbyScreen } from './components/NetworkScreens';
+
+// 单机版游戏组件
+import LocalGame from './components/LocalGame';
+
+type GameMode = 'local' | 'online';
 
 const App: React.FC = () => {
-  const { initializeGame, debugForceHaunt, isHauntActive, omenCount } = useGameStore();
+  const [gameMode, setGameMode] = useState<GameMode>('local');
+  const [networkScreen, setNetworkScreen] = useState<'login' | 'lobby' | 'game'>('login');
+  const [isConnected, setIsConnected] = useState(false);
+
+  // 本地模式初始化
+  const initializeLocal = useGameStore(state => state.initializeGame);
 
   useEffect(() => {
-    initializeGame();
-  }, [initializeGame]);
+    if (gameMode === 'local') {
+      initializeLocal();
+    }
+  }, [gameMode, initializeLocal]);
 
-  return (
-    <div className="flex w-screen h-screen bg-black text-zinc-200 overflow-hidden selection:bg-indigo-500/30">
-      
-      {/* Main Map Viewport */}
-      <div className="flex-1 relative z-10">
-        <div className="absolute top-6 left-6 z-20 pointer-events-none flex flex-col items-start gap-2">
-            <div>
-                <h1 className="text-3xl font-serif-display text-white tracking-tighter opacity-80">
-                    MANSION <span className="text-indigo-500">PROTOCOL</span>
-                </h1>
-                <div className="flex items-center gap-4 mt-1">
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-[0.3em]">
-                        Sector 4 // {isHauntActive ? 'Haunt Phase' : 'Exploration Phase'}
-                    </p>
-                </div>
-            </div>
+  // 网络模式
+  useEffect(() => {
+    if (gameMode !== 'online') return;
 
-            <div className="flex items-center gap-3 pointer-events-auto">
-                {/* Omen Counter Widget */}
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-950/80 border border-zinc-800 rounded text-[10px] text-zinc-400 uppercase tracking-widest shadow-lg backdrop-blur-sm" title="当前揭示的预兆数量">
-                    <Skull size={14} className={omenCount > 0 ? "text-indigo-500" : "text-zinc-600"} />
-                    <span className="text-zinc-600">Omens:</span>
-                    <span className={`font-bold text-sm ${omenCount > 0 ? "text-indigo-400" : "text-zinc-500"}`}>{omenCount}</span> 
-                </div>
+    // 监听连接状态
+    const checkConnection = setInterval(() => {
+      setIsConnected(wsClient.isConnected());
+    }, 1000);
 
-                {!isHauntActive && (
-                    <button 
-                      onClick={debugForceHaunt}
-                      className="flex items-center gap-1.5 px-2 py-1.5 bg-indigo-900/20 hover:bg-indigo-900/40 text-indigo-500 border border-indigo-900/30 rounded text-[9px] font-bold uppercase transition-all"
-                      title="强制进入作祟模式"
-                    >
-                      <Bug size={12} />
-                      调试: 触发作祟
-                    </button>
-                )}
-            </div>
+    // 消息处理
+    const handlers: Record<string, (msg: ServerMessage) => void> = {
+      game_started: () => setNetworkScreen('game'),
+      server_shutdown: () => {
+        setNetworkScreen('login');
+        setGameMode('local');
+      }
+    };
+
+    Object.entries(handlers).forEach(([type, handler]) => {
+      wsClient.on(type, handler);
+    });
+
+    return () => {
+      clearInterval(checkConnection);
+      Object.keys(handlers).forEach(type => wsClient.off(type));
+    };
+  }, [gameMode]);
+
+  // 切换到本地模式
+  const switchToLocal = () => {
+    network.cleanupNetworkLayer();
+    setGameMode('local');
+  };
+
+  // 切换到联机模式
+  const switchToOnline = () => {
+    setGameMode('online');
+    setNetworkScreen('login');
+  };
+
+  // 根据模式渲染
+  if (gameMode === 'local') {
+    return (
+      <>
+        <LocalGame />
+        {/* 模式切换按钮 */}
+        <button
+          onClick={switchToOnline}
+          className="fixed bottom-4 right-4 z-50 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded border border-zinc-700"
+        >
+          切换到联机模式
+        </button>
+      </>
+    );
+  }
+
+  // 联机模式
+  if (gameMode === 'online') {
+    if (networkScreen === 'login' || networkScreen === 'lobby') {
+      return (
+        <>
+          <LoginScreen 
+            onLogin={() => {
+              setIsConnected(true);
+            }} 
+          />
+          {isConnected && <LobbyScreen />}
+          <button
+            onClick={switchToLocal}
+            className="fixed bottom-4 right-4 z-50 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded border border-zinc-700"
+          >
+            切换到单机模式
+          </button>
+        </>
+      );
+    }
+
+    // 游戏进行中
+    return (
+      <>
+        <LocalGame />
+        <div className="fixed top-4 right-4 z-50 px-3 py-1 bg-green-900/80 text-green-400 text-xs rounded border border-green-800">
+          联机模式
         </div>
-        
-        <MapGrid />
-        
-        {/* Floating UI Elements */}
-        <TileInspector />
-        <TurnControl />
-        <FeedbackToast />
-      </div>
+        <button
+          onClick={switchToLocal}
+          className="fixed bottom-4 right-4 z-50 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded border border-zinc-700"
+        >
+          退出联机
+        </button>
+      </>
+    );
+  }
 
-      {/* Right Sidebar */}
-      <PlayerHUD />
-
-      {/* Overlays */}
-      <CardResolutionModal />
-      <HauntRollModal />
-      <HauntReveal />
-      <InventoryModal />
-      <InteractionModal />
-      <SkillTreeModal />
-      <PlayerInspectionModal />
-      <CombatResolution />
-      <DiceRoller />
-
-      {/* Scanline Effect (Atmosphere) */}
-      <div className="absolute inset-0 pointer-events-none z-50 opacity-[0.03] mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
-    </div>
-  );
+  return null;
 };
 
 export default App;
