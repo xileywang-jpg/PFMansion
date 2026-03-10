@@ -3,8 +3,8 @@ package game
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -73,24 +73,24 @@ type Attribute struct {
 
 // 角色定义
 type CharacterDef struct {
-	ID          string             `json:"id"`
-	Name        string            `json:"name"`
-	Attributes  map[string]Attribute `json:"attributes"`
-	Traits      []string          `json:"traits"`
-	Description string            `json:"description"`
+	ID          string                   `json:"id"`
+	Name        string                  `json:"name"`
+	Attributes  map[string]Attribute    `json:"attributes"`
+	Traits      []string                `json:"traits"`
+	Description string                  `json:"description"`
 }
 
 // 玩家
 type GamePlayer struct {
 	ID         string         `json:"id"`
-	Character  CharacterDef   `json:"character"`
+	Character  CharacterDef  `json:"character"`
 	Position   Position      `json:"position"`
-	Items      []string      `json:"items"`
+	Items      []string     `json:"items"`
 	IsDead     bool          `json:"isDead"`
 	Team       string        `json:"team"`
-	Buffs      []string      `json:"buffs"`
-	Skills     []string      `json:"skills"`
-	SkillPoints int          `json:"skillPoints"`
+	Buffs      []string     `json:"buffs"`
+	Skills     []string     `json:"skills"`
+	SkillPoints int         `json:"skillPoints"`
 }
 
 // 位置
@@ -99,16 +99,46 @@ type Position struct {
 	Y int `json:"y"`
 }
 
+// 房间定义
+type TileDef struct {
+	ID          string            `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Type       string           `json:"type"`
+	Floors     []string         `json:"floors"`
+	Edges      map[Direction]string `json:"edges"`
+	CardSymbol string           `json:"cardSymbol,omitempty"`
+	EventTrigger string        `json:"eventTrigger,omitempty"`
+}
+
 // 房间实例
 type TileInstance struct {
-	InstanceID  string      `json:"instanceId"`
-	DefID       string      `json:"defId"`
-	X           int         `json:"x"`
-	Y           int         `json:"y"`
-	Rotation    int         `json:"rotation"`
-	Edges       map[Direction]string `json:"edges"`
-	HasEventTriggered bool   `json:"hasEventTriggered"`
-	Visibility  string      `json:"visibility"`
+	InstanceID       string            `json:"instanceId"`
+	DefID            string            `json:"defId"`
+	X                int               `json:"x"`
+	Y                int               `json:"y"`
+	Rotation         int               `json:"rotation"`
+	Edges            map[Direction]string `json:"edges"`
+	HasEventTriggered bool              `json:"hasEventTriggered"`
+	Visibility       string            `json:"visibility"`
+	DroppedItems     []string          `json:"droppedItems"`
+}
+
+// 卡牌定义
+type CardDef struct {
+	ID          string      `json:"id"`
+	Type       string      `json:"type"`
+	Title      string      `json:"title"`
+	Description string     `json:"description"`
+	CardSymbol string      `json:"cardSymbol,omitempty"`
+}
+
+// 剧本定义
+type Scenario struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	IntroText   string   `json:"introText"`
+	TraitorRule string   `json:"traitorRule"`
 }
 
 // 日志条目
@@ -122,18 +152,23 @@ type LogEntry struct {
 // ==================== 完整游戏状态 ====================
 
 type GameStateFull struct {
-	Phase         GamePhase          `json:"phase"`
-	TurnPhase     TurnPhase          `json:"turnPhase"`
-	TurnIndex     int                `json:"turnIndex"`
+	Phase         GamePhase              `json:"phase"`
+	TurnPhase     TurnPhase              `json:"turnPhase"`
+	TurnIndex     int                    `json:"turnIndex"`
 	Players       map[string]*GamePlayer `json:"players"`
-	PlayerIDs     []string           `json:"playerIds"`
-	ActivePlayerID string            `json:"activePlayerId"`
+	PlayerIDs     []string               `json:"playerIds"`
+	ActivePlayerID string                `json:"activePlayerId"`
 	Map           map[string]*TileInstance `json:"map"`
-	OmenCount     int                `json:"omenCount"`
-	IsHauntActive bool               `json:"isHauntActive"`
-	Logs          []LogEntry         `json:"logs"`
-	MovesRemaining int               `json:"movesRemaining"`
-	LastRollResult *int              `json:"lastRollResult,omitempty"`
+	TileDeck      []TileDef              `json:"tileDeck"`
+	OmenCount     int                   `json:"omenCount"`
+	IsHauntActive bool                  `json:"isHauntActive"`
+	CurrentScenario *Scenario           `json:"currentScenario,omitempty"`
+	TraitorID     string                `json:"traitorId,omitempty"`
+	Logs          []LogEntry            `json:"logs"`
+	MovesRemaining int                  `json:"movesRemaining"`
+	LastRollResult *int                 `json:"lastRollResult,omitempty"`
+	LastTriggeredOmen string           `json:"lastTriggeredOmen,omitempty"`
+	LastTriggeredTile string            `json:"lastTriggeredTile,omitempty"`
 }
 
 // ==================== 房间游戏状态 ====================
@@ -153,6 +188,38 @@ type Room struct {
 	GameState *RoomGameState     `json:"gameState"`
 	CreatedAt time.Time          `json:"createdAt"`
 	mu        sync.RWMutex
+}
+
+// ==================== 游戏数据 (简化版) ====================
+
+var TileDeck = []TileDef{
+	{ID: "tile_hallway", Name: "嘎吱作响的走廊", Description: "地板在你脚下发出阵阵呻吟", Type: "corridor", Edges: map[Direction]string{DirectionNorth: "OPEN", DirectionSouth: "OPEN", DirectionEast: "WALL", DirectionWest: "WALL"}},
+	{ID: "tile_library", Name: "布满灰尘的图书馆", Description: "禁忌的知识", Type: "room", Edges: map[Direction]string{DirectionNorth: "WALL", DirectionSouth: "OPEN", DirectionEast: "OPEN", DirectionWest: "WALL"}, CardSymbol: "OMEN"},
+	{ID: "tile_conservatory", Name: "温室", Description: "枯死的植物", Type: "room", Edges: map[Direction]string{DirectionNorth: "OPEN", DirectionSouth: "WALL", DirectionEast: "WALL", DirectionWest: "WALL"}, CardSymbol: "OMEN"},
+	{ID: "tile_kitchen", Name: "厨房", Description: "腐烂的气味", Type: "room", Edges: map[Direction]string{DirectionNorth: "OPEN", DirectionSouth: "WALL", DirectionEast: "WALL", DirectionWest: "OPEN"}, CardSymbol: "EVENT"},
+	{ID: "tile_chapel", Name: "废弃礼拜堂", Description: "神圣不再", Type: "room", Edges: map[Direction]string{DirectionNorth: "OPEN", DirectionSouth: "WALL", DirectionEast: "OPEN", DirectionWest: "OPEN"}, CardSymbol: "OMEN"},
+	{ID: "tile_basement", Name: "地下室", Description: "黑暗的深渊", Type: "room", Edges: map[Direction]string{DirectionNorth: "WALL", DirectionSouth: "WALL", DirectionEast: "OPEN", DirectionWest: "OPEN"}, CardSymbol: "OMEN"},
+	{ID: "tile_attic", Name: "阁楼", Description: "尘埃与蜘蛛网", Type: "room", Edges: map[Direction]string{DirectionNorth: "WALL", DirectionSouth: "OPEN", DirectionEast: "WALL", DirectionWest: "WALL"}, CardSymbol: "ITEM"},
+	{ID: "tile_dining", Name: "餐厅", Description: "腐败的盛宴", Type: "room", Edges: map[Direction]string{DirectionNorth: "OPEN", DirectionSouth: "OPEN", DirectionEast: "WALL", DirectionWest: "OPEN"}, CardSymbol: "ITEM"},
+}
+
+// 剧本矩阵 (简化版)
+var HauntMatrix = map[string]string{
+	"tile_library":      "haunt_ghost",
+	"tile_conservatory": "haunt_beast",
+	"tile_chapel":       "haunt_demon",
+	"tile_basement":     "haunt_shadow",
+	"tile_attic":        "haunt_vampire",
+	"default":           "haunt_default",
+}
+
+var Scenarios = map[string]Scenario{
+	"haunt_ghost":    {ID: "haunt_ghost", Name: "幽灵的复仇", IntroText: "一位含冤而死的幽灵在大厦中游荡...", TraitorRule: "LOWEST_SANITY"},
+	"haunt_beast":     {ID: "haunt_beast", Name: "野兽之王", IntroText: "有人变成了嗜血的怪物...", TraitorRule: "HIGHEST_MIGHT"},
+	"haunt_demon":     {ID: "haunt_demon", Name: "恶魔契约", IntroText: "有人与黑暗签订了契约...", TraitorRule: "TRIGGER_PLAYER"},
+	"haunt_shadow":    {ID: "haunt_shadow", Name: "阴影侵袭", IntroText: "虚无的阴影正在吞噬一切...", TraitorRule: "LOWEST_SANITY"},
+	"haunt_vampire":   {ID: "haunt_vampire", Name: "血色饥渴", IntroText: "鲜血的渴望控制了某人...", TraitorRule: "HIGHEST_MIGHT"},
+	"haunt_default":   {ID: "haunt_default", Name: "黑暗觉醒", IntroText: "邪恶在大厦中苏醒...", TraitorRule: "TRIGGER_PLAYER"},
 }
 
 // ==================== 游戏状态管理器 ====================
@@ -357,6 +424,14 @@ func (g *GameManager) StartGame(roomID string) error {
 	// 初始化游戏状态
 	players := make(map[string]*GamePlayer)
 	playerIDs := make([]string, 0, len(room.Players))
+	
+	// 洗牌房间牌堆
+	tileDeck := make([]TileDef, len(TileDeck))
+	copy(tileDeck, TileDeck)
+	rand.Shuffle(len(tileDeck), func(i, j int) {
+		tileDeck[i], tileDeck[j] = tileDeck[j], tileDeck[i]
+	})
+
 	i := 0
 	for _, p := range room.Players {
 		playerID := p.ID
@@ -395,21 +470,18 @@ func (g *GameManager) StartGame(roomID string) error {
 			ActivePlayerID: playerIDs[0],
 			Map: map[string]*TileInstance{
 				"0,0": {
-					InstanceID: "start",
-					DefID:      "start_tile",
-					X:          0,
-					Y:          0,
-					Rotation:   0,
-					Edges: map[Direction]string{
-						DirectionNorth: "DOOR",
-						DirectionEast:  "DOOR",
-						DirectionSouth: "DOOR",
-						DirectionWest:  "DOOR",
-					},
+					InstanceID:       "start",
+					DefID:            "start_tile",
+					X:                0,
+					Y:                0,
+					Rotation:         0,
+					Edges:            map[Direction]string{DirectionNorth: "DOOR", DirectionEast: "DOOR", DirectionSouth: "DOOR", DirectionWest: "DOOR"},
 					HasEventTriggered: true,
 					Visibility:        "VISIBLE",
+					DroppedItems:     []string{},
 				},
 			},
+			TileDeck:       tileDeck,
 			OmenCount:      0,
 			IsHauntActive:  false,
 			Logs: []LogEntry{
@@ -445,104 +517,7 @@ func (g *GameManager) GetGameState(roomID string) (*GameStateFull, error) {
 	return room.GameState.FullState, nil
 }
 
-// ProcessGameAction 处理玩家游戏操作
-func (g *GameManager) ProcessGameAction(roomID, playerID string, action map[string]interface{}) error {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	room, exists := g.Rooms[roomID]
-	if !exists {
-		return errors.New("房间不存在")
-	}
-
-	if room.GameState == nil || room.GameState.FullState == nil {
-		return errors.New("游戏未开始")
-	}
-
-	state := room.GameState.FullState
-	
-	// 验证是否是当前玩家
-	if state.ActivePlayerID != playerID {
-		return errors.New("还没轮到你")
-	}
-
-	// 处理移动操作
-	if actionType, ok := action["type"].(string); ok {
-		switch actionType {
-		case "move":
-			if dir, ok := action["direction"].(string); ok {
-				return g.handleMove(roomID, playerID, dir)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (g *GameManager) handleMove(roomID, playerID, dir string) error {
-	room, ok := g.Rooms[roomID]
-	if !ok {
-		return errors.New("房间不存在")
-	}
-
-	state := room.GameState.FullState
-	if state == nil {
-		return errors.New("游戏未开始")
-	}
-
-	player, ok := state.Players[playerID]
-	if !ok {
-		return errors.New("玩家不存在")
-	}
-
-	if state.MovesRemaining <= 0 {
-		return errors.New("体力已耗尽")
-	}
-
-	// 计算新位置
-	direction := Direction(dir)
-	newX := player.Position.X
-	newY := player.Position.Y
-	
-	switch direction {
-	case DirectionNorth:
-		newY--
-	case DirectionSouth:
-		newY++
-	case DirectionEast:
-		newX++
-	case DirectionWest:
-		newX--
-	}
-
-	// 检查是否有房间
-	key := fmt.Sprintf("%d,%d", newX, newY)
-	if _, exists := state.Map[key]; exists {
-		// 移动到已有房间
-		player.Position.X = newX
-		player.Position.Y = newY
-		state.MovesRemaining--
-		
-		state.Logs = append(state.Logs, LogEntry{
-			ID:        generateLogID(),
-			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("%s 进入了 (%d,%d)", player.Character.Name, newX, newY),
-			Type:      "info",
-		})
-	}
-
-	return nil
-}
-
-// 生成ID
-func generateRoomID() string {
-	return fmt.Sprintf("%04d", time.Now().UnixNano()%10000)
-}
-
-func generatePlayerID() string {
-	return fmt.Sprintf("p%d", time.Now().UnixNano()%10000)
-}
-
-func generateLogID() string {
-	return fmt.Sprintf("log%d", time.Now().UnixNano()%10000)
+// 解析 JSON
+func init() {
+	rand.Seed(time.Now().UnixNano())
 }

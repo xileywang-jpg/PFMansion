@@ -2,6 +2,7 @@ package ws
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
@@ -428,13 +429,17 @@ func (h *Hub) handleGameAction(msg *Message) {
 		}
 		h.broadcastToRoom(msg.client.roomID, resp)
 		return
+	case "place_tile":
+		// 放置新房间
+		dir, _ := req.Action["direction"].(string)
+		err = h.gameManager.PlaceTile(msg.client.roomID, msg.client.playerID, dir)
 	case "modify_stat":
 		attr, _ := req.Action["attribute"].(string)
 		amount, _ := req.Action["amount"].(float64)
 		err = h.gameManager.ModifyStat(msg.client.roomID, msg.client.playerID, attr, int(amount))
 	default:
-		// 通用处理
-		err = h.gameManager.ProcessGameAction(msg.client.roomID, msg.client.playerID, req.Action)
+		// 未知操作
+		err = errors.New("未知操作类型")
 	}
 
 	if err != nil {

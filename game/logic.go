@@ -11,7 +11,6 @@ import (
 
 // RollDice 投骰子 (服务器端统一生成)
 func (g *GameManager) RollDice(numDice int) []int {
-	rand.Seed(time.Now().UnixNano())
 	results := make([]int, numDice)
 	for i := 0; i < numDice; i++ {
 		results[i] = rand.Intn(6) + 1
@@ -105,17 +104,7 @@ func (g *GameManager) getEffectiveSpeed(playerID string, state *GameStateFull) i
 		return 3
 	}
 	
-	// 简单计算：基础速度 + buff
-	speed := speedAttr.Current
-	
-	// 检查 buffs (简化版)
-	for _, buff := range player.Buffs {
-		if buff == "速度+" || buff == "speed+" {
-			speed++
-		}
-	}
-	
-	return speed
+	return speedAttr.Current
 }
 
 // ProcessMove 处理玩家移动
@@ -196,14 +185,150 @@ func (g *GameManager) ProcessMove(roomID, playerID, direction string) error {
 			Type:      "info",
 		})
 
-		// 检查是否有事件
-		if !existingTile.HasEventTriggered {
-			// 触发事件（暂时跳过，留给后续）
+		// 检查是否有事件触发
+		if !existingTile.HasEventTriggered && existingTile.DefID != "start_tile" {
 			existingTile.HasEventTriggered = true
+			// 检查房间类型触发事件
+			if tileDef := getTileDef(existingTile.DefID); tileDef != nil {
+				if tileDef.CardSymbol != "" {
+					state.FullState.OmenCount++
+					state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+						ID:        generateLogID(),
+						Timestamp: time.Now().UnixMilli(),
+						Text:      fmt.Sprintf("发现了 %s！大厦变得更加躁动不安...", tileDef.CardSymbol),
+						Type:      "alert",
+					})
+					
+					// 检查是否触发作祟
+					if state.FullState.OmenCount >= 6 && !state.FullState.IsHauntActive {
+						state.FullState.Phase = GamePhaseHauntRoll
+					}
+				}
+			}
 		}
 	} else {
-		// 需要放置新房间（暂不实现，留给前端处理）
+		// 需要放置新房间
 		return errors.New("需要放置新房间")
+	}
+
+	return nil
+}
+
+// PlaceTile 放置新房间
+func (g *GameManager) PlaceTile(roomID, playerID, direction string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	// 验证是否是当前玩家
+	if state.FullState.ActivePlayerID != playerID {
+		return errors.New("还没轮到你")
+	}
+
+	// 验证体力
+	if state.FullState.MovesRemaining <= 0 {
+		return errors.New("体力已耗尽")
+	}
+
+	// 检查牌堆
+	if len(state.FullState.TileDeck) == 0 {
+		return errors.New("房间牌堆已空")
+	}
+
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return errors.New("玩家不存在")
+	}
+
+	// 获取当前位置
+	currentTile, ok := state.FullState.Map[fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)]
+	if !ok {
+		return errors.New("当前位置没有房间")
+	}
+
+	// 检查方向
+	dir := Direction(direction)
+	edge, ok := currentTile.Edges[dir]
+	if !ok || edge == "WALL" {
+		return errors.New("该方向不能放置房间")
+	}
+
+	// 计算新位置
+	newX := player.Position.X
+	newY := player.Position.Y
+	switch dir {
+	case DirectionNorth:
+		newY--
+	case DirectionSouth:
+		newY++
+	case DirectionEast:
+		newX++
+	case DirectionWest:
+		newX--
+	}
+
+	// 检查位置是否已有房间
+	targetKey := fmt.Sprintf("%d,%d", newX, newY)
+	if _, exists := state.FullState.Map[targetKey]; exists {
+		return errors.New("该位置已有房间")
+	}
+
+	// 抽取房间
+	tileDef := state.FullState.TileDeck[0]
+	state.FullState.TileDeck = state.FullState.TileDeck[1:]
+
+	// 创建房间实例
+	newTile := &TileInstance{
+		InstanceID:       generateTileID(),
+		DefID:            tileDef.ID,
+		X:                newX,
+		Y:                newY,
+		Rotation:         0,
+		Edges:            tileDef.Edges,
+		HasEventTriggered: false,
+		Visibility:       "VISIBLE",
+		DroppedItems:     []string{},
+	}
+
+	// 放置房间并移动玩家
+	state.FullState.Map[targetKey] = newTile
+	player.Position.X = newX
+	player.Position.Y = newY
+	state.FullState.MovesRemaining--
+
+	// 添加日志
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("%s 探索发现了 %s", player.Character.Name, tileDef.Name),
+		Type:      "success",
+	})
+
+	// 检查房间事件
+	if tileDef.CardSymbol != "" {
+		state.FullState.OmenCount++
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("发现了 %s！大厦变得更加躁动不安...", tileDef.CardSymbol),
+			Type:      "alert",
+		})
+		
+		state.FullState.LastTriggeredTile = tileDef.ID
+
+		// 检查是否触发作祟
+		if state.FullState.OmenCount >= 6 && !state.FullState.IsHauntActive {
+			state.FullState.Phase = GamePhaseHauntRoll
+		}
 	}
 
 	return nil
@@ -237,6 +362,11 @@ func (g *GameManager) nextTurnInternal(room *Room) error {
 	state := room.GameState
 	if state == nil || state.FullState == nil {
 		return errors.New("游戏未开始")
+	}
+
+	// 如果在作祟阶段，需要处理作祟检定
+	if state.FullState.Phase == GamePhaseHauntRoll {
+		return g.processHauntRoll(room)
 	}
 
 	// 找到当前玩家索引
@@ -287,6 +417,152 @@ func (g *GameManager) nextTurnInternal(room *Room) error {
 	})
 
 	return nil
+}
+
+// ProcessHauntRoll 处理作祟检定
+func (g *GameManager) processHauntRoll(room *Room) error {
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	// 6 骰子检定
+	results := g.RollDice(6)
+	sum := 0
+	for _, v := range results {
+		sum += v
+	}
+
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("作祟检定: %v = %d vs %d", results, sum, state.FullState.OmenCount),
+		Type:      "alert",
+	})
+
+	if sum < state.FullState.OmenCount {
+		// 作祟爆发
+		state.FullState.Phase = GamePhaseHauntReveal
+		return g.triggerHaunt(room)
+	} else {
+		// 暂时安全
+		state.FullState.Phase = GamePhaseExploration
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      "作祟检定通过，大厦暂时安静下来...",
+			Type:      "info",
+		})
+		// 切换回合
+		return g.nextTurnInternal(room)
+	}
+}
+
+// TriggerHaunt 触发作祟
+func (g *GameManager) triggerHaunt(room *Room) error {
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	// 确定剧本
+	tileID := state.FullState.LastTriggeredTile
+	scenarioID := HauntMatrix[tileID]
+	if scenarioID == "" {
+		scenarioID = HauntMatrix["default"]
+	}
+
+	scenario := Scenarios[scenarioID]
+	state.FullState.CurrentScenario = &scenario
+	state.FullState.IsHauntActive = true
+
+	// 确定叛徒
+	traitorID := g.determineTraitor(scenario, state.FullState)
+
+	// 更新玩家阵营
+	for pid, player := range state.FullState.Players {
+		if pid == traitorID {
+			player.Team = "TRAITOR"
+			// 叛徒回复所有属性
+			for attrKey, attrVal := range player.Character.Attributes {
+				player.Character.Attributes[attrKey] = Attribute{
+					Current: attrVal.Max,
+					Base:    attrVal.Base,
+					Floor:   attrVal.Floor,
+					Max:     attrVal.Max,
+				}
+			}
+		} else {
+			player.Team = "HERO"
+		}
+	}
+
+	state.FullState.TraitorID = traitorID
+
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("剧本已揭晓：%s", scenario.Name),
+		Type:      "alert",
+	})
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      scenario.IntroText,
+		Type:      "narrative",
+	})
+
+	traitor := state.FullState.Players[traitorID]
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("叛徒已经产生：%s。英雄们，团结起来！", traitor.Character.Name),
+		Type:      "alert",
+	})
+
+	// 进入作祟阶段
+	state.FullState.Phase = GamePhaseHaunt
+
+	return nil
+}
+
+// DetermineTraitor 确定叛徒
+func (g *GameManager) determineTraitor(scenario Scenario, state *GameStateFull) string {
+	switch scenario.TraitorRule {
+	case "HIGHEST_MIGHT":
+		// 力量最高者
+		maxMight := -1
+		traitorID := ""
+		for pid, player := range state.Players {
+			if player.IsDead {
+				continue
+			}
+			might := player.Character.Attributes["might"].Current
+			if might > maxMight {
+				maxMight = might
+				traitorID = pid
+			}
+		}
+		return traitorID
+	case "LOWEST_SANITY":
+		// 理智最低者
+		minSanity := 100
+		traitorID := ""
+		for pid, player := range state.Players {
+			if player.IsDead {
+				continue
+			}
+			sanity := player.Character.Attributes["sanity"].Current
+			if sanity < minSanity {
+				minSanity = sanity
+				traitorID = pid
+			}
+		}
+		return traitorID
+	default:
+		// 触发者
+		return state.ActivePlayerID
+	}
 }
 
 // ModifyStat 修改玩家属性
@@ -352,4 +628,31 @@ func formatSign(n int) string {
 		return fmt.Sprintf("+%d", n)
 	}
 	return fmt.Sprintf("%d", n)
+}
+
+// GetTileDef 获取房间定义
+func getTileDef(tileID string) *TileDef {
+	for i := range TileDeck {
+		if TileDeck[i].ID == tileID {
+			return &TileDeck[i]
+		}
+	}
+	return nil
+}
+
+// GenerateID 生成ID
+func generateRoomID() string {
+	return fmt.Sprintf("%04d", rand.Intn(10000))
+}
+
+func generatePlayerID() string {
+	return fmt.Sprintf("p%d", rand.Intn(10000))
+}
+
+func generateLogID() string {
+	return fmt.Sprintf("log%d", rand.Intn(100000))
+}
+
+func generateTileID() string {
+	return fmt.Sprintf("tile%d", rand.Intn(100000))
 }
