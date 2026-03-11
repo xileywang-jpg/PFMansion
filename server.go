@@ -19,8 +19,14 @@ var gameManager *game.GameManager
 
 func main() {
 	port := flag.String("port", "8080", "服务器监听端口")
+	addr := flag.String("addr", "", "服务器监听地址 (默认所有)")
 	dir := flag.String("dir", ".", "静态文件目录")
 	flag.Parse()
+	
+	// 如果没有指定地址，默认监听本地
+	if *addr == "" {
+		*addr = "0.0.0.0"
+	}
 
 	// 初始化游戏状态管理器
 	gameManager = game.NewGameManager()
@@ -53,9 +59,9 @@ func main() {
 	fileServer := http.FileServer(http.Dir(staticDir))
 	mux.Handle("/", fileServer)
 
-	addr := fmt.Sprintf(":%s", *port)
+	listenAddr := fmt.Sprintf("%s:%s", *addr, *port)
 	server := &http.Server{
-		Addr:    addr,
+		Addr:    listenAddr,
 		Handler: mux,
 	}
 
@@ -70,8 +76,8 @@ func main() {
 	}()
 
 	log.Printf("🎮 Mansion Protocol 服务器启动")
-	log.Printf("🌐 访问地址: http://localhost:%s", *port)
-	log.Printf("🔌 WebSocket: ws://localhost:%s/ws", *port)
+	log.Printf("🌐 访问地址: http://%s:%s", *addr, *port)
+	log.Printf("🔌 WebSocket: ws://%s:%s/ws", *addr, *port)
 	log.Printf("🛑 按 Ctrl+C 停止服务器")
 	log.Println("----------------------------------------")
 

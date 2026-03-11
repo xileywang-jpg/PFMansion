@@ -102,6 +102,12 @@ function handleStateSync(msg: ServerMessage) {
   const state = msg.state as any;
   const store = useGameStore.getState();
   
+  // 防御性检查
+  if (!state) {
+    console.error('状态同步失败: state 为空');
+    return;
+  }
+  
   // 更新游戏状态
   if (state.phase) {
     // 这里需要将后端状态映射到前端状态
@@ -186,15 +192,27 @@ export function listRooms() {
 
 // 获取游戏状态
 export function getState() {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
   wsClient.send({
-    type: 'get_state'
+    type: 'get_state',
+    roomId: roomId
   });
 }
 
 // 玩家移动
 export function sendMove(direction: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
   wsClient.send({
     type: 'game_action',
+    roomId: roomId,
     action: {
       actionType: 'move',
       direction
@@ -204,8 +222,14 @@ export function sendMove(direction: string) {
 
 // 放置房间
 export function sendPlaceTile(direction: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
   wsClient.send({
     type: 'game_action',
+    roomId: roomId,
     action: {
       actionType: 'place_tile',
       direction
@@ -215,8 +239,14 @@ export function sendPlaceTile(direction: string) {
 
 // 结束回合
 export function sendEndTurn() {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
   wsClient.send({
     type: 'game_action',
+    roomId: roomId,
     action: {
       actionType: 'end_turn'
     }
@@ -225,8 +255,14 @@ export function sendEndTurn() {
 
 // 投骰子
 export function sendRollDice(numDice: number = 1) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
   wsClient.send({
     type: 'game_action',
+    roomId: roomId,
     action: {
       actionType: 'roll_dice',
       numDice
@@ -236,8 +272,14 @@ export function sendRollDice(numDice: number = 1) {
 
 // 修改属性 (仅用于调试/GM)
 export function sendModifyStat(attribute: string, amount: number) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
   wsClient.send({
     type: 'game_action',
+    roomId: roomId,
     action: {
       actionType: 'modify_stat',
       attribute,

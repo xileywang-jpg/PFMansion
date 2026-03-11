@@ -2,6 +2,7 @@
 import { useCallback } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { EventCard, ActiveRoll, Item, GamePhase } from '../types';
+import { generateId } from '../utils/idGenerator';
 
 export const useEventSystem = () => {
   const { 
@@ -123,7 +124,7 @@ export const useEventSystem = () => {
     const diceCount = getEffectiveAttributeValue(activePlayerId, attr);
 
     const rollData: ActiveRoll = {
-        id: `evt_${event.id}_${crypto.randomUUID()}`,
+        id: generateId(`evt_${event.id}`),
         attributeName: attr,
         numberOfDice: diceCount,
         targetValue: event.interaction.difficulty,

@@ -80,10 +80,14 @@ class WebSocketClient implements WSClient {
           });
         } catch (e) {
           console.error('解析消息失败:', e);
+          // 发送错误事件供 UI 监听
+          this.handleMessage({ type: 'error', message: '收到无效的服务器消息' });
         }
       };
     } catch (e) {
       console.error('创建 WebSocket 失败:', e);
+      // 发送错误事件供 UI 监听
+      this.handleMessage({ type: 'error', message: '无法连接到服务器，正在重试...' });
       this.scheduleReconnect();
     }
   }
@@ -100,9 +104,16 @@ class WebSocketClient implements WSClient {
 
   send(message: object) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+      try {
+        this.ws.send(JSON.stringify(message));
+      } catch (e) {
+        console.error('发送消息失败:', e);
+        this.handleMessage({ type: 'error', message: '发送消息失败，请重新连接' });
+      }
     } else {
       console.warn('WebSocket 未连接，无法发送消息');
+      // 提示用户重新连接
+      this.handleMessage({ type: 'error', message: '未连接到服务器，请刷新页面' });
     }
   }
 
@@ -135,7 +146,7 @@ class WebSocketClient implements WSClient {
   }
 
   private handleMessage(msg: ServerMessage) {
-    console.log('📨 收到消息:', msg.type, msg);
+    console.log('📨 收到消息:', msg.type, JSON.stringify(msg).substring(0, 200));
 
     // 预先处理一些消息
     switch (msg.type) {

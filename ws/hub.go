@@ -393,11 +393,18 @@ func (h *Hub) handleStartGame(msg *Message) {
 func (h *Hub) handleGameAction(msg *Message) {
 	var req struct {
 		Type   string                 `json:"type"`
+		RoomId string                `json:"roomId,omitempty"`
 		Action map[string]interface{} `json:"action"`
 	}
 	
 	if err := json.Unmarshal(msg.data, &req); err != nil {
 		return
+	}
+
+	// 优先使用消息中的 roomId，否则使用客户端保存的
+	roomID := req.RoomId
+	if roomID == "" {
+		roomID = msg.client.roomID
 	}
 
 	actionType, _ := req.Action["actionType"].(string)
@@ -406,9 +413,9 @@ func (h *Hub) handleGameAction(msg *Message) {
 	switch actionType {
 	case "move":
 		dir, _ := req.Action["direction"].(string)
-		err = h.gameManager.ProcessMove(msg.client.roomID, msg.client.playerID, dir)
+		err = h.gameManager.ProcessMove(roomID, msg.client.playerID, dir)
 	case "end_turn":
-		err = h.gameManager.EndTurn(msg.client.roomID, msg.client.playerID)
+		err = h.gameManager.EndTurn(roomID, msg.client.playerID)
 	case "roll_dice":
 		// 处理投骰子（前端触发，后端生成结果）
 		// 返回骰子结果给前端
@@ -427,16 +434,16 @@ func (h *Hub) handleGameAction(msg *Message) {
 			"sum":      sum,
 			"playerId": msg.client.playerID,
 		}
-		h.broadcastToRoom(msg.client.roomID, resp)
+		h.broadcastToRoom(roomID, resp)
 		return
 	case "place_tile":
 		// 放置新房间
 		dir, _ := req.Action["direction"].(string)
-		err = h.gameManager.PlaceTile(msg.client.roomID, msg.client.playerID, dir)
+		err = h.gameManager.PlaceTile(roomID, msg.client.playerID, dir)
 	case "modify_stat":
 		attr, _ := req.Action["attribute"].(string)
 		amount, _ := req.Action["amount"].(float64)
-		err = h.gameManager.ModifyStat(msg.client.roomID, msg.client.playerID, attr, int(amount))
+		err = h.gameManager.ModifyStat(roomID, msg.client.playerID, attr, int(amount))
 	default:
 		// 未知操作
 		err = errors.New("未知操作类型")
@@ -453,11 +460,25 @@ func (h *Hub) handleGameAction(msg *Message) {
 	}
 
 	// 广播更新后的游戏状态
-	h.sendGameState(msg.client.roomID)
+	h.sendGameState(roomID)
 }
 
 func (h *Hub) handleGetState(msg *Message) {
-	h.sendGameState(msg.client.roomID)
+	var req struct {
+		Type   string `json:"type"`
+		RoomId string `json:"roomId,omitempty"`
+	}
+	
+	if err := json.Unmarshal(msg.data, &req); err != nil {
+		return
+	}
+
+	roomID := req.RoomId
+	if roomID == "" {
+		roomID = msg.client.roomID
+	}
+	
+	h.sendGameState(roomID)
 }
 
 func (h *Hub) sendGameState(roomID string) {

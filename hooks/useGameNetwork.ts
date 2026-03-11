@@ -109,6 +109,11 @@ export function useGameNetwork() {
         setError('连接失败，请检查服务器');
       }
     }, 500);
+    
+    // 清理函数
+    return () => {
+      clearInterval(checkLogin);
+    };
   }, []);
 
   // 创建房间

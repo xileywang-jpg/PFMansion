@@ -17,6 +17,7 @@ import { SKILL_TREES } from '../data/skillTrees';
 import { getScenarioId } from '../data/hauntMatrix';
 import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
 import { evaluateCondition, executeEffects, GameContext, resolveTargets } from '../utils/logicEngine';
+import { generateId } from '../utils/idGenerator';
 
 interface CombatState {
   attackerId: string;
@@ -312,7 +313,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({
       players: playersDict,
       playerIds: ids,
-      activePlayerId: ids[0],
+      activePlayerId: ids[0] || '',
       map: { "0,0": startTile },
       tileDeck: [...TILE_DECK].sort(() => Math.random() - 0.5),
       decks: {
@@ -326,7 +327,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         text: '大厦沉重的大门在你们身后砰然关上。',
         type: 'narrative'
       }],
-      movesRemaining: playersDict[ids[0]].character.attributes[AttributeName.Speed].current,
+      movesRemaining: playersDict[ids[0]]?.character?.attributes[AttributeName.Speed]?.current ?? 0,
       turnIndex: 1,
       turnPhase: 'MOVING',
       phase: GamePhase.Exploration,
@@ -350,14 +351,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   addLog: (text, type = 'info') => {
-      set(s => ({ logs: [{ id: crypto.randomUUID(), timestamp: Date.now(), text, type }, ...s.logs] }));
+      set(s => ({ logs: [{ id: generateId('log'), timestamp: Date.now(), text, type }, ...s.logs] }));
   },
 
   addPersonalLog: (playerId, text, type = 'info') => {
       set(s => {
           const player = s.players[playerId];
           if (!player) return {};
-          const newLogs = [{ id: crypto.randomUUID(), timestamp: Date.now(), text, type }, ...player.personalLogs];
+          const newLogs = [{ id: generateId('plog'), timestamp: Date.now(), text, type }, ...player.personalLogs];
           return {
               players: {
                   ...s.players,
@@ -903,7 +904,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!pendingTile || !pendingTargetPosition) return;
 
     const newTileInstance: TileInstance = {
-        instanceId: `tile_${crypto.randomUUID()}`,
+        instanceId: generateId('tile'),
         defId: pendingTile.id,
         x: pendingTargetPosition.x,
         y: pendingTargetPosition.y,
