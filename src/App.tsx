@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage.jsx';
 import GamesPage from './pages/GamesPage.jsx';
 import LocalGame from '../components/LocalGame.tsx';
+import { LobbyScreen } from '../components/NetworkScreens.tsx';
 import './styles/global.css';
 
 function ProtectedRoute({ children }) {
@@ -31,6 +32,15 @@ function App() {
         />
         
         {/* 游戏页面 */}
+        <Route 
+          path="/game/mansion-protocol/lobby" 
+          element={
+            <ProtectedRoute>
+              <LobbyScreen />
+            </ProtectedRoute>
+          } 
+        />
+        
         <Route 
           path="/game/mansion-protocol" 
           element={

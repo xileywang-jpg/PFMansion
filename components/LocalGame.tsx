@@ -20,7 +20,14 @@ import PlayerInspectionModal from './PlayerInspectionModal';
 import { Bug, Skull } from 'lucide-react';
 
 const LocalGame: React.FC = () => {
-  const { debugForceHaunt, isHauntActive, omenCount } = useGameStore();
+  const { debugForceHaunt, isHauntActive, omenCount, initializeGame, players } = useGameStore();
+
+  // 初始化游戏（仅在首次挂载时）
+  React.useEffect(() => {
+    if (Object.keys(players).length === 0) {
+      initializeGame();
+    }
+  }, []);
 
   return (
     <div className="flex w-screen h-screen bg-black text-zinc-200 overflow-hidden selection:bg-indigo-500/30">

@@ -174,7 +174,7 @@ app.get('/api/games', authenticateToken, (req, res) => {
       name: 'Mansion Protocol',
       description: '猫猫怪盗的豪宅探险',
       icon: '🏠',
-      path: '/game/mansion-protocol',
+      path: '/game/mansion-protocol/lobby',
       color: '#8B5CF6'
     },
     {
