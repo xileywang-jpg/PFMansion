@@ -605,7 +605,7 @@ func (g *GameManager) ModifyStat(roomID, playerID, attribute string, amount int)
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 		ID:        generateLogID(),
 		Timestamp: time.Now().UnixMilli(),
-		Text:      fmt.Sprintf("%s 的 %s %s%d (当前: %d)", player.Character.Name, attribute, formatSign(amount), attr.Current),
+		Text:      fmt.Sprintf("%s 的 %s %s%d (当前: %d)", player.Character.Name, attribute, formatSign(amount), amount, attr.Current),
 		Type:      "info",
 	})
 
