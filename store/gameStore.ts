@@ -16,7 +16,7 @@ import { SCENARIOS_DB } from '../data/scenarios';
 import { SKILL_TREES } from '../data/source/skillTrees';
 import { getScenarioId } from '../data/hauntMatrix';
 import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
-import { evaluateCondition, executeEffects, GameContext, resolveTargets } from '../utils/logicEngine';
+import { evaluateCondition, executeEffects, GameContext, resolveTargets, handleTileTrigger, canInteractWithTile } from '../utils/logicEngine';
 import { generateId } from '../utils/idGenerator';
 
 interface CombatState {
@@ -475,6 +475,32 @@ export const useGameStore = create<GameState>((set, get) => ({
       const newMoves = state.movesRemaining - 1;
       let nextPhase: TurnPhase = 'MOVING';
       const def = TILE_DECK.find(t => t.id === existingTile.defId) || STARTING_TILE;
+      
+      // 处理地块进入触发器
+      if (def.onEnter) {
+        const context: GameContext = {
+          state: get(),
+          activePlayerId: state.activePlayerId
+        };
+        const triggerResult = handleTileTrigger(def.onEnter, context);
+        
+        // 执行触发效果
+        if (triggerResult.results.length > 0) {
+          triggerResult.results.forEach(result => {
+            if (result.type === 'modify_stat' || result.type === 'damage' || result.type === 'heal') {
+              executeEffects([{
+                type: result.type === 'damage' ? 'DAMAGE' : result.type === 'heal' ? 'HEAL' : 'MODIFY_STAT',
+                target: { type: 'SELF' },
+                stat: result.attribute,
+                amount: result.amount
+              }], context);
+            }
+            if (result.message) {
+              state.addLog(result.message, triggerResult.success ? 'success' : 'alert');
+            }
+          });
+        }
+      }
       
       if (!existingTile.hasEventTriggered && (def.cardSymbol || def.eventTrigger)) {
           set({ movesRemaining: 0 }); 

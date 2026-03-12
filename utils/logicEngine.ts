@@ -250,3 +250,217 @@ export const executeEffects = (effects: Effect[], context: GameContext): void =>
     }
   });
 };
+
+// ============================================
+// 地图卡触发器系统 (Tile Trigger System)
+// ============================================
+
+import { TileTrigger, TileInteraction, AttributeName as Attr } from '../types';
+
+/**
+ * 投掷骰子
+ */
+const rollDice = (sides: number = 6): number => {
+  return Math.floor(Math.random() * sides) + 1;
+};
+
+/**
+ * 处理地块进入/离开时的检定触发
+ */
+export const handleTileTrigger = (
+  trigger: TileTrigger,
+  context: GameContext
+): { success: boolean; results: any[] } => {
+  const { state, activePlayerId } = context;
+  const player = state.players[activePlayerId];
+  
+  if (!player) return { success: false, results: [] };
+
+  const results: any[] = [];
+
+  switch (trigger.type) {
+    case 'ATTRIBUTE_CHECK': {
+      if (!trigger.attribute || !trigger.difficulty) break;
+      
+      const attrValue = player.character.attributes[trigger.attribute]?.current ?? 0;
+      const roll = rollDice(6);
+      const total = attrValue + roll;
+      
+      state.addLog(`[检定] ${trigger.attribute} 检定: ${attrValue} + 🎲${roll} = ${total} vs 难度${trigger.difficulty}`, 'info');
+      
+      const isSuccess = total >= trigger.difficulty;
+      
+      if (isSuccess && trigger.success) {
+        trigger.success.forEach((effect: any) => {
+          results.push({ type: 'success', ...effect });
+        });
+      } else if (!isSuccess && trigger.failure) {
+        trigger.failure.forEach((effect: any) => {
+          results.push({ type: 'failure', ...effect });
+        });
+      }
+      
+      return { success: isSuccess, results };
+    }
+
+    case 'DRAW_CARD': {
+      const deck = trigger.deck || 'ITEM';
+      const count = trigger.count || 1;
+      
+      state.addLog(`[抽牌] 从${deck}堆抽取${count}张卡牌！`, 'info');
+      results.push({ type: 'draw_card', deck, count });
+      return { success: true, results };
+    }
+
+    case 'RANDOM_EVENT': {
+      if (!trigger.possibilities || trigger.possibilities.length === 0) {
+        return { success: false, results: [] };
+      }
+      
+      // 计算总权重
+      const totalWeight = trigger.possibilities.reduce((sum, p) => sum + p.weight, 0);
+      let random = Math.random() * totalWeight;
+      
+      for (const possibility of trigger.possibilities) {
+        random -= possibility.weight;
+        if (random <= 0) {
+          state.addLog(`[随机事件] 发生了: ${possibility.type}`, 'info');
+          results.push(possibility);
+          break;
+        }
+      }
+      
+      return { success: true, results };
+    }
+
+    default:
+      return { success: false, results: [] };
+  }
+};
+
+/**
+ * 处理地块互动
+ */
+export const handleTileInteraction = (
+  interaction: TileInteraction,
+  context: GameContext
+): { canInteract: boolean; message: string; effects: any[] } => {
+  const { state, activePlayerId } = context;
+  const player = state.players[activePlayerId];
+  
+  if (!player) {
+    return { canInteract: false, message: '玩家不存在', effects: [] };
+  }
+
+  // 检查条件
+  if (interaction.condition) {
+    const canProceed = evaluateCondition(interaction.condition, context);
+    if (!canProceed) {
+      return { canInteract: false, message: '条件不满足', effects: [] };
+    }
+  }
+
+  // 检查消耗
+  if (interaction.cost) {
+    const attrValue = player.character.attributes[interaction.cost.type as Attr]?.current ?? 0;
+    if (attrValue < interaction.cost.amount) {
+      return { canInteract: false, message: `需要${interaction.cost.amount}点${interaction.cost.type}`, effects: [] };
+    }
+  }
+
+  const effects: any[] = [];
+
+  switch (interaction.type) {
+    case 'TRADE':
+      return { 
+        canInteract: true, 
+        message: '交易', 
+        effects: [{ type: 'trade' }] 
+      };
+
+    case 'HEAL':
+      return { 
+        canInteract: true, 
+        message: '治疗', 
+        effects: [{ type: 'heal', amount: 999 }] 
+      };
+
+    case 'TELEPORT':
+      return { 
+        canInteract: true, 
+        message: '传送', 
+        effects: [{ type: 'teleport', destination: interaction.destination || 'any_revealed' }] 
+      };
+
+    case 'REVEAL_MAP':
+      return { 
+        canInteract: true, 
+        message: '揭示地图', 
+        effects: [{ type: 'reveal_all' }] 
+      };
+
+    case 'DIVINATION':
+      return { 
+        canInteract: true, 
+        message: '占卜', 
+        effects: [{ type: 'reveal_next_event' }] 
+      };
+
+    case 'MIRROR':
+      return { 
+        canInteract: true, 
+        message: '镜中映射', 
+        effects: [{ type: 'reveal_trail' }] 
+      };
+
+    case 'TIME_REWIND':
+      return { 
+        canInteract: true, 
+        message: '时间回溯', 
+        effects: [{ type: 'reroll_initiative' }] 
+      };
+
+    case 'FORGE':
+      return { 
+        canInteract: true, 
+        message: '锻造', 
+        effects: [{ type: 'forge' }] 
+      };
+
+    case 'CROSS':
+      // 穿越危险区域
+      if (interaction.difficulty && interaction.attribute) {
+        const attrValue = player.character.attributes[interaction.attribute]?.current ?? 0;
+        const roll = rollDice(6);
+        const total = attrValue + roll;
+        const isSuccess = total >= interaction.difficulty;
+        
+        return {
+          canInteract: true,
+          message: isSuccess ? (interaction.successMessage || '成功') : (interaction.failureMessage || '失败'),
+          effects: isSuccess ? [] : [{ type: 'damage', amount: 1 }]
+        };
+      }
+      return { canInteract: true, message: '穿越', effects: [] };
+
+    default:
+      return { canInteract: true, message: interaction.description, effects: [] };
+  }
+};
+
+/**
+ * 检查地块是否可以互动
+ */
+export const canInteractWithTile = (
+  tileDef: { interact?: TileInteraction },
+  context: GameContext
+): boolean => {
+  if (!tileDef.interact) return false;
+  
+  // 如果有条件，检查是否满足
+  if (tileDef.interact.condition) {
+    return evaluateCondition(tileDef.interact.condition, context);
+  }
+  
+  return true;
+};
