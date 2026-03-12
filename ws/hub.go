@@ -224,13 +224,20 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 		Type      string `json:"type"`
 		RoomName  string `json:"roomName"`
 		PlayerName string `json:"playerName"`
+		Theme     string `json:"theme"`
 	}
 	
 	if err := json.Unmarshal(msg.data, &req); err != nil {
 		return
 	}
 
-	room := h.gameManager.CreateRoom(req.RoomName, req.PlayerName, msg.sessionID)
+	// 默认主题
+	theme := req.Theme
+	if theme == "" {
+		theme = "original"
+	}
+
+	room := h.gameManager.CreateRoom(req.RoomName, req.PlayerName, theme, msg.sessionID)
 	
 	msg.client.roomID = room.ID
 	
@@ -253,6 +260,7 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 		"type":     "room_created",
 		"roomId":   room.ID,
 		"roomName": room.Name,
+		"theme":    room.Theme,
 		"playerId": msg.client.playerID,
 		"isHost":   true,
 	}

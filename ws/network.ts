@@ -142,10 +142,12 @@ function handleServerShutdown(msg: ServerMessage) {
 
 // 创建房间
 export function createRoom(roomName: string, playerName: string) {
+  const theme = typeof window !== 'undefined' ? localStorage.getItem('gameTheme') || 'original' : 'original';
   wsClient.send({
     type: 'create_room',
     roomName,
-    playerName
+    playerName,
+    theme
   });
 }
 

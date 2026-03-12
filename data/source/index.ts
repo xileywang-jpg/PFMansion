@@ -58,43 +58,40 @@ export function getThemeData(themeId: string) {
 
 // === 聚合所有主题（默认全部加载）===
 
-export const CHARACTERS_DATA = [
-  ...original_characters,
-  ...volantis_characters
-];
+// 默认使用原版主题
+export const CHARACTERS_DATA = original_characters;
+export const TILES_DATA = original_tiles;
+export const ITEMS_DATA = original_items;
+export const EVENTS_DATA = original_events;
+export const OMENS_DATA = original_omens;
+export const SCENARIOS_DATA = original_scenarios;
+export const SKILL_TREES = original_skillTrees;
+export const SKILLS_DATA = original_skills;
 
-export const TILES_DATA = [
-  ...original_tiles,
-  ...volantis_tiles
-];
-
-export const ITEMS_DATA = {
-  ...original_items,
-  ...volantis_items
-};
-
-export const EVENTS_DATA = {
-  ...original_events,
-  ...volantis_events
-};
-
-export const OMENS_DATA = {
-  ...original_omens,
-  ...volantis_omens
-};
-
-export const SCENARIOS_DATA = {
-  ...original_scenarios,
-  ...volantis_scenarios
-};
-
-export const SKILL_TREES = [
-  ...original_skillTrees
-];
-
-export const SKILLS_DATA = {
-  ...original_skills
-};
+// 获取指定主题的所有数据
+export function getAllThemeData(themeId: string) {
+  switch (themeId) {
+    case 'volantis':
+      return {
+        characters: volantis_characters,
+        tiles: volantis_tiles,
+        items: volantis_items,
+        events: volantis_events,
+        omens: volantis_omens,
+        scenarios: volantis_scenarios
+      };
+    case 'original':
+    default:
+      return {
+        characters: original_characters,
+        tiles: original_tiles,
+        items: original_items,
+        events: original_events,
+        omens: original_omens,
+        scenarios: original_scenarios
+      };
+  }
+}
 
 // === 主题配置 ===
 

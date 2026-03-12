@@ -8,7 +8,8 @@ import {
 import { ActionDefinition } from '../types/Logic';
 import { 
   MOCK_CHARACTERS, STARTING_TILE, TILE_DECK, 
-  MOCK_EVENTS_DECK, MOCK_ITEMS_DECK, MOCK_OMENS_DECK 
+  MOCK_EVENTS_DECK, MOCK_ITEMS_DECK, MOCK_OMENS_DECK,
+  getCharactersForGame, getTilesForGame, getItemsForGame, getEventsForGame, getOmensForGame, getStartingTileForGame
 } from '../constants';
 import { EVENTS_DB } from '../data/events';
 import { ITEMS_DB } from '../data/items';
@@ -280,13 +281,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   initializeGame: () => {
+    // 根据主题动态获取起始Tile
+    const startingTile = getStartingTileForGame();
+    
     const startTile: TileInstance = {
       instanceId: 'start_instance',
-      defId: STARTING_TILE.id,
+      defId: startingTile.id,
       x: 0,
       y: 0,
       rotation: 0,
-      edges: STARTING_TILE.edges,
+      edges: startingTile.edges,
       hasEventTriggered: true,
       visibility: 'VISIBLE',
       droppedItems: []
@@ -295,7 +299,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const playersDict: Record<string, Player> = {};
     const ids: string[] = [];
 
-    MOCK_CHARACTERS.forEach((char, index) => {
+    // 根据主题动态获取角色数据
+    const characters = getCharactersForGame();
+    
+    characters.forEach((char, index) => {
       const id = `p${index + 1}`;
       ids.push(id);
       
@@ -322,16 +329,35 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
 
+    // 根据主题动态获取游戏数据
+    const themeTiles = getTilesForGame();
+    const themeItems = getItemsForGame();
+    const themeEvents = getEventsForGame();
+    const themeOmens = getOmensForGame();
+    
+    console.log('[initializeGame] themeTiles:', themeTiles?.length);
+    console.log('[initializeGame] themeItems type:', typeof themeItems, Array.isArray(themeItems));
+    console.log('[initializeGame] themeEvents type:', typeof themeEvents, Array.isArray(themeEvents));
+    console.log('[initializeGame] themeOmens type:', typeof themeOmens, Array.isArray(themeOmens));
+    
+    // 确保数据是数组
+    const tilesArray = Array.isArray(themeTiles) ? themeTiles : [];
+    const eventsArray = Array.isArray(themeEvents) ? themeEvents : [];
+    const itemsArray = Array.isArray(themeItems) ? themeItems : [];
+    const omensArray = Array.isArray(themeOmens) ? themeOmens : [];
+
+    console.log('[initializeGame] Starting set state...');
+    
     set({
       players: playersDict,
       playerIds: ids,
       activePlayerId: ids[0] || '',
       map: { "0,0": startTile },
-      tileDeck: [...TILE_DECK].sort(() => Math.random() - 0.5),
+      tileDeck: [...tilesArray].sort(() => Math.random() - 0.5),
       decks: {
-        EVENT: [...MOCK_EVENTS_DECK].sort(() => Math.random() - 0.5),
-        ITEM: [...MOCK_ITEMS_DECK].sort(() => Math.random() - 0.5),
-        OMEN: [...MOCK_OMENS_DECK].sort(() => Math.random() - 0.5),
+        EVENT: [...eventsArray].sort(() => Math.random() - 0.5),
+        ITEM: [...itemsArray].sort(() => Math.random() - 0.5),
+        OMEN: [...omensArray].sort(() => Math.random() - 0.5),
       },
       logs: [{
         id: 'init_log',

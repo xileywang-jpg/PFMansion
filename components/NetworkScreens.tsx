@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { wsClient } from '../ws/client';
 import * as network from '../ws/network';
 import { useGameStore } from '../store/gameStore';
@@ -83,17 +84,48 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 };
 
 export const LobbyScreen: React.FC = () => {
+  const navigate = useNavigate();
   const [roomName, setRoomName] = useState('');
   const [joinRoomId, setJoinRoomId] = useState('');
   const [rooms, setRooms] = useState<any[]>([]);
   const [error, setError] = useState('');
-  const [playerName, setPlayerName] = useState('');
+  // 从 localStorage 读取玩家名称和主题，支持页面刷新后保持登录状态
+  const [playerName, setPlayerName] = useState(() => localStorage.getItem('playerName') || '');
+  const [selectedTheme, setSelectedTheme] = useState(() => localStorage.getItem('gameTheme') || 'original');
   const [isInRoom, setIsInRoom] = useState(false);
   const [roomPlayers, setRoomPlayers] = useState<any[]>([]);
   const [isHost, setIsHost] = useState(false);
   const [allReady, setAllReady] = useState(false);
 
+  // 保存玩家名称到 localStorage
+  const handlePlayerNameChange = (name: string) => {
+    setPlayerName(name);
+    localStorage.setItem('playerName', name);
+  };
+
+  // 保存主题到 localStorage
+  const handleThemeChange = (theme: string) => {
+    setSelectedTheme(theme);
+    localStorage.setItem('gameTheme', theme);
+  };
+
   useEffect(() => {
+    // 如果未连接，自动建立 WebSocket 连接
+    if (!wsClient.isConnected()) {
+      network.initNetworkLayer();
+    }
+    
+    // 等待连接成功后获取房间列表
+    const checkAndListRooms = setInterval(() => {
+      if (wsClient.isConnected()) {
+        network.listRooms();
+        clearInterval(checkAndListRooms);
+      }
+    }, 500);
+    
+    // 5秒后如果还没连接成功，停止尝试
+    setTimeout(() => clearInterval(checkAndListRooms), 5000);
+
     // 注册消息处理器
     wsClient.on('room_list', (msg) => {
       setRooms(msg.rooms || []);
@@ -103,6 +135,10 @@ export const LobbyScreen: React.FC = () => {
       setIsInRoom(true);
       setIsHost(true);
       setRoomPlayers([{ id: msg.playerId, name: playerName, isHost: true, isReady: true }]);
+      // 保存主题设置
+      if (msg.theme) {
+        localStorage.setItem('gameTheme', msg.theme);
+      }
     });
 
     wsClient.on('room_joined', (msg) => {
@@ -111,6 +147,10 @@ export const LobbyScreen: React.FC = () => {
       // 解析玩家列表
       const players = Object.values(msg.players || {}) as any[];
       setRoomPlayers(players);
+      // 保存主题设置（如果之前没有设置）
+      if (msg.theme && !localStorage.getItem('gameTheme')) {
+        localStorage.setItem('gameTheme', msg.theme);
+      }
     });
 
     wsClient.on('player_joined', (msg) => {
@@ -131,8 +171,8 @@ export const LobbyScreen: React.FC = () => {
     });
 
     wsClient.on('game_started', () => {
-      // 游戏开始，切换到游戏界面
-      window.location.reload();
+      // 游戏开始，使用 React Router 跳转到游戏页面，而不是刷新页面
+      navigate('/game/mansion-protocol');
     });
 
     // 获取房间列表
@@ -200,10 +240,54 @@ export const LobbyScreen: React.FC = () => {
           <input
             type="text"
             value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
+            onChange={(e) => handlePlayerNameChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && playerName.trim()) {
+                // 不需要做任何事，只是防止自动跳转
+              }
+            }}
             placeholder="输入你的名字"
             className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded text-white mb-4"
           />
+          
+          {/* 主题选择 */}
+          <div className="mb-6">
+            <label className="block text-zinc-400 text-sm mb-2">选择主题</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => handleThemeChange('original')}
+                className={`p-3 rounded border text-sm font-bold transition-all ${
+                  selectedTheme === 'original'
+                    ? 'bg-amber-900/30 border-amber-500 text-amber-400'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                }`}
+              >
+                🏰 原版
+              </button>
+              <button
+                onClick={() => handleThemeChange('volantis')}
+                className={`p-3 rounded border text-sm font-bold transition-all ${
+                  selectedTheme === 'volantis'
+                    ? 'bg-yellow-900/30 border-yellow-500 text-yellow-400'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                }`}
+              >
+                ✨ 翁法罗斯
+              </button>
+            </div>
+          </div>
+          
+          <button
+            onClick={() => {
+              if (playerName.trim()) {
+                // 保持当前页面，playerName 已经保存到 localStorage 了
+              }
+            }}
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-700 text-white font-bold rounded"
+            disabled={!playerName.trim()}
+          >
+            进入大厅
+          </button>
         </div>
       </div>
     );

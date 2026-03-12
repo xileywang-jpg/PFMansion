@@ -184,6 +184,7 @@ type RoomGameState struct {
 type Room struct {
 	ID        string              `json:"id"`
 	Name      string              `json:"name"`
+	Theme     string              `json:"theme"` // 主题: "original" 或 "volantis"
 	Players   map[string]*Player `json:"players"`
 	GameState *RoomGameState     `json:"gameState"`
 	CreatedAt time.Time          `json:"createdAt"`
@@ -273,7 +274,7 @@ func (g *GameManager) cleanupRooms() {
 // ==================== 房间操作 ====================
 
 // 创建房间
-func (g *GameManager) CreateRoom(roomName, playerName, sessionID string) *Room {
+func (g *GameManager) CreateRoom(roomName, playerName, theme, sessionID string) *Room {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -288,6 +289,7 @@ func (g *GameManager) CreateRoom(roomName, playerName, sessionID string) *Room {
 	room := &Room{
 		ID:        roomID,
 		Name:      roomName,
+		Theme:     theme,
 		Players:   map[string]*Player{player.ID: player},
 		GameState: &RoomGameState{Phase: "WAITING"},
 		CreatedAt: time.Now(),
@@ -296,7 +298,7 @@ func (g *GameManager) CreateRoom(roomName, playerName, sessionID string) *Room {
 	g.Rooms[roomID] = room
 	g.Players[sessionID] = player
 
-	log.Printf("📝 创建房间: %s (%s), 房主: %s", roomID, roomName, playerName)
+	log.Printf("📝 创建房间: %s (%s), 主题: %s, 房主: %s", roomID, roomName, theme, playerName)
 	
 	return room
 }

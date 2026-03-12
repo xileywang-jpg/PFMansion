@@ -1,7 +1,104 @@
 
 import { CharacterDef, TileDef, CardDef, AttributeName, FloorLevel, Direction, Item, DirectionalEdges } from './types';
 import { EVENTS_DB } from './data/events';
-import { CHARACTERS_DATA, TILES_DATA, ITEMS_DATA, OMENS_DATA, SKILL_TREES, SCENARIOS_DATA } from './data/source';
+import { CHARACTERS_DATA, TILES_DATA, ITEMS_DATA, OMENS_DATA, SKILL_TREES, SCENARIOS_DATA, getAllThemeData } from './data/source';
+
+// --- 运行时获取主题数据 ---
+// 在浏览器环境中，从 localStorage 读取主题设置
+let cachedThemeData: ReturnType<typeof getAllThemeData> | null = null;
+
+function getRuntimeThemeData() {
+  // 服务端渲染或 Node 环境
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  
+  // 每次调用时都读取最新的 localStorage，确保获取最新设置
+  const themeId = localStorage.getItem('gameTheme') || 'original';
+  cachedThemeData = getAllThemeData(themeId);
+  return cachedThemeData;
+}
+
+// 获取当前主题的 Characters
+export function getCharactersForGame(): CharacterDef[] {
+  try {
+    const themeData = getRuntimeThemeData();
+    console.log('[getCharactersForGame] themeData:', themeData);
+    console.log('[getCharactersForGame] themeData.characters:', themeData?.characters);
+    if (themeData && themeData.characters && Array.isArray(themeData.characters)) {
+      console.log('[getCharactersForGame] Loading characters for theme:', localStorage.getItem('gameTheme'));
+      const result = hydrateCharacters(themeData.characters);
+      console.log('[getCharactersForGame] hydrated characters count:', result.length);
+      return result;
+    }
+  } catch (e) {
+    console.error('[getCharactersForGame] error:', e);
+  }
+  // 后备：使用默认数据
+  console.log('[getCharactersForGame] Using fallback characters (original)');
+  return MOCK_CHARACTERS;
+}
+
+// 获取当前主题的 Tiles
+export function getTilesForGame(): TileDef[] {
+  try {
+    const themeData = getRuntimeThemeData();
+    if (themeData && themeData.tiles) {
+      return hydrateTiles(themeData.tiles);
+    }
+  } catch (e) {
+    console.error('getTilesForGame error:', e);
+  }
+  // 后备：使用默认数据
+  return TILE_DECK;
+}
+
+// 获取当前主题的 Items
+export function getItemsForGame(): any {
+  try {
+    const themeData = getRuntimeThemeData();
+    if (themeData && themeData.items) {
+      return themeData.items;
+    }
+  } catch (e) {
+    console.error('getItemsForGame error:', e);
+  }
+  // 后备：使用默认数据
+  return MOCK_ITEMS_DECK;
+}
+
+// 获取当前主题的 Events
+export function getEventsForGame(): any {
+  try {
+    const themeData = getRuntimeThemeData();
+    if (themeData && themeData.events) {
+      return themeData.events;
+    }
+  } catch (e) {
+    console.error('getEventsForGame error:', e);
+  }
+  // 后备：使用默认数据
+  return MOCK_EVENTS_DECK;
+}
+
+// 获取当前主题的 Omens
+export function getOmensForGame(): any {
+  try {
+    const themeData = getRuntimeThemeData();
+    if (themeData && themeData.omens) {
+      return themeData.omens;
+    }
+  } catch (e) {
+    console.error('getOmensForGame error:', e);
+  }
+  // 后备：使用默认数据
+  return MOCK_OMENS_DECK;
+}
+
+// 获取起始 Tile（目前使用默认）
+export function getStartingTileForGame(): TileDef {
+  return STARTING_TILE;
+}
 
 // --- Data Hydration Helpers ---
 
