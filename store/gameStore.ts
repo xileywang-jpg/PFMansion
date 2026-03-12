@@ -17,6 +17,7 @@ import { SKILL_TREES } from '../data/source/skillTrees';
 import { getScenarioId } from '../data/hauntMatrix';
 import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
 import { evaluateCondition, executeEffects, GameContext, resolveTargets, handleTileTrigger, canInteractWithTile } from '../utils/logicEngine';
+import { addStatusEffect, decrementStatusEffects, applyStatusEffectOnTurnStart, getStatusEffectModifiers } from '../utils/statusEffects';
 import { generateId } from '../utils/idGenerator';
 
 interface CombatState {
@@ -265,6 +266,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
       });
 
+      // 4. Status Effects modifiers
+      if (player.statusEffects) {
+        const statusModifiers = getStatusEffectModifiers(player);
+        statusModifiers.forEach(mod => {
+          if (mod.attribute === attribute) {
+            total += mod.amount;
+          }
+        });
+      }
+
       return Math.max(0, total);
   },
 
@@ -390,6 +401,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
 
+    // === 回合结束处理 ===
+    // 处理当前玩家回合结束时的状态效果
+    const currentPlayer = state.players[state.activePlayerId];
+    if (currentPlayer.statusEffects && currentPlayer.statusEffects.length > 0) {
+      const removedEffects = decrementStatusEffects(currentPlayer);
+      if (removedEffects.length > 0) {
+        state.addLog(`${currentPlayer.character.name} 的状态效果结束: ${removedEffects.join(', ')}`, 'info');
+      }
+    }
+
     const nextPlayer = state.players[nextId];
     const shouldGainSkillPoint = (state.turnIndex + 1) % 3 === 0;
     if (shouldGainSkillPoint) {
@@ -400,7 +421,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         set({ players: newPlayers });
     }
 
-    // Use calculated speed
+    // 处理回合开始时的状态效果
+    const nextPlayerBefore = state.players[nextId];
+    if (nextPlayerBefore.statusEffects && nextPlayerBefore.statusEffects.length > 0) {
+      const effectLogs = applyStatusEffectOnTurnStart(nextPlayerBefore);
+      effectLogs.forEach(log => {
+        state.addLog(`[${nextPlayerBefore.character.name}] ${log}`, 'info');
+      });
+      
+      // 检查石化状态 - 无法行动
+      if (nextPlayerBefore.statusEffects.some(e => e.type === 'PETRIFIED')) {
+        state.addLog(`${nextPlayerBefore.character.name} 处于石化状态，无法行动！`, 'alert');
+      }
+    }
+
+    // Use calculated speed (包含状态效果修正)
     const effectiveSpeed = get().getEffectiveAttributeValue(nextId, AttributeName.Speed);
 
     set({
