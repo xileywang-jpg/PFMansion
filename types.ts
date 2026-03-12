@@ -125,6 +125,48 @@ export interface TileEffect {
   icon?: string; 
 }
 
+// === 地图卡触发器系统 ===
+
+export type TriggerType = 'ATTRIBUTE_CHECK' | 'DRAW_CARD' | 'RANDOM_EVENT';
+
+export interface TileTrigger {
+  type: TriggerType;
+  attribute?: AttributeName;
+  difficulty?: number;
+  success?: any[];
+  failure?: any[];
+  message?: string;
+  deck?: string;
+  count?: number;
+  possibilities?: { type: string; weight: number; }[];
+}
+
+// === 地图卡互动系统 ===
+
+export type InteractionType = 
+  | 'TRADE' 
+  | 'FORGE' 
+  | 'DIVINATION' 
+  | 'HEAL' 
+  | 'TELEPORT' 
+  | 'MIRROR' 
+  | 'REVEAL_MAP' 
+  | 'TIME_REWIND' 
+  | 'CROSS';
+
+export interface TileInteraction {
+  type: InteractionType;
+  description: string;
+  condition?: any;
+  effects?: any[];
+  cost?: { type: string; amount: number };
+  difficulty?: number;
+  attribute?: AttributeName;
+  successMessage?: string;
+  failureMessage?: string;
+  destination?: string;
+}
+
 export type EdgeType = 
   | 'OPEN'          
   | 'WALL'          
@@ -148,7 +190,11 @@ export interface TileDef {
   cardSymbol?: CardSymbol; 
   eventTrigger?: string; 
   icon?: string; 
-  effects?: TileEffect[]; 
+  effects?: TileEffect[];
+  // 扩展字段
+  onEnter?: TileTrigger;
+  onLeave?: TileTrigger;
+  interact?: TileInteraction;
 }
 
 export interface TileInstance {
@@ -167,7 +213,7 @@ export interface TileInstance {
 
 export type CardSymbol = 'EVENT' | 'ITEM' | 'OMEN';
 
-export type InteractionType = 'ATTRIBUTE_CHECK' | 'CHOICE';
+export type EventInteractionType = 'ATTRIBUTE_CHECK' | 'CHOICE';
 
 export interface EventInteractionDef {
   type: 'ATTRIBUTE_CHECK';
@@ -214,7 +260,19 @@ export interface Item {
   type: ItemType;
   usage?: ItemUsage;
   passiveEffects?: TileEffect[]; 
-  grantedSkills?: string[]; // IDs of ActionDefinition granted by this item
+  grantedSkills?: string[];
+  // 扩展字段
+  grantedActions?: ItemGrantedAction[];
+}
+
+export interface ItemGrantedAction {
+  id: string;
+  name: string;
+  description: string;
+  cost?: { type: string; amount: number };
+  condition?: any;
+  cooldown?: number;
+  effects?: any[];
 }
 
 // --- Scripting & Event Engine ---

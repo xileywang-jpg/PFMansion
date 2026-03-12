@@ -1,10 +1,7 @@
 
 import { CharacterDef, TileDef, CardDef, AttributeName, FloorLevel, Direction, Item, DirectionalEdges } from './types';
 import { EVENTS_DB } from './data/events';
-import { ITEMS_DATA } from './data/source/items';
-import { OMENS_DATA } from './data/source/omens';
-import { CHARACTERS_DATA } from './data/source/characters';
-import { TILES_DATA } from './data/source/tiles';
+import { CHARACTERS_DATA, TILES_DATA, ITEMS_DATA, OMENS_DATA, SKILL_TREES, SCENARIOS_DATA } from './data/source';
 
 // --- Data Hydration Helpers ---
 
