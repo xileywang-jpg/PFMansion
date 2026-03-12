@@ -472,6 +472,34 @@ export const useGameStore = create<GameState>((set, get) => ({
           position: { x: newX, y: newY }
       };
 
+      // 获取当前位置的地块定义（用于离开触发）
+      const currentTileDef = TILE_DECK.find(t => t.id === currentTile.defId) || STARTING_TILE;
+      
+      // 处理地块离开触发器
+      if (currentTileDef.onLeave) {
+        const leaveContext: GameContext = {
+          state: get(),
+          activePlayerId: state.activePlayerId
+        };
+        const leaveResult = handleTileTrigger(currentTileDef.onLeave, leaveContext);
+        
+        if (leaveResult.results.length > 0) {
+          leaveResult.results.forEach(result => {
+            if (result.type === 'modify_stat' || result.type === 'damage' || result.type === 'heal') {
+              executeEffects([{
+                type: result.type === 'damage' ? 'DAMAGE' : result.type === 'heal' ? 'HEAL' : 'MODIFY_STAT',
+                target: { type: 'SELF' },
+                stat: result.attribute,
+                amount: result.amount
+              }], leaveContext);
+            }
+            if (result.message) {
+              state.addLog(result.message, leaveResult.success ? 'success' : 'alert');
+            }
+          });
+        }
+      }
+      
       const newMoves = state.movesRemaining - 1;
       let nextPhase: TurnPhase = 'MOVING';
       const def = TILE_DECK.find(t => t.id === existingTile.defId) || STARTING_TILE;
