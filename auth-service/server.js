@@ -5,6 +5,22 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
+// 主题配置（服务端可配置）
+const ENABLED_THEMES = [
+  {
+    id: 'original',
+    name: '原版',
+    description: '经典山屋惊魂',
+    primaryColor: '#8B4513'
+  },
+  {
+    id: 'volantis',
+    name: '翁法罗斯',
+    description: '崩坏星穹铁道 - 永恒之地',
+    primaryColor: '#FFD700'
+  }
+];
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'mansion-protocol-secret-key-2024';
@@ -194,6 +210,14 @@ app.get('/api/services', (req, res) => {
   res.json({
     auth: { url: 'http://localhost:3001', health: '/api/health' },
     game: { url: 'http://localhost:8080', health: '/ws' }
+  });
+});
+
+// 获取可用的主题列表
+app.get('/api/themes', (req, res) => {
+  res.json({
+    themes: ENABLED_THEMES,
+    default: 'original'
   });
 });
 
