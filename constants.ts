@@ -14,7 +14,7 @@ function getRuntimeThemeData() {
   }
   
   // 每次调用时都读取最新的 localStorage，确保获取最新设置
-  const themeId = localStorage.getItem('gameTheme') || 'original';
+  const themeId = localStorage.getItem('selectedTheme') || 'original';
   cachedThemeData = getAllThemeData(themeId);
   return cachedThemeData;
 }
@@ -26,7 +26,7 @@ export function getCharactersForGame(): CharacterDef[] {
     console.log('[getCharactersForGame] themeData:', themeData);
     console.log('[getCharactersForGame] themeData.characters:', themeData?.characters);
     if (themeData && themeData.characters && Array.isArray(themeData.characters)) {
-      console.log('[getCharactersForGame] Loading characters for theme:', localStorage.getItem('gameTheme'));
+      console.log('[getCharactersForGame] Loading characters for theme:', localStorage.getItem('selectedTheme'));
       const result = hydrateCharacters(themeData.characters);
       console.log('[getCharactersForGame] hydrated characters count:', result.length);
       return result;
