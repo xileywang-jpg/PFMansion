@@ -1,233 +1,184 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Users, Gift, Gem, Skull, Crosshair, Syringe, User, Swords, Zap } from 'lucide-react';
-import { Item, Player, AttributeName, GamePhase } from '../types';
-import { PLAYER_COLORS } from '../constants';
+import { handleTileInteraction, canInteractWithTile } from '../utils/logicEngine';
+import { TileInteraction, AttributeName } from '../types';
+import { GameContext } from '../utils/logicEngine';
 
-const InteractionModal: React.FC = () => {
+interface InteractionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  interaction: TileInteraction | null;
+}
+
+export const InteractionModal: React.FC<InteractionModalProps> = ({
+  isOpen,
+  onClose,
+  interaction
+}) => {
   const { 
-    isInteractionModalOpen, 
-    toggleInteractionModal, 
-    players, 
     activePlayerId, 
-    giveItem,
-    useItem,
-    startCombat,
-    playerIds,
-    phase
+    players, 
+    addLog,
+    executeScript,
+    drawCard
   } = useGameStore();
+  
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
-  const activePlayer = players[activePlayerId];
+  if (!isOpen || !interaction) return null;
 
-  // Reset selection when modal opens
-  useEffect(() => {
-    if (isInteractionModalOpen) {
-      setSelectedPartnerId(null);
+  const handleInteraction = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+
+    const player = players[activePlayerId];
+    if (!player) {
+      setIsProcessing(false);
+      return;
     }
-  }, [isInteractionModalOpen]);
 
-  // Get other living players in the same room
-  const otherPlayersInRoom = useMemo(() => {
-    if (!activePlayer) return [];
-    return Object.values(players).filter(p => 
-      p.id !== activePlayerId && 
-      !p.isDead && 
-      p.position.x === activePlayer.position.x && 
-      p.position.y === activePlayer.position.y
-    );
-  }, [players, activePlayer, activePlayerId]);
+    const context: GameContext = {
+      state: useGameStore.getState(),
+      activePlayerId
+    };
 
-  // Validate selected partner exists in the room
-  const partner = useMemo(() => {
-      if (!selectedPartnerId) return null;
-      const p = players[selectedPartnerId];
-      const isValid = otherPlayersInRoom.some(op => op.id === selectedPartnerId);
-      return isValid ? p : null;
-  }, [selectedPartnerId, players, otherPlayersInRoom]);
-
-  if (!isInteractionModalOpen || !activePlayer) return null;
-
-  const getItemIcon = (item: Item, size: number = 20) => {
-    switch (item.type) {
-        case 'WEAPON': return <Crosshair size={size} />;
-        case 'CONSUMABLE': return <Syringe size={size} />;
-        case 'OMEN': return <Skull size={size} />;
-        default: return <Gem size={size} />;
+    // 检查条件
+    if (interaction.condition) {
+      // TODO: 实现条件检查
     }
-  };
 
-  const handleGive = (itemId: string) => {
-    if (!partner) return;
-    giveItem(activePlayerId, partner.id, itemId);
-    setSelectedPartnerId(null);
-  };
+    // 检查消耗
+    if (interaction.cost) {
+      const attrValue = player.character.attributes[interaction.cost.type as any]?.current ?? 0;
+      if (attrValue < interaction.cost.amount) {
+        addLog(`需要 ${interaction.cost.amount} 点 ${interaction.cost.type}`, 'alert');
+        setIsProcessing(false);
+        return;
+      }
+      // 扣除消耗
+      executeScript([{
+        type: 'modify_stat',
+        target: activePlayerId,
+        attribute: interaction.cost.type as any,
+        amount: -interaction.cost.amount
+      }]);
+    }
 
-  const handleUseOn = (itemId: string) => {
-      if (!partner) return;
-      useItem(itemId, partner.id);
-      setSelectedPartnerId(null);
-      toggleInteractionModal();
-  };
+    // 执行互动效果
+    addLog(`你开始了: ${interaction.description}`, 'info');
 
-  const handleAttack = () => {
-    if (!partner) return;
-    // Default to Might combat
-    startCombat(activePlayerId, partner.id, AttributeName.Might);
-  };
+    switch (interaction.type) {
+      case 'TRADE':
+        // TODO: 打开交易面板
+        addLog('交易功能开发中...', 'info');
+        break;
 
-  const isHaunt = phase === GamePhase.Haunt;
+      case 'HEAL':
+        executeScript([{
+          type: 'heal',
+          target: activePlayerId,
+          attribute: AttributeName.Might,
+          amount: 999
+        }, {
+          type: 'heal',
+          target: activePlayerId,
+          attribute: AttributeName.Sanity,
+          amount: 999
+        }]);
+        addLog('你在圣泉中恢复了全部状态！', 'success');
+        break;
+
+      case 'TELEPORT':
+        // TODO: 打开传送选择面板
+        addLog('传送功能开发中...', 'info');
+        break;
+
+      case 'REVEAL_MAP':
+        // TODO: 实现揭示全图
+        addLog('你揭示了地图上所有的隐藏区域！', 'success');
+        break;
+
+      case 'DIVINATION':
+        addLog('你预知了下一个事件...（功能开发中）', 'info');
+        break;
+
+      case 'MIRROR':
+        addLog('你在镜中看到了自己的命运...（功能开发中）', 'info');
+        break;
+
+      case 'TIME_REWIND':
+        addLog('时间回溯！先攻顺序重置...（功能开发中）', 'info');
+        break;
+
+      case 'FORGE':
+        addLog('你在泰坦锻铁炉中打造了一件武器！', 'success');
+        drawCard('ITEM');
+        break;
+
+      default:
+        addLog(`互动: ${interaction.description}`, 'info');
+    }
+
+    setIsProcessing(false);
+    onClose();
+  };
 
   return (
-    <AnimatePresence>
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
-        exit={{ opacity: 0 }} 
-        className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
-        onClick={toggleInteractionModal}
-      >
-        <motion.div 
-          initial={{ scale: 0.9, opacity: 0, y: 20 }} 
-          animate={{ scale: 1, opacity: 1, y: 0 }} 
-          exit={{ scale: 0.9, opacity: 0, y: 20 }} 
-          className="w-full max-w-2xl bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl flex flex-col overflow-hidden max-h-[80vh]"
-          onClick={e => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="p-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/50">
-            <h2 className="text-xl font-serif-display text-zinc-100 flex items-center gap-3">
-              <Users size={20} className="text-indigo-400" />
-              房间内交互
-            </h2>
-            <button onClick={toggleInteractionModal} className="p-2 text-zinc-500 hover:text-white transition-colors">
-              <X size={20} />
-            </button>
-          </div>
-
-          <div className="flex-1 flex overflow-hidden">
-            {/* Left: Partner Selection */}
-            <div className="w-1/2 border-r border-zinc-800 p-6 overflow-y-auto">
-              <h3 className="text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-4">选择同伴</h3>
-              <div className="space-y-3">
-                {otherPlayersInRoom.length === 0 ? (
-                  <div className="text-xs text-zinc-600 italic py-8 text-center border border-dashed border-zinc-800 rounded">
-                    房间内没有其他生还者
-                  </div>
-                ) : (
-                  otherPlayersInRoom.map(p => {
-                    const color = PLAYER_COLORS[playerIds.indexOf(p.id)];
-                    const isSelected = selectedPartnerId === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        onClick={() => setSelectedPartnerId(p.id)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left group
-                          ${isSelected ? 'bg-indigo-900/20 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.1)]' : 'bg-zinc-800/30 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50'}
-                        `}
-                      >
-                        <div 
-                          className="w-10 h-10 rounded-full border-2 flex items-center justify-center shrink-0"
-                          style={{ borderColor: color, backgroundColor: `${color}20` }}
-                        >
-                          <User size={18} style={{ color }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className={`font-bold text-sm truncate ${isSelected ? 'text-indigo-400' : 'text-zinc-200'}`}>
-                            {p.character.name}
-                          </div>
-                          <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
-                            持有 {p.items.length} 件物品
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-slate-800 p-6 rounded-lg max-w-md w-full mx-4 border border-slate-600">
+        <h2 className="text-xl font-bold text-amber-400 mb-4">
+          {interaction.description}
+        </h2>
+        
+        <div className="space-y-4">
+          {interaction.cost && (
+            <div className="text-slate-300 text-sm">
+              消耗: {interaction.cost.amount} 点 {interaction.cost.type}
             </div>
-
-            {/* Right: Item Selection & Actions */}
-            <div className="w-1/2 p-6 flex flex-col bg-zinc-950/20 overflow-y-auto">
-              {!partner ? (
-                <div className="h-full flex flex-col items-center justify-center text-zinc-600 text-center px-6">
-                  <Gift size={32} className="mb-4 opacity-20" />
-                  <p className="text-sm italic">请在左侧选择一个交互对象</p>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-[10px] uppercase font-bold text-zinc-500 tracking-widest">与 {partner.character.name} 交互</h3>
-                    {isHaunt && (
-                      <button 
-                        onClick={handleAttack}
-                        className="flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-red-900/20 animate-pulse"
-                      >
-                        <Swords size={14} /> 攻击
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <span className="text-[9px] uppercase font-bold text-zinc-600 tracking-wider">背包物品</span>
-                    {activePlayer.items.length === 0 ? (
-                      <div className="text-xs text-zinc-600 italic py-8 text-center border border-dashed border-zinc-800 rounded">
-                        你没有任何可用的物品
-                      </div>
-                    ) : (
-                      activePlayer.items.map((item, idx) => {
-                        // Check if item can be used on opponent (or partner)
-                        const canUse = item.usage?.target === 'OPPONENT'; 
-                        // Note: Logic allows targeting 'SELECTED_PARTNER' via OPPONENT flag for now in simple items
-
-                        return (
-                          <div 
-                            key={`${item.id}-${idx}`}
-                            className="flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800 rounded-lg group hover:border-zinc-600 transition-all"
-                          >
-                            <div className={`p-2 rounded ${item.type === 'OMEN' ? 'bg-emerald-900/20 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}>
-                              {getItemIcon(item, 18)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-bold text-zinc-200 truncate">{item.name}</div>
-                              <div className="text-[9px] text-zinc-500 uppercase">{item.type}</div>
-                            </div>
-                            <div className="flex gap-1">
-                                <button 
-                                  onClick={() => handleGive(item.id)}
-                                  className="bg-zinc-700 hover:bg-zinc-600 text-zinc-200 px-2 py-1.5 rounded text-[9px] font-bold uppercase tracking-wider transition-colors"
-                                >
-                                  给予
-                                </button>
-                                {canUse && (
-                                    <button 
-                                      onClick={() => handleUseOn(item.id)}
-                                      className="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-500/20 px-2 py-1.5 rounded text-[9px] font-bold uppercase tracking-wider transition-colors"
-                                      title={item.usage?.actionLabel || "使用"}
-                                    >
-                                      <Zap size={12} />
-                                    </button>
-                                )}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </>
-              )}
+          )}
+          
+          {interaction.condition && (
+            <div className="text-slate-400 text-sm italic">
+              需要满足特定条件
             </div>
-          </div>
+          )}
+        </div>
 
-          <div className="p-4 bg-zinc-950/80 border-t border-zinc-800 text-[10px] text-zinc-600 text-center font-mono">
-            {isHaunt ? "注意: 作祟已爆发，你可以攻击其他玩家。" : "提示: 赠送物品不消耗移动力，但必须在同一房间。"}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={handleInteraction}
+            disabled={isProcessing}
+            className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-600 text-white py-2 px-4 rounded transition-colors"
+          >
+            {isProcessing ? '处理中...' : '确认'}
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 bg-slate-600 hover:bg-slate-700 text-white py-2 px-4 rounded transition-colors"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
   );
+};
+
+/**
+ * 检测当前地块是否可以互动，并打开UI
+ */
+export const checkAndOpenInteraction = (
+  tileDef: { interact?: TileInteraction },
+  context: GameContext
+): boolean => {
+  if (!tileDef.interact) return false;
+  
+  if (canInteractWithTile(tileDef, context)) {
+    useGameStore.getState().addLog(`你可以与这个地点互动: ${tileDef.interact.description}`, 'info');
+    return true;
+  }
+  
+  return false;
 };
 
 export default InteractionModal;
