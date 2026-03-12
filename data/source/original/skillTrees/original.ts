@@ -1,5 +1,5 @@
 
-import { SkillTreeCategory } from '../../../types';
+import { SkillTreeCategory } from '../../../../types';
 
 export const SKILL_TREES: SkillTreeCategory[] = [
   {
