@@ -27,12 +27,33 @@ export enum AttributeName {
 
 // --- Scenario System ---
 
-export type TraitorRule = 'TRIGGER_PLAYER' | 'HIGHEST_MIGHT' | 'LOWEST_SANITY' | 'SPECIFIC_CHAR_ID';
+export type TraitorRule = 'TRIGGER_PLAYER' | 'HIGHEST_MIGHT' | 'LOWEST_SANITY' | 'LOWEST_KNOWLEDGE' | 'HIGHEST_SPEED' | 'SPECIFIC_CHAR_ID';
+
+// === 剧本目标系统 ===
+
+export interface ScenarioObjective {
+  id: string;
+  name: string;
+  description: string;
+  completed: boolean;
+  progress: number;
+  required: number;
+  hidden?: boolean;  // 是否隐藏（叛徒专用目标）
+}
+
+export interface ScenarioVictoryCondition {
+  type: 'ELIMINATE' | 'SURVIVE' | 'COLLECT' | 'REACH' | 'CUSTOM';
+  target?: string;
+  turns?: number;
+  description: string;
+}
 
 export interface ScenarioSecrets {
   objective: string;
   setupText: string;
   abilities?: string[];
+  objectives?: ScenarioObjective[];
+  victoryCondition?: ScenarioVictoryCondition;
 }
 
 export interface Scenario {
@@ -43,6 +64,17 @@ export interface Scenario {
   traitorRuleValue?: string; // For SPECIFIC_CHAR_ID
   traitorInfo: ScenarioSecrets;
   heroInfo: ScenarioSecrets;
+  // Phase 5 扩展
+  isMultiPhase?: boolean;
+  phases?: ScenarioPhase[];
+}
+
+export interface ScenarioPhase {
+  id: string;
+  name: string;
+  description: string;
+  objectives: ScenarioObjective[];
+  triggerCondition?: string;  // 触发下一阶段的条件
 }
 
 // --- Skill Tree System ---
