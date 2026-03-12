@@ -101,12 +101,38 @@ export interface Player {
   buffs: string[]; 
   skills: string[]; // Acquired skill IDs (not including item skills)
   
+  // 状态效果 (Phase 3)
+  statusEffects: StatusEffect[];
+  
   // Progression
   skillPoints: number;
   unlockedSkillNodes: string[]; // IDs of unlocked nodes from SkillTree
   
   // History
   personalLogs: LogEntry[];
+}
+
+// === 状态效果系统 ===
+
+export type StatusEffectType = 
+  | 'INVISIBLE' 
+  | 'DISGUISED' 
+  | 'PETRIFIED' 
+  | 'BURNING' 
+  | 'CONFUSED' 
+  | 'STEALTH'
+  | 'PHASING'
+  | 'BLESSED'
+  | 'CURSED';
+
+export interface StatusEffect {
+  type: StatusEffectType;
+  duration: number;  // 剩余回合数，-1表示永久
+  source?: string;    // 来源（如物品ID）
+  // 效果特定属性
+  damage?: number;    // 燃烧伤害
+  faction?: string;   // 伪装阵营
+  amount?: number;   // 数值
 }
 
 // --- Map & Tile System ---

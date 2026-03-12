@@ -297,6 +297,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         items: [],
         buffs: [],
         skills: [],
+        statusEffects: [],  // Phase 3: 状态效果
         isDead: false,
         team: 'UNASSIGNED',
         skillPoints: initialSkillPoints,
