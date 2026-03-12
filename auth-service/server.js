@@ -31,16 +31,28 @@ const sessions = new Map(); // token -> { userId, username, createdAt, expiresAt
 
 // 初始化测试用户
 async function initTestUser() {
-  const testUsername = 'sifere';
-  const testPassword = 'meow123';
-  const passwordHash = await bcrypt.hash(testPassword, 10);
-  users.set(testUsername, {
-    id: uuidv4(),
-    username: testUsername,
-    passwordHash,
-    createdAt: new Date().toISOString()
-  });
-  console.log('🐱 测试用户已创建: sifere / meow123');
+  const testUsers = [
+    { username: 'sifere', password: 'meow123', desc: '猫猫怪盗' },
+    { username: 'aglaia', password: 'gold123', desc: '黄金裔领袖' },
+    { username: 'mithrix', password: 'war123', desc: '纷争之子' },
+    { username: 'athena', password: 'wisdom123', desc: '智慧女神' },
+    { username: 'ares', password: 'battle123', desc: '战争之神' },
+    { username: 'test1', password: 'test123', desc: '测试玩家1' },
+    { username: 'test2', password: 'test123', desc: '测试玩家2' },
+    { username: 'test3', password: 'test123', desc: '测试玩家3' },
+    { username: 'test4', password: 'test123', desc: '测试玩家4' },
+  ];
+
+  for (const user of testUsers) {
+    const passwordHash = await bcrypt.hash(user.password, 10);
+    users.set(user.username, {
+      id: uuidv4(),
+      username: user.username,
+      passwordHash,
+      createdAt: new Date().toISOString()
+    });
+    console.log(`✅ 用户已创建: ${user.username} / ${user.password} (${user.desc})`);
+  }
 }
 
 app.use(cors());
