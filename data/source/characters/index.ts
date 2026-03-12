@@ -2,7 +2,9 @@
 // 运行 npm run gen-data 或 node scripts/generateDataIndex.js 重新生成
 
 import { CHARACTERS_DATA as original_original } from '../original/characters/original';
+import { CHARACTERS_DATA as volantis_original } from '../volantis/characters/original';
 
 export const CHARACTERS_DATA = [
-  ...original_original
+  ...original_original,
+  ...volantis_original
 ];
