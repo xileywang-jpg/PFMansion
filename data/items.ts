@@ -1,4 +1,3 @@
-
 import { Item } from '../types';
 import { ITEMS_DATA } from './source/items';
 import { OMENS_DATA } from './source/omens';

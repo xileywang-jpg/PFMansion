@@ -1,4 +1,3 @@
-
 import { Scenario } from '../types';
 import { SCENARIOS_DATA } from './source/scenarios';
 

@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Lock, Check, Brain, Shield, Wind, Zap, Book, Heart, Cross, Moon, MousePointerClick, ChevronRight } from 'lucide-react';
-import { SKILL_TREES } from '../data/skillTrees';
+import { SKILL_TREES } from '../data/source/skillTrees';
 import { SkillNode } from '../types';
 
 const SkillTreeModal: React.FC = () => {

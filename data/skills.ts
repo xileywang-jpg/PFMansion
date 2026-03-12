@@ -1,4 +1,3 @@
-
 import { ActionDefinition } from '../types/Logic';
 import { SKILLS_DATA } from './source/skills';
 

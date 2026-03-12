@@ -13,7 +13,7 @@ import {
 import { EVENTS_DB } from '../data/events';
 import { ITEMS_DB } from '../data/items';
 import { SCENARIOS_DB } from '../data/scenarios';
-import { SKILL_TREES } from '../data/skillTrees';
+import { SKILL_TREES } from '../data/source/skillTrees';
 import { getScenarioId } from '../data/hauntMatrix';
 import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
 import { evaluateCondition, executeEffects, GameContext, resolveTargets } from '../utils/logicEngine';

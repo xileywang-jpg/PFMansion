@@ -1,4 +1,3 @@
-
 import { EventCard } from '../types';
 import { EVENTS_DATA } from './source/events';
 
