@@ -1,4 +1,5 @@
-// 翁法罗斯主题 - 地图卡数据
+// 翁法罗斯主题 - 地图卡数据 (迭代版)
+// 新增：进入/离开检定、互动效果
 // Volantis Map Cards
 
 export const TILES_DATA = [
@@ -13,8 +14,7 @@ export const TILES_DATA = [
     "icon": "Crown",
     "cardSymbol": "NONE",
     "effects": [
-      { "type": "buff", "text": "所有属性+1" },
-      { "type": "special", "text": "剧本事件触发率+50%" }
+      { "type": "buff", "text": "所有属性+1" }
     ]
   },
   {
@@ -31,17 +31,6 @@ export const TILES_DATA = [
     ]
   },
   {
-    "id": "vol_tile_sacred_path",
-    "name": "神圣大道",
-    "description": "通往神庙的朝圣之路，两旁是永恒燃烧的火炬。",
-    "type": "corridor",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
-    "icon": "Path",
-    "cardSymbol": "NONE",
-    "effects": []
-  },
-  {
     "id": "vol_tile_temple_light",
     "name": "光辉神庙",
     "description": "供奉黄金裔诸神的圣地，沐浴在永恒的光辉中。",
@@ -50,10 +39,15 @@ export const TILES_DATA = [
     "edges": { "N": "WALL", "S": "OPEN", "E": "WALL", "W": "OPEN" },
     "icon": "Temple",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "buff", "text": "知识+1" },
-      { "type": "event", "text": "可进行一次祈福" }
-    ]
+    "onEnter": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "knowledge",
+      "difficulty": 3,
+      "success": [
+        { "type": "modify_stat", "attribute": "knowledge", "amount": 1, "message": "你获得了神的启示！" }
+      ],
+      "failure": []
+    }
   },
   {
     "id": "vol_tile_market_square",
@@ -64,9 +58,10 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "WALL" },
     "icon": "Store",
     "cardSymbol": "NONE",
-    "effects": [
-      { "type": "special", "text": "可与任意玩家交换1件物品" }
-    ]
+    "interact": {
+      "type": "TRADE",
+      "description": "与任意玩家交换1件物品"
+    }
   },
   {
     "id": "vol_tile_guild_hall",
@@ -77,9 +72,11 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "WALL", "E": "OPEN", "W": "OPEN" },
     "icon": "Scroll",
     "cardSymbol": "NONE",
-    "effects": [
-      { "type": "special", "text": "可抽取1张技能卡" }
-    ]
+    "onEnter": {
+      "type": "DRAW_CARD",
+      "deck": "SKILL",
+      "message": "你获得了一张技能卡！"
+    }
   },
   {
     "id": "vol_tile_narrow_alley",
@@ -90,9 +87,15 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "WALL", "E": "OPEN", "W": "OPEN" },
     "icon": "Dagger",
     "cardSymbol": "NONE",
-    "effects": [
-      { "type": "debuff", "text": "速度-1" }
-    ]
+    "onEnter": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "speed",
+      "difficulty": 3,
+      "success": [],
+      "failure": [
+        { "type": "modify_stat", "attribute": "speed", "amount": -1, "message": "你被陷阱绊倒，速度降低！" }
+      ]
+    }
   },
   {
     "id": "vol_tile_warehouse",
@@ -103,134 +106,7 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
     "icon": "Box",
     "cardSymbol": "ITEM",
-    "effects": [
-      { "type": "special", "text": "可抽取1张物品卡" }
-    ]
-  },
-
-  // ==================== 黄金港 ====================
-  {
-    "id": "vol_tile_golden_port",
-    "name": "黄金港码头",
-    "description": "繁忙的港口，来自各地的船只在此停泊。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
-    "icon": "Ship",
-    "cardSymbol": "NONE",
-    "effects": [
-      { "type": "special", "text": "可通往其他区域" }
-    ]
-  },
-  {
-    "id": "vol_tile_lighthouse",
-    "name": "永恒灯塔",
-    "description": "为航船指引方向的灯塔，永不熄灭的光芒。",
-    "type": "room",
-    "floors": ["GROUND", "UPPER"],
-    "edges": { "N": "OPEN", "S": "WALL", "E": "WALL", "W": "OPEN" },
-    "icon": "Light",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "buff", "text": "全属性+1" },
-      { "type": "debuff", "text": "理智-1（永火灼烧）" }
-    ]
-  },
-  {
-    "id": "vol_tile_fishing_village",
-    "name": "渔村",
-    "description": "宁静的小渔村，村民们世代在此生活。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "OPEN" },
-    "icon": "Home",
-    "cardSymbol": "NONE",
-    "effects": [
-      { "type": "heal", "text": "恢复1点生命" }
-    ]
-  },
-  {
-    "id": "vol_tile_dockside_bar",
-    "name": "港口酒吧",
-    "description": "水手们休憩的酒吧，流传着各种海上的传言。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "WALL", "E": "OPEN", "W": "WALL" },
-    "icon": "Beer",
-    "cardSymbol": "EVENT",
-    "effects": [
-      { "type": "event", "text": "触发随机事件" }
-    ]
-  },
-
-  // ==================== 纷争事由之地 ====================
-  {
-    "id": "vol_tile_battlefield",
-    "name": "纷争战场",
-    "description": "诸神战争的遗迹，满是残垣断壁和武器碎片。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
-    "icon": "Sword",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "buff", "text": "力量+2" },
-      { "type": "debuff", "text": "理智-1" }
-    ]
-  },
-  {
-    "id": "vol_tile_war_tent",
-    "name": "战争帐篷",
-    "description": "昔日军队的临时驻地，如今空无一人。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "WALL", "E": "OPEN", "W": "WALL" },
-    "icon": "Tent",
-    "cardSymbol": "NONE",
-    "effects": [
-      { "type": "special", "text": "可搜寻到武器" }
-    ]
-  },
-  {
-    "id": "vol_tile_monument",
-    "name": "战争纪念碑",
-    "description": "为纪念阵亡将士而建的纪念碑，上面刻着古老的符文。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
-    "icon": "Monument",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "buff", "text": "知识+1" },
-      { "type": "event", "text": "触发战争记忆事件" }
-    ]
-  },
-  {
-    "id": "vol_tile_broken_weapon",
-    "name": "残兵存放处",
-    "description": "堆积如山的破损武器，部分仍可使用。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "WALL", "S": "OPEN", "E": "WALL", "W": "OPEN" },
-    "icon": "Shield",
-    "cardSymbol": "ITEM",
-    "effects": [
-      { "type": "special", "text": "可抽取1张武器卡" }
-    ]
-  },
-  {
-    "id": "vol_tile_blood_stained",
-    "name": "血染之地",
-    "description": "战斗最为激烈的区域，土地仍散发着血腥气息。",
-    "type": "corridor",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "WALL" },
-    "icon": "Droplet",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "debuff", "text": "力量-1" },
-      { "type": "special", "text": "战斗触发率+100%" }
-    ]
+    "effects": []
   },
 
   // ==================== 永火试炼 ====================
@@ -243,51 +119,17 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "WALL", "E": "OPEN", "W": "OPEN" },
     "icon": "Flame",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "buff", "text": "力量+2" },
-      { "type": "debuff", "text": "理智-2" }
-    ]
-  },
-  {
-    "id": "vol_tile_fire_temple",
-    "name": "火焰圣殿",
-    "description": "供奉火神的古老神殿，墙壁上燃烧着永恒的火焰。",
-    "type": "room",
-    "floors": ["GROUND", "UPPER"],
-    "edges": { "N": "WALL", "S": "OPEN", "E": "WALL", "W": "OPEN" },
-    "icon": "Fire",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "buff", "text": "知识+1" },
-      { "type": "event", "text": "触发火焰试炼" }
-    ]
-  },
-  {
-    "id": "vol_tile_ash_fields",
-    "name": "灰烬平原",
-    "description": "被火焰焚烧后的荒原，只剩下灰烬与焦土。",
-    "type": "corridor",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "OPEN" },
-    "icon": "Ash",
-    "cardSymbol": "NONE",
-    "effects": [
-      { "type": "debuff", "text": "速度-1" }
-    ]
-  },
-  {
-    "id": "vol_tile_molten_river",
-    "name": "熔岩河流",
-    "description": "炽热的熔岩流动形成的河流，温度足以融化金属。",
-    "type": "corridor",
-    "floors": ["GROUND"],
-    "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
-    "icon": "Lava",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "damage", "text": "通过时受到2点伤害" },
-      { "type": "special", "text": "可快速通过" }
-    ]
+    "onEnter": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "sanity",
+      "difficulty": 4,
+      "success": [
+        { "type": "modify_stat", "attribute": "might", "amount": 2, "message": "火焰之力与你共鸣！" }
+      ],
+      "failure": [
+        { "type": "modify_stat", "attribute": "sanity", "amount": -2, "message": "火焰灼烧着你的理智！" }
+      ]
+    }
   },
   {
     "id": "vol_tile_phoenix_nest",
@@ -298,10 +140,44 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
     "icon": "Phoenix",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "heal", "text": "完全恢复" },
-      { "type": "debuff", "text": "理智-1" }
-    ]
+    "onEnter": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "sanity",
+      "difficulty": 5,
+      "success": [
+        { "type": "heal", "amount": 999, "message": "你获得了凤凰的祝福，完全恢复！" }
+      ],
+      "failure": [
+        { "type": "modify_stat", "attribute": "sanity", "amount": -1, "message": "你被火焰灼伤！" }
+      ]
+    },
+    "onLeave": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "speed",
+      "difficulty": 4,
+      "success": [],
+      "failure": [
+        { "type": "damage", "amount": 1, "message": "凤凰之火在你离开时灼伤了你！" }
+      ]
+    }
+  },
+  {
+    "id": "vol_tile_molten_river",
+    "name": "熔岩河流",
+    "description": "炽热的熔岩流动形成的河流，温度足以融化金属。",
+    "type": "corridor",
+    "floors": ["GROUND"],
+    "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
+    "icon": "Lava",
+    "cardSymbol": "OMEN",
+    "effects": [],
+    "interact": {
+      "type": "CROSS",
+      "difficulty": 4,
+      "attribute": "speed",
+      "successMessage": "你轻盈地跳过熔岩！",
+      "failureMessage": "你被烫伤了！"
+    }
   },
 
   // ==================== 冥潭 ====================
@@ -314,24 +190,17 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
     "icon": "River",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "debuff", "text": "理智-2" },
-      { "type": "special", "text": "可与亡灵对话" }
-    ]
-  },
-  {
-    "id": "vol_tile_underworld_gate",
-    "name": "冥界入口",
-    "description": "通往冥界的大门，散发着死亡的气息。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "WALL", "E": "OPEN", "W": "WALL" },
-    "icon": "Skull",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "event", "text": "触发冥界试炼" },
-      { "type": "debuff", "text": "知识-1" }
-    ]
+    "onEnter": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "sanity",
+      "difficulty": 5,
+      "success": [
+        { "type": "special", "effect": "communicate_ghost", "message": "你听见了亡者的低语！" }
+      ],
+      "failure": [
+        { "type": "modify_stat", "attribute": "sanity", "amount": -2, "message": "河水带走了你的记忆！" }
+      ]
+    }
   },
   {
     "id": "vol_tile_shadow_realm",
@@ -342,10 +211,17 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "WALL" },
     "icon": "Moon",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "debuff", "text": "速度-2" },
-      { "type": "special", "text": "潜行+2" }
-    ]
+    "onEnter": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "sanity",
+      "difficulty": 4,
+      "success": [
+        { "type": "special", "effect": "stealth", "amount": 2, "message": "你融入了黑暗！" }
+      ],
+      "failure": [
+        { "type": "modify_stat", "attribute": "speed", "amount": -2, "message": "黑暗让你迷失了方向！" }
+      ]
+    }
   },
   {
     "id": "vol_tile_crypt",
@@ -356,23 +232,11 @@ export const TILES_DATA = [
     "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
     "icon": "Tomb",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "special", "text": "可获得1张灾祸卡" },
-      { "type": "event", "text": "触发亡者低语" }
-    ]
-  },
-  {
-    "id": "vol_tile_soul_forge",
-    "name": "灵魂锻造铺",
-    "description": "为亡者打造武器的神秘作坊，只在月光下营业。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "WALL", "E": "WALL", "W": "OPEN" },
-    "icon": "Anvil",
-    "cardSymbol": "ITEM",
-    "effects": [
-      { "type": "special", "text": "可将物品转换为神器" }
-    ]
+    "onEnter": {
+      "type": "DRAW_CARD",
+      "deck": "OMEN",
+      "message": "你在墓穴中发现了一张灾祸卡！"
+    }
   },
   {
     "id": "vol_tile_lake_mirror",
@@ -383,10 +247,14 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
     "icon": "Mirror",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "event", "text": "触发心像试炼" },
-      { "type": "debuff", "text": "理智-1" }
-    ]
+    "interact": {
+      "type": "MIRROR",
+      "description": "投入湖中查看自己的命运",
+      "effects": [
+        { "type": "reveal_trail" },
+        { "type": "modify_stat", "attribute": "sanity", "amount": -1 }
+      ]
+    }
   },
 
   // ==================== 黑潮区域 ====================
@@ -399,24 +267,18 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "WALL", "E": "OPEN", "W": "OPEN" },
     "icon": "Waves",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "debuff", "text": "全属性-1" },
-      { "type": "special", "text": "理智检定-2" }
-    ]
-  },
-  {
-    "id": "vol_tile_corrupted_ruins",
-    "name": "腐化遗迹",
-    "description": "被黑潮完全侵蚀的古代遗迹，散发着不祥的气息。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "WALL" },
-    "icon": "Broken",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "damage", "text": "每回合受到1点伤害" },
-      { "type": "special", "text": "可获得被封印的知识" }
-    ]
+    "onEnter": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "knowledge",
+      "difficulty": 4,
+      "success": [],
+      "failure": [
+        { "type": "modify_stat", "attribute": "might", "amount": -1 },
+        { "type": "modify_stat", "attribute": "speed", "amount": -1 },
+        { "type": "modify_stat", "attribute": "sanity", "amount": -1 },
+        { "type": "modify_stat", "attribute": "knowledge", "amount": -1, "message": "黑潮侵蚀了你！" }
+      ]
+    }
   },
   {
     "id": "vol_tile_void_entrance",
@@ -427,10 +289,22 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "OPEN" },
     "icon": "Void",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "event", "text": "触发虚空试炼" },
-      { "type": "debuff", "text": "理智-2" }
-    ]
+    "onEnter": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "sanity",
+      "difficulty": 6,
+      "success": [
+        { "type": "special", "effect": "void_sight", "message": "你看见了虚空彼端的景象！" }
+      ],
+      "failure": [
+        { "type": "modify_stat", "attribute": "sanity", "amount": -2, "message": "虚空正在吞噬你！" }
+      ]
+    },
+    "interact": {
+      "type": "TELEPORT",
+      "destination": "any_revealed",
+      "description": "通过虚空传送"
+    }
   },
   {
     "id": "vol_tile_abyss_watchtower",
@@ -441,9 +315,14 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "WALL", "E": "WALL", "W": "OPEN" },
     "icon": "Tower",
     "cardSymbol": "NONE",
-    "effects": [
-      { "type": "special", "text": "可观察全局（速度+2）" }
-    ]
+    "interact": {
+      "type": "REVEAL_MAP",
+      "description": "观察全局，发现所有未探索区域",
+      "effects": [
+        { "type": "reveal_all" },
+        { "type": "modify_stat", "attribute": "knowledge", "amount": 1 }
+      ]
+    }
   },
 
   // ==================== 泰坦遗迹 ====================
@@ -456,23 +335,14 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
     "icon": "Hammer",
     "cardSymbol": "ITEM",
-    "effects": [
-      { "type": "special", "text": "可锻造一件传奇武器" }
-    ]
-  },
-  {
-    "id": "vol_tile_giant_throne",
-    "name": "巨人王座",
-    "description": "昔日泰坦王的王座，散发着威严的气息。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
-    "icon": "Crown",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "buff", "text": "力量+2" },
-      { "type": "debuff", "text": "知识-1" }
-    ]
+    "interact": {
+      "type": "FORGE",
+      "description": "锻造一件传奇武器",
+      "condition": { "op": "GT", "stat": "knowledge", "value": 4 },
+      "effects": [
+        { "type": "gain_item", "tier": "legendary" }
+      ]
+    }
   },
   {
     "id": "vol_tile_mechanism_hall",
@@ -483,26 +353,10 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "WALL" },
     "icon": "Gear",
     "cardSymbol": "EVENT",
-    "effects": [
-      { "type": "event", "text": "触发机械守卫战斗" },
-      { "type": "special", "text": "可获得泰坦科技" }
-    ]
-  },
-  {
-    "id": "vol_tile_colossus_foot",
-    "name": "巨人之足",
-    "description": "倒塌的泰坦巨像的一只脚，体积惊人。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "WALL", "E": "OPEN", "W": "WALL" },
-    "icon": "Foot",
-    "cardSymbol": "NONE",
-    "effects": [
-      { "type": "special", "text": "可作为掩体" }
-    ]
+    "effects": []
   },
 
-  // ==================== 永恒之地其他区域 ====================
+  // ==================== 特殊区域 ====================
   {
     "id": "vol_tile_time_distortion",
     "name": "时间扭曲区",
@@ -512,24 +366,25 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
     "icon": "Clock",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "event", "text": "随机获得或失去属性" },
-      { "type": "special", "text": "可进行时间回溯" }
-    ]
-  },
-  {
-    "id": "vol_tile_garden_eternal",
-    "name": "永恒花园",
-    "description": "永远不会凋谢的花园，芬芳馥郁。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
-    "icon": "Flower",
-    "cardSymbol": "NONE",
-    "effects": [
-      { "type": "heal", "text": "恢复2点生命" },
-      { "type": "buff", "text": "速度+1" }
-    ]
+    "onEnter": {
+      "type": "RANDOM_EVENT",
+      "possibilities": [
+        { "type": "modify_stat", "attribute": "might", "amount": 1, "weight": 1 },
+        { "type": "modify_stat", "attribute": "speed", "amount": 1, "weight": 1 },
+        { "type": "modify_stat", "attribute": "sanity", "amount": 1, "weight": 1 },
+        { "type": "modify_stat", "attribute": "knowledge", "amount": 1, "weight": 1 },
+        { "type": "modify_stat", "attribute": "might", "amount": -1, "weight": 1 },
+        { "type": "modify_stat", "attribute": "speed", "amount": -1, "weight": 1 }
+      ]
+    },
+    "interact": {
+      "type": "TIME_REWIND",
+      "description": "回溯时间",
+      "cost": { "type": "sanity", "amount": 2 },
+      "effects": [
+        { "type": "reroll_initiative" }
+      ]
+    }
   },
   {
     "id": "vol_tile_library_ancient",
@@ -540,10 +395,17 @@ export const TILES_DATA = [
     "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
     "icon": "Book",
     "cardSymbol": "EVENT",
-    "effects": [
-      { "type": "buff", "text": "知识+2" },
-      { "type": "event", "text": "触发知识试炼" }
-    ]
+    "onEnter": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "knowledge",
+      "difficulty": 4,
+      "success": [
+        { "type": "modify_stat", "attribute": "knowledge", "amount": 2, "message": "你获得了古老的知识！" }
+      ],
+      "failure": [
+        { "type": "modify_stat", "attribute": "knowledge", "amount": 1, "message": "你勉强看懂了一些内容。" }
+      ]
+    }
   },
   {
     "id": "vol_tile_starry_observatory",
@@ -554,24 +416,14 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "WALL", "E": "WALL", "W": "OPEN" },
     "icon": "Star",
     "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "special", "text": "可预知下一个事件" },
-      { "type": "buff", "text": "知识+1" }
-    ]
-  },
-  {
-    "id": "vol_tile_forbidden_sanctum",
-    "name": "禁忌圣地",
-    "description": "被封印的禁忌区域据说通往神的领域。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "WALL", "S": "WALL", "E": "OPEN", "W": "OPEN" },
-    "icon": "Lock",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "event", "text": "触发终极试炼" },
-      { "type": "debuff", "text": "全属性-1" }
-    ]
+    "interact": {
+      "type": "DIVINATION",
+      "description": "预知下一个事件",
+      "effects": [
+        { "type": "reveal_next_event" },
+        { "type": "modify_stat", "attribute": "knowledge", "amount": 1 }
+      ]
+    }
   },
   {
     "id": "vol_tile_portal_chamber",
@@ -582,9 +434,12 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
     "icon": "Portal",
     "cardSymbol": "EVENT",
-    "effects": [
-      { "type": "special", "text": "可传送到任意已发现区域" }
-    ]
+    "interact": {
+      "type": "TELEPORT",
+      "destination": "any_revealed",
+      "description": "使用传送门",
+      "cost": { "type": "sanity", "amount": 1 }
+    }
   },
   {
     "id": "vol_tile_dragon_lair",
@@ -595,10 +450,12 @@ export const TILES_DATA = [
     "edges": { "N": "WALL", "S": "OPEN", "E": "WALL", "W": "OPEN" },
     "icon": "Dragon",
     "cardSymbol": "ITEM",
-    "effects": [
-      { "type": "special", "text": "可抽取3张物品卡" },
-      { "type": "event", "text": "触发巨龙守卫战斗" }
-    ]
+    "onEnter": {
+      "type": "DRAW_CARD",
+      "deck": "ITEM",
+      "count": 3,
+      "message": "你在巨龙巢穴中发现了宝藏！"
+    }
   },
   {
     "id": "vol_tile_sacred_spring",
@@ -609,37 +466,13 @@ export const TILES_DATA = [
     "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "WALL" },
     "icon": "Droplets",
     "cardSymbol": "NONE",
-    "effects": [
-      { "type": "heal", "text": "完全恢复" },
-      { "type": "buff", "text": "理智+1" }
-    ]
-  },
-  {
-    "id": "vol_tile_battle_arena",
-    "name": "竞技场",
-    "description": "古代用于角斗的竞技场，观众的欢呼声似乎仍在回响。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "WALL", "E": "OPEN", "W": "WALL" },
-    "icon": "Sword",
-    "cardSymbol": "EVENT",
-    "effects": [
-      { "type": "event", "text": "触发竞技场挑战" },
-      { "type": "buff", "text": "力量+1" }
-    ]
-  },
-  {
-    "id": "vol_tile_abandoned_shrine",
-    "name": "废弃神社",
-    "description": "被遗忘的神社，神像已爬满藤蔓。",
-    "type": "room",
-    "floors": ["GROUND"],
-    "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "OPEN" },
-    "icon": "Shrine",
-    "cardSymbol": "OMEN",
-    "effects": [
-      { "type": "event", "text": "触发古老祈祷" },
-      { "type": "debuff", "text": "理智-1" }
-    ]
+    "interact": {
+      "type": "HEAL",
+      "description": "在泉水中沐浴",
+      "effects": [
+        { "type": "heal", "amount": 999 },
+        { "type": "modify_stat", "attribute": "sanity", "amount": 1 }
+      ]
+    }
   }
 ];

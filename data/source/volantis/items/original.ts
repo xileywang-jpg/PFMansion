@@ -1,4 +1,5 @@
-// 翁法罗斯主题 - 物品卡数据
+// 翁法罗斯主题 - 物品卡数据 (迭代版)
+// 新增：伪装/看破、无条件穿越、特殊传送等机制
 // Volantis Item Cards
 
 export const ITEMS_DATA = {
@@ -18,7 +19,9 @@ export const ITEMS_DATA = {
         { "type": "LOG", "message": "长矛划过一道完美的弧线，击中目标！", "style": "alert" }
       ]
     },
-    "passiveEffects": [{ "type": "buff", "text": "力量+1" }]
+    "passiveEffects": [
+      { "type": "buff", "text": "力量+1" }
+    ]
   },
   "vol_weapon_sword_ares": {
     "id": "vol_weapon_sword_ares",
@@ -35,7 +38,9 @@ export const ITEMS_DATA = {
         { "type": "DAMAGE", "target": { "type": "SELF" }, "amount": 1 }
       ]
     },
-    "passiveEffects": [{ "type": "buff", "text": "力量+2" }]
+    "passiveEffects": [
+      { "type": "buff", "text": "力量+2" }
+    ]
   },
   "vol_weapon_dagger_sifere": {
     "id": "vol_weapon_dagger_sifere",
@@ -52,7 +57,10 @@ export const ITEMS_DATA = {
         { "type": "MODIFY_STAT", "target": { "type": "SELF" }, "stat": "speed", "amount": 1 }
       ]
     },
-    "passiveEffects": [{ "type": "buff", "text": "速度+1" }]
+    "passiveEffects": [
+      { "type": "buff", "text": "速度+1" },
+      { "type": "special", "text": "可穿越敌人位置" }
+    ]
   },
   "vol_weapon_bow_apollo": {
     "id": "vol_weapon_bow_apollo",
@@ -68,7 +76,9 @@ export const ITEMS_DATA = {
         { "type": "DAMAGE", "target": { "type": "SELECTED_PARTNER" }, "amount": 3 }
       ]
     },
-    "passiveEffects": [{ "type": "buff", "text": "远程伤害+1" }]
+    "passiveEffects": [
+      { "type": "special", "text": "远程攻击+1" }
+    ]
   },
   "vol_weapon_staff_nyx": {
     "id": "vol_weapon_staff_nyx",
@@ -85,7 +95,10 @@ export const ITEMS_DATA = {
         { "type": "MODIFY_STAT", "target": { "type": "SELECTED_PARTNER" }, "stat": "speed", "amount": -1 }
       ]
     },
-    "passiveEffects": [{ "type": "buff", "text": "知识+1" }]
+    "passiveEffects": [
+      { "type": "buff", "text": "知识+1" },
+      { "type": "special", "text": "攻击时附加减速效果" }
+    ]
   },
   "vol_weapon_hammer_hephaestus": {
     "id": "vol_weapon_hammer_hephaestus",
@@ -101,7 +114,9 @@ export const ITEMS_DATA = {
         { "type": "DAMAGE", "target": { "type": "SELECTED_PARTNER" }, "amount": 5 }
       ]
     },
-    "passiveEffects": [{ "type": "buff", "text": "力量+2，但速度-1" }]
+    "passiveEffects": [
+      { "type": "buff", "text": "力量+2，但速度-1" }
+    ]
   },
 
   // ==================== 消耗品 ====================
@@ -118,21 +133,6 @@ export const ITEMS_DATA = {
       "effects": [
         { "type": "HEAL", "target": { "type": "SELF" }, "amount": 4 },
         { "type": "MODIFY_STAT", "target": { "type": "SELF" }, "stat": "sanity", "amount": 2 }
-      ]
-    }
-  },
-  "vol_potion_manna": {
-    "id": "vol_potion_manna",
-    "name": "灵hun面包",
-    "description": "神圣的食物，仅一小块就令人饱腹。",
-    "icon": "Bread",
-    "type": "CONSUMABLE",
-    "usage": {
-      "actionLabel": "食用",
-      "isConsumable": true,
-      "target": "SELF",
-      "effects": [
-        { "type": "HEAL", "target": { "type": "SELF" }, "amount": 2 }
       ]
     }
   },
@@ -162,7 +162,7 @@ export const ITEMS_DATA = {
       "isConsumable": true,
       "target": "SELF",
       "effects": [
-        { "type": "TELEPORT", "target": { "type": "SELF" }, "destination": "any" }
+        { "type": "TELEPORT", "target": { "type": "SELF" }, "location": "any" }
       ]
     }
   },
@@ -181,23 +181,177 @@ export const ITEMS_DATA = {
       ]
     }
   },
-  "vol_scroll_shield": {
-    "id": "vol_scroll_shield",
-    "name": "护盾卷轴",
-    "description": "记载防御魔法的卷轴。",
-    "icon": "Shield",
+  "vol_scroll_reveal": {
+    "id": "vol_scroll_reveal",
+    "name": "洞察卷轴",
+    "description": "看破一切隐匿与幻象的魔法卷轴。",
+    "icon": "Eye",
     "type": "CONSUMABLE",
     "usage": {
-      "actionLabel": "施放",
+      "actionLabel": "使用",
       "isConsumable": true,
       "target": "SELF",
       "effects": [
-        { "type": "BUFF", "target": { "type": "SELF" }, "duration": 3, "stat": "might", "amount": 2 }
+        { "type": "special", "effect": "reveal_all", "message": "你发现了所有隐藏的区域！" },
+        { "type": "special", "effect": "detect_disguise", "message": "所有隐匿的单位都无所遁形！" }
+      ]
+    }
+  },
+  "vol_potion_invisibility": {
+    "id": "vol_potion_invisibility",
+    "name": "隐形药水",
+    "description": "喝下后可隐匿身形一段时间。",
+    "icon": "Potion",
+    "type": "CONSUMABLE",
+    "usage": {
+      "actionLabel": "饮用",
+      "isConsumable": true,
+      "target": "SELF",
+      "effects": [
+        { "type": "special", "effect": "invisible", "duration": 3, "message": "你变得不可见！" }
+      ]
+    }
+  },
+  "vol_scroll_passwall": {
+    "id": "vol_scroll_passwall",
+    "name": "穿墙卷轴",
+    "description": "能让持有者无条件穿过墙壁的魔法。",
+    "icon": "Scroll",
+    "type": "CONSUMABLE",
+    "usage": {
+      "actionLabel": "使用",
+      "isConsumable": true,
+      "target": "SELF",
+      "effects": [
+        { "type": "special", "effect": "pass_wall", "duration": 2, "message": "你可以穿过墙壁！" }
       ]
     }
   },
 
-  // ==================== 被动物品 ====================
+  // ==================== 被动物品 - 伪装与看破 ====================
+  "vol_cloak_disguise": {
+    "id": "vol_cloak_disguise",
+    "name": "伪装斗篷",
+    "description": "穿上后可伪装成其他阵营的单位。",
+    "icon": "Cloak",
+    "type": "PASSIVE",
+    "usage": {
+      "actionLabel": "装备",
+      "isConsumable": false,
+      "target": "SELF"
+    },
+    "passiveEffects": [
+      { "type": "special", "text": "可主动使用伪装（持续3回合）" }
+    ],
+    "grantedActions": [
+      {
+        "id": "action_disguise",
+        "name": "伪装",
+        "description": "伪装成敌人或中立单位",
+        "cost": { "type": "sanity", "amount": 1 },
+        "effects": [
+          { "type": "special", "effect": "disguise", "duration": 3 },
+          { "type": "LOG", "message": "你伪装成功！", "style": "success" }
+        ]
+      }
+    ]
+  },
+  "vol_amulet_truth": {
+    "id": "vol_amulet_truth",
+    "name": "真理护符",
+    "description": "能够看穿一切伪装与幻象。",
+    "icon": "Eye",
+    "type": "PASSIVE",
+    "usage": {
+      "actionLabel": "装备",
+      "isConsumable": false,
+      "target": "SELF"
+    },
+    "passiveEffects": [
+      { "type": "buff", "text": "知识+2" },
+      { "type": "special", "text": "免疫心智控制" },
+      { "type": "special", "text": "可看破隐匿单位" }
+    ]
+  },
+  "vol_ring_detection": {
+    "id": "vol_ring_detection",
+    "name": "侦测戒指",
+    "description": "能够探测附近的隐藏机关和单位。",
+    "icon": "Ring",
+    "type": "PASSIVE",
+    "usage": {
+      "actionLabel": "装备",
+      "isConsumable": false,
+      "target": "SELF"
+    },
+    "passiveEffects": [
+      { "type": "special", "text": "自动侦测陷阱" },
+      { "type": "special", "text": "进入区域时自动揭示隐藏内容" }
+    ]
+  },
+
+  // ==================== 被动物品 - 传送与移动 ====================
+  "vol_boots_hermes": {
+    "id": "vol_boots_hermes",
+    "name": "Hermes之靴",
+    "description": "神使的靴子，能飞檐走壁，无视地形。",
+    "icon": "Boot",
+    "type": "PASSIVE",
+    "usage": {
+      "actionLabel": "装备",
+      "isConsumable": false,
+      "target": "SELF"
+    },
+    "passiveEffects": [
+      { "type": "buff", "text": "速度+2" },
+      { "type": "special", "text": "移动时无视障碍物" },
+      { "type": "special", "text": "可无条件穿越地形" }
+    ]
+  },
+  "vol_ring_teleport": {
+    "id": "vol_ring_teleport",
+    "name": "传送戒指",
+    "description": "蕴含空间魔法的戒指，可随时传送。",
+    "icon": "Ring",
+    "type": "PASSIVE",
+    "usage": {
+      "actionLabel": "装备",
+      "isConsumable": false,
+      "target": "SELF"
+    },
+    "passiveEffects": [
+      { "type": "special", "text": "每场战斗可传送1次到任意已探索区域" }
+    ],
+    "grantedActions": [
+      {
+        "id": "action_teleport",
+        "name": "任意传送",
+        "description": "传送到任意已探索区域",
+        "cost": { "type": "sanity", "amount": 1 },
+        "effects": [
+          { "type": "TELEPORT", "target": { "type": "SELF" }, "location": "any_revealed" }
+        ]
+      }
+    ]
+  },
+  "vol_cloak_phasing": {
+    "id": "vol_cloak_phasing",
+    "name": "相位斗篷",
+    "description": "允许穿戴者短暂进入相位状态穿过实体。",
+    "icon": "Cloak",
+    "type": "PASSIVE",
+    "usage": {
+      "actionLabel": "装备",
+      "isConsumable": false,
+      "target": "SELF"
+    },
+    "passiveEffects": [
+      { "type": "special", "text": "每回合可选择进入相位状态1次" },
+      { "type": "special", "text": "相位状态下可穿过墙壁和敌人" }
+    ]
+  },
+
+  // ==================== 被动物品 - 其他特殊 ====================
   "vol_armor_aegis": {
     "id": "vol_armor_aegis",
     "name": "雅典娜之盾",
@@ -212,22 +366,6 @@ export const ITEMS_DATA = {
     "passiveEffects": [
       { "type": "buff", "text": "受到伤害-1" },
       { "type": "buff", "text": "知识+1" }
-    ]
-  },
-  "vol_boots_hermes": {
-    "id": "vol_boots_hermes",
-    "name": "Hermes之靴",
-    "description": "神使的靴子，能飞檐走壁。",
-    "icon": "Boot",
-    "type": "PASSIVE",
-    "usage": {
-      "actionLabel": "装备",
-      "isConsumable": false,
-      "target": "SELF"
-    },
-    "passiveEffects": [
-      { "type": "buff", "text": "速度+2" },
-      { "type": "buff", "text": "移动时无视障碍" }
     ]
   },
   "vol_crown_glory": {
@@ -247,57 +385,9 @@ export const ITEMS_DATA = {
       { "type": "buff", "text": "队伍攻击+1" }
     ]
   },
-  "vol_cloak_invisibility": {
-    "id": "vol_cloak_invisibility",
-    "name": "隐匿斗篷",
-    "description": "穿上后可以短暂隐身。",
-    "icon": "Cloak",
-    "type": "PASSIVE",
-    "usage": {
-      "actionLabel": "装备",
-      "isConsumable": false,
-      "target": "SELF"
-    },
-    "passiveEffects": [
-      { "type": "buff", "text": "速度+1" },
-      { "type": "special", "text": "每场战斗可隐身1回合" }
-    ]
-  },
-  "vol_amulet_truth": {
-    "id": "vol_amulet_truth",
-    "name": "真理护符",
-    "description": "能够看穿一切谎言。",
-    "icon": "Eye",
-    "type": "PASSIVE",
-    "usage": {
-      "actionLabel": "装备",
-      "isConsumable": false,
-      "target": "SELF"
-    },
-    "passiveEffects": [
-      { "type": "buff", "text": "知识+2" },
-      { "type": "special", "text": "免疫心智控制" }
-    ]
-  },
-  "vol_ring_vitality": {
-    "id": "vol_ring_vitality",
-    "name": "生命戒指",
-    "description": "蕴含生命能量的戒指。",
-    "icon": "Ring",
-    "type": "PASSIVE",
-    "usage": {
-      "actionLabel": "装备",
-      "isConsumable": false,
-      "target": "SELF"
-    },
-    "passiveEffects": [
-      { "type": "buff", "text": "最大生命+2" },
-      { "type": "heal", "text": "每回合恢复1点生命" }
-    ]
-  },
   "vol_charm_lucky": {
     "id": "vol_charm_lucky",
-    "name": "幸运 charm",
+    "name": "幸运charm",
     "description": "能带来好运的护身符。",
     "icon": "Clover",
     "type": "PASSIVE",
@@ -308,40 +398,7 @@ export const ITEMS_DATA = {
     },
     "passiveEffects": [
       { "type": "special", "text": "检定+1" },
-      { "type": "buff", "text": "暴击率+10%" }
-    ]
-  },
-
-  // ==================== 特殊物品 ====================
-  "vol_key_olympus": {
-    "id": "vol_key_olympus",
-    "name": "Olympus密钥",
-    "description": "通往诸神领域的钥匙。",
-    "icon": "Key",
-    "type": "KEY",
-    "usage": {
-      "actionLabel": "使用",
-      "isConsumable": false,
-      "target": "SELF"
-    },
-    "passiveEffects": [
-      { "type": "special", "text": "完成终极任务的关键" }
-    ]
-  },
-  "vol_compass_eternal": {
-    "id": "vol_compass_eternal",
-    "name": "永恒罗盘",
-    "description": "永远指向正确方向的魔法罗盘。",
-    "icon": "Compass",
-    "type": "PASSIVE",
-    "usage": {
-      "actionLabel": "装备",
-      "isConsumable": false,
-      "target": "SELF"
-    },
-    "passiveEffects": [
-      { "type": "special", "text": "不会迷失方向" },
-      { "type": "buff", "text": "知识+1" }
+      { "type": "special", "text": "暴击率+10%" }
     ]
   },
   "vol_orb_prophecy": {
@@ -351,13 +408,24 @@ export const ITEMS_DATA = {
     "icon": "Crystal",
     "type": "PASSIVE",
     "usage": {
-      "actionLabel": "装备",
+      "actionLabel": "使用",
       "isConsumable": false,
       "target": "SELF"
     },
     "passiveEffects": [
       { "type": "special", "text": "每场战斗可预判一次攻击" },
       { "type": "buff", "text": "知识+2" }
+    ],
+    "grantedActions": [
+      {
+        "id": "action_prophecy",
+        "name": "预言",
+        "description": "预知下一次事件",
+        "effects": [
+          { "type": "special", "effect": "reveal_next_event" },
+          { "type": "LOG", "message": "水晶球揭示了未来！", "style": "info" }
+        ]
+      }
     ]
   },
   "vol_lyre_orpheus": {
@@ -374,26 +442,6 @@ export const ITEMS_DATA = {
     "passiveEffects": [
       { "type": "special", "text": "队友速度+1" },
       { "type": "heal", "text": "每回合队友恢复1点生命" }
-    ]
-  },
-  "vol_spear_destiny": {
-    "id": "vol_spear_destiny",
-    "name": "命运之矛",
-    "description": "能够命中注定目标的武器。",
-    "icon": "Spear",
-    "type": "WEAPON",
-    "usage": {
-      "actionLabel": "投掷",
-      "isConsumable": false,
-      "target": "OPPONENT",
-      "effects": [
-        { "type": "DAMAGE", "target": { "type": "SELECTED_PARTNER" }, "amount": 5 },
-        { "type": "LOG", "message": "命运之矛命中了目标！", "style": "alert" }
-      ]
-    },
-    "passiveEffects": [
-      { "type": "buff", "text": "力量+2" },
-      { "type": "special", "text": "必定命中" }
     ]
   }
 };
