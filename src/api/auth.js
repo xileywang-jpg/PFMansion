@@ -65,6 +65,13 @@ const authApi = {
     });
     if (!res.ok) throw new Error('获取游戏列表失败');
     return res.json();
+  },
+
+  // 获取可用主题
+  async getThemes() {
+    const res = await fetch(`${API_BASE}/themes`);
+    if (!res.ok) throw new Error('获取主题列表失败');
+    return res.json();
   }
 };
 
