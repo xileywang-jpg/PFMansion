@@ -20,6 +20,7 @@ import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
 import { evaluateCondition, executeEffects, GameContext, resolveTargets, handleTileTrigger, canInteractWithTile } from '../utils/logicEngine';
 import { addStatusEffect, decrementStatusEffects, applyStatusEffectOnTurnStart, getStatusEffectModifiers } from '../utils/statusEffects';
 import { generateId } from '../utils/idGenerator';
+import * as network from '../ws/network';
 
 interface CombatState {
   attackerId: string;
@@ -65,6 +66,9 @@ interface GameState {
   // Haunt Context
   lastTriggeredOmenId: string | null;
   lastTriggeredTileId: string | null;
+
+  // Phase 1: 待处理动作 (网络同步)
+  pendingAction: { type: string; target: string; data?: Record<string, unknown> } | null;
 
   pendingTile: TileDef | null;
   pendingTileRotation: number;
@@ -216,6 +220,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   traitorId: null,
   lastTriggeredOmenId: null,
   lastTriggeredTileId: null,
+  // Phase 1: 待处理动作
+  pendingAction: null,
   pendingTile: null,
   pendingTileRotation: 0,
   pendingTargetPosition: null,
@@ -381,6 +387,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       traitorId: null,
       lastTriggeredOmenId: null,
       lastTriggeredTileId: null,
+      pendingAction: null,
       isInventoryOpen: false,
       isInteractionModalOpen: false,
       isSkillTreeOpen: false,
@@ -705,6 +712,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   startCombat: (attackerId, defenderId, attribute) => {
+    // 检查是否在网络模式
+    if (network.isInNetworkMode()) {
+        // 网络模式：发送战斗开始请求
+        network.sendStartCombat(defenderId, attribute);
+        return;
+    }
+    
+    // 本地模式：直接处理
     const state = get();
     const attacker = state.players[attackerId];
     const defender = state.players[defenderId];
@@ -918,36 +933,47 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
   },
 
-  resolveEventChoice: (actions: ScriptAction[]) => {
-      // Execute effects
+  resolveEventChoice: (actions: ScriptAction[], choiceIndex?: number) => {
+      // 检查是否在网络模式
+      if (network.isInNetworkMode() && choiceIndex !== undefined) {
+          // 网络模式：发送事件选择请求
+          network.sendResolveEvent(choiceIndex);
+          // 关闭模态框
+          set({
+              eventOutcome: null,
+              activeCard: null,
+              turnPhase: 'DONE'
+          });
+          return;
+      }
+      
+      // 本地模式：直接处理
       const state = get();
       
-      // We need to resolve conditions in these actions if any
-      // For the Coffin event: IF HAS_ITEM
-      // Since ScriptAction definition in types.ts doesn't have IF yet, we assume the input json follows logic DSL
-      // and we convert/execute using logicEngine for the complex parts, or executeScript for simple.
-      
-      // Because we are bridging two systems (simple script vs complex logic), 
-      // let's pass it through logicEngine if it looks like logic.
       const context: GameContext = {
           state: state,
           activePlayerId: state.activePlayerId
       };
       
-      // Adapt ScriptAction[] to Effect[] for logic engine 
-      // (This implies we should ideally unify them, but for now we cast/adapt)
       const effects = actions as any[]; 
       executeEffects(effects, context);
 
-      // Close modal by setting outcome
       set({
-          eventOutcome: null, // Clear previous outcome if any
+          eventOutcome: null,
           activeCard: null,
           turnPhase: 'DONE'
       });
   },
 
   executeLogicAction: (action: ActionDefinition, selectedPartnerId?: string) => {
+    // 检查是否在网络模式
+    if (network.isInNetworkMode()) {
+        // 网络模式：发送技能执行请求
+        network.sendExecuteSkill(action.id || action.name, selectedPartnerId);
+        return;
+    }
+    
+    // 本地模式：直接处理
     const state = get();
     const context: GameContext = {
       state: state,
@@ -963,9 +989,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     state.addLog(`执行技能: ${action.name}`, 'info');
     get().addPersonalLog(state.activePlayerId, `使用了技能: ${action.name}。`, 'info');
     executeEffects(action.effects, context);
-    
-    // Using a skill usually ends interaction/turn logic if needed, but here we keep it open
-    // unless it's a major action.
   },
   
   unlockSkillNode: (nodeId: string) => {
@@ -1087,6 +1110,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   drawCard: (type: CardSymbol) => {
+      // 检查是否在网络模式
+      if (network.isInNetworkMode()) {
+          // 网络模式：发送抽卡请求
+          network.sendDrawCard(type);
+          return;
+      }
+      
+      // 本地模式：直接处理
       const state = get();
       const deck = state.decks[type];
       if (deck.length === 0) {
@@ -1198,6 +1229,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   closeInspection: () => set({ inspectPlayerId: null }),
 
   useItem: (itemId: string, targetId?: string) => {
+      // 检查是否在网络模式
+      if (network.isInNetworkMode()) {
+          // 网络模式：发送使用物品请求
+          network.sendUseItem(itemId, targetId);
+          return;
+      }
+      
+      // 本地模式：直接处理
       const state = get();
       const player = state.players[state.activePlayerId];
       if (player.isDead) return;

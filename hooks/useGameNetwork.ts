@@ -159,6 +159,31 @@ export function useGameNetwork() {
     network.sendRollDice(numDice);
   }, []);
 
+  // 阶段1新增操作
+  const drawCard = useCallback((cardType: string) => {
+    network.sendDrawCard(cardType);
+  }, []);
+
+  const resolveEvent = useCallback((choiceIndex: number) => {
+    network.sendResolveEvent(choiceIndex);
+  }, []);
+
+  const startCombat = useCallback((defenderId: string, attribute: string) => {
+    network.sendStartCombat(defenderId, attribute);
+  }, []);
+
+  const resolveCombat = useCallback(() => {
+    network.sendResolveCombat();
+  }, []);
+
+  const useItem = useCallback((itemId: string, targetId?: string) => {
+    network.sendUseItem(itemId, targetId);
+  }, []);
+
+  const executeSkill = useCallback((skillId: string, targetId?: string) => {
+    network.sendExecuteSkill(skillId, targetId);
+  }, []);
+
   return {
     screen,
     isConnected,
@@ -175,5 +200,12 @@ export function useGameNetwork() {
     placeTile,
     endTurn,
     rollDice,
+    // 阶段1新增
+    drawCard,
+    resolveEvent,
+    startCombat,
+    resolveCombat,
+    useItem,
+    executeSkill,
   };
 }

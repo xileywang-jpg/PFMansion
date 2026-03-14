@@ -356,7 +356,9 @@ export interface ScriptAction {
   deck?: CardSymbol;
   message?: string;
   hauntId?: string;
-  location?: 'basement' | 'ground' | 'upper'; 
+  location?: 'basement' | 'ground' | 'upper' | 'entry' | 'start' | 'random'; 
+  x?: number; // 移动到指定 X 坐标
+  y?: number; // 移动到指定 Y 坐标
 }
 
 export interface LogEntry {

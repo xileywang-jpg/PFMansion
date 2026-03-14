@@ -214,9 +214,31 @@ func (h *Hub) handleMessage(msg *Message) {
 		h.handleGameAction(msg)
 	case "get_state":
 		h.handleGetState(msg)
+	// 阶段3新增：重连和同步
+	case "reconnect":
+		h.handleReconnect(msg)
+	case "get_history":
+		h.handleGetHistory(msg)
+	case "sync_request":
+		h.handleSyncRequest(msg)
+	// Phase 1 新增：心跳检测
+	case "ping":
+		h.handlePing(msg)
+	case "pong":
+		// Pong already handled by writePump
 	default:
 		log.Printf("未知消息类型: %s", base.Type)
 	}
+}
+
+// handlePing 处理心跳
+func (h *Hub) handlePing(msg *Message) {
+	resp := map[string]interface{}{
+		"type":      "pong",
+		"timestamp": time.Now().UnixMilli(),
+	}
+	data, _ := json.Marshal(resp)
+	msg.client.send <- data
 }
 
 func (h *Hub) handleCreateRoom(msg *Message) {
@@ -425,8 +447,43 @@ func (h *Hub) handleGameAction(msg *Message) {
 	case "end_turn":
 		err = h.gameManager.EndTurn(roomID, msg.client.playerID)
 	case "roll_dice":
-		// 处理投骰子（前端触发，后端生成结果）
-		// 返回骰子结果给前端
+		// 🔒 安全修复：验证是否是当前玩家，且有待处理的投骰子动作
+		roomID := msg.client.roomID
+		pending, err := h.gameManager.CheckPendingAction(roomID)
+		if err != nil {
+			resp := map[string]interface{}{
+				"type":    "error",
+				"message": err.Error(),
+			}
+			data, _ := json.Marshal(resp)
+			msg.client.send <- data
+			return
+		}
+
+		// 检查是否是当前玩家
+		state, _ := h.gameManager.GetGameState(roomID)
+		if state == nil || state.ActivePlayerID != msg.client.playerID {
+			resp := map[string]interface{}{
+				"type":    "error",
+				"message": "只有当前玩家可以投骰子",
+			}
+			data, _ := json.Marshal(resp)
+			msg.client.send <- data
+			return
+		}
+
+		// 检查是否有待处理的投骰子动作（属性检定或战斗）
+		if pending == nil {
+			resp := map[string]interface{}{
+				"type":    "error",
+				"message": "当前不需要投骰子",
+			}
+			data, _ := json.Marshal(resp)
+			msg.client.send <- data
+			return
+		}
+
+		// 处理投骰子（后端生成结果）
 		numDice := 1
 		if nd, ok := req.Action["numDice"].(float64); ok {
 			numDice = int(nd)
@@ -436,11 +493,57 @@ func (h *Hub) handleGameAction(msg *Message) {
 		for _, v := range results {
 			sum += v
 		}
+
+		// 根据待处理动作类型处理结果
+		var actionResult map[string]interface{}
+		switch pending.Type {
+		case "ATTRIBUTE_CHECK":
+			// 属性检定
+			difficulty := 3 // 默认难度
+			if d, ok := pending.Data["difficulty"].(float64); ok {
+				difficulty = int(d)
+			}
+			success := sum >= difficulty
+			actionResult = map[string]interface{}{
+				"checkType":  "ATTRIBUTE_CHECK",
+				"attribute":  pending.Data["attribute"],
+				"difficulty": difficulty,
+				"result":     sum,
+				"success":    success,
+			}
+
+			// 清除待处理动作
+			h.gameManager.ClearPendingAction(roomID)
+
+			// 继续执行事件效果
+			if success {
+				h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, 0) // 0 = success
+			} else {
+				h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, 1) // 1 = failure
+			}
+
+		case "COMBAT":
+			// 战斗骰子 - 已经由 ResolveCombat 处理
+			actionResult = map[string]interface{}{
+				"checkType": "COMBAT",
+				"result":    sum,
+			}
+
+		default:
+			actionResult = map[string]interface{}{
+				"checkType": "GENERAL",
+				"result":    sum,
+			}
+			// 清除待处理动作
+			h.gameManager.ClearPendingAction(roomID)
+		}
+
 		resp := map[string]interface{}{
-			"type":     "dice_result",
-			"results":  results,
-			"sum":      sum,
-			"playerId": msg.client.playerID,
+			"type":         "dice_result",
+			"results":      results,
+			"sum":          sum,
+			"playerId":     msg.client.playerID,
+			"actionResult": actionResult,
 		}
 		h.broadcastToRoom(roomID, resp)
 		return
@@ -452,6 +555,68 @@ func (h *Hub) handleGameAction(msg *Message) {
 		attr, _ := req.Action["attribute"].(string)
 		amount, _ := req.Action["amount"].(float64)
 		err = h.gameManager.ModifyStat(roomID, msg.client.playerID, attr, int(amount))
+	// ===== 阶段1新增：事件系统 =====
+	case "draw_card":
+		cardType, _ := req.Action["cardType"].(string)
+		result, err := h.gameManager.DrawCard(roomID, msg.client.playerID, cardType)
+		if err != nil {
+			resp := map[string]interface{}{
+				"type":    "error",
+				"message": err.Error(),
+			}
+			data, _ := json.Marshal(resp)
+			msg.client.send <- data
+			return
+		}
+		// 广播抽卡结果
+		h.broadcastToRoom(roomID, map[string]interface{}{
+			"type":      "card_drawn",
+			"card":      result["card"],
+			"deck":      result["deck"],
+			"playerId":  msg.client.playerID,
+		})
+		// 发送状态更新
+		h.sendGameState(roomID)
+		return
+	case "resolve_event":
+		choiceIndex, _ := req.Action["choiceIndex"].(float64)
+		err = h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, int(choiceIndex))
+	// ===== 阶段1新增：战斗系统 =====
+	case "start_combat":
+		defenderID, _ := req.Action["defenderId"].(string)
+		attribute, _ := req.Action["attribute"].(string)
+		err = h.gameManager.StartCombat(roomID, msg.client.playerID, defenderID, attribute)
+	case "resolve_combat":
+		// 🔒 安全修复：后端统一生成骰子结果，不接受前端传入
+		result, err := h.gameManager.ResolveCombat(roomID, msg.client.playerID)
+		if err == nil {
+			h.broadcastToRoom(roomID, map[string]interface{}{
+				"type":         "combat_resolved",
+				"result":       result,
+				"playerId":     msg.client.playerID,
+			})
+			h.sendGameState(roomID)
+			return
+		}
+	// ===== 阶段1新增：物品系统 =====
+	case "use_item":
+		itemID, _ := req.Action["itemId"].(string)
+		targetID, _ := req.Action["targetId"].(string)
+		err = h.gameManager.UseItem(roomID, msg.client.playerID, itemID, targetID)
+	// ===== 阶段1新增：技能系统 =====
+	case "execute_skill":
+		skillID, _ := req.Action["skillId"].(string)
+		targetID, _ := req.Action["targetId"].(string)
+		err = h.gameManager.ExecuteSkill(roomID, msg.client.playerID, skillID, targetID)
+	// ===== 条件触发buff =====
+	case "trigger_buff":
+		trigger, _ := req.Action["trigger"].(string)
+		if trigger == "" {
+			err = errors.New("未指定触发类型")
+		} else {
+			// 应用条件触发的buff
+			h.gameManager.ApplyConditionalBuffs(roomID, msg.client.playerID, trigger)
+		}
 	default:
 		// 未知操作
 		err = errors.New("未知操作类型")
@@ -495,11 +660,57 @@ func (h *Hub) sendGameState(roomID string) {
 		return
 	}
 
+	// 使用完整的同步状态格式
+	syncState := state.ToSyncState()
+	
 	resp := map[string]interface{}{
-		"type":  "state_sync",
-		"state": state,
+		"type":      "state_sync",
+		"version":   syncState.Version,
+		"timestamp": syncState.Timestamp,
+		"state":     syncState,
 	}
 	h.broadcastToRoom(roomID, resp)
+}
+
+// sendGameStateToClient 向特定客户端发送状态 (带错误处理)
+func (h *Hub) sendGameStateToClient(client *Client, roomID string) {
+	state, err := h.gameManager.GetGameState(roomID)
+	if err != nil {
+		h.sendError(client, err.Error())
+		return
+	}
+
+	// 使用完整的同步状态格式
+	syncState := state.ToSyncState()
+	
+	resp := map[string]interface{}{
+		"type":      "state_sync",
+		"version":   syncState.Version,
+		"timestamp": syncState.Timestamp,
+		"state":     syncState,
+	}
+	
+	data, _ := json.Marshal(resp)
+	select {
+	case client.send <- data:
+	default:
+		log.Printf("⚠️ 客户端 %s 发送队列已满", client.sessionID)
+	}
+}
+
+// sendError 发送错误消息 (统一格式)
+func (h *Hub) sendError(client *Client, message string) {
+	resp := map[string]interface{}{
+		"type":    "error",
+		"code":    "GAME_ERROR",
+		"message": message,
+	}
+	data, _ := json.Marshal(resp)
+	select {
+	case client.send <- data:
+	default:
+		log.Printf("⚠️ 错误消息发送失败: %s", message)
+	}
 }
 
 func (h *Hub) broadcastToRoom(roomID string, message interface{}) {
@@ -523,6 +734,138 @@ func (h *Hub) broadcastToRoom(roomID string, message interface{}) {
 			h.mu.Unlock()
 		}
 	}
+}
+
+// ==================== 阶段3新增：重连和同步 ====================
+
+// handleReconnect 处理重连请求
+func (h *Hub) handleReconnect(msg *Message) {
+	var req struct {
+		Type          string `json:"type"`
+		SessionID     string `json:"sessionId"`
+		ReconnectKey  string `json:"reconnectKey"`
+	}
+
+	if err := json.Unmarshal(msg.data, &req); err != nil {
+		return
+	}
+
+	// 尝试重连
+	info, ok := h.gameManager.ReconnectSession(req.SessionID, req.ReconnectKey)
+	if !ok {
+		resp := map[string]interface{}{
+			"type":    "reconnect_failed",
+			"message": "重连失败，密钥无效或会话不存在",
+		}
+		data, _ := json.Marshal(resp)
+		msg.client.send <- data
+		return
+	}
+
+	// 重连成功，恢复客户端状态
+	msg.client.roomID = info.RoomID
+	msg.client.playerID = info.PlayerID
+
+	// 将客户端加入房间
+	h.mu.Lock()
+	if h.rooms[info.RoomID] == nil {
+		h.rooms[info.RoomID] = make(map[*Client]bool)
+	}
+	h.rooms[info.RoomID][msg.client] = true
+	h.mu.Unlock()
+
+	// 发送重连成功和当前状态
+	state, err := h.gameManager.GetGameState(info.RoomID)
+	if err != nil {
+		state = nil
+	}
+
+	history := h.gameManager.GetActionHistory(info.RoomID, 20)
+
+	resp := map[string]interface{}{
+		"type":       "reconnect_success",
+		"roomId":     info.RoomID,
+		"playerId":   info.PlayerID,
+		"state":      state,
+		"history":    history,
+	}
+	data, _ := json.Marshal(resp)
+	msg.client.send <- data
+
+	// 通知房间内其他玩家
+	h.broadcastToRoom(info.RoomID, map[string]interface{}{
+		"type":      "player_reconnected",
+		"playerId":  info.PlayerID,
+	})
+
+	log.Printf("🔄 玩家 %s 重连成功 (房间 %s)", info.PlayerID, info.RoomID)
+}
+
+// handleGetHistory 获取操作历史
+func (h *Hub) handleGetHistory(msg *Message) {
+	var req struct {
+		Type   string `json:"type"`
+		RoomId string `json:"roomId"`
+		Count  int    `json:"count"`
+	}
+
+	if err := json.Unmarshal(msg.data, &req); err != nil {
+		return
+	}
+
+	if req.Count <= 0 {
+		req.Count = 20
+	}
+
+	history := h.gameManager.GetActionHistory(req.RoomId, req.Count)
+
+	resp := map[string]interface{}{
+		"type":    "history_response",
+		"roomId":  req.RoomId,
+		"history": history,
+	}
+	data, _ := json.Marshal(resp)
+	msg.client.send <- data
+}
+
+// handleSyncRequest 处理同步请求
+func (h *Hub) handleSyncRequest(msg *Message) {
+	var req struct {
+		Type     string `json:"type"`
+		RoomId  string `json:"roomId"`
+		PlayerId string `json:"playerId"`
+	}
+
+	if err := json.Unmarshal(msg.data, &req); err != nil {
+		return
+	}
+
+	// 获取完整游戏状态
+	state, err := h.gameManager.GetGameState(req.RoomId)
+	if err != nil {
+		resp := map[string]interface{}{
+			"type":    "error",
+			"message": err.Error(),
+		}
+		data, _ := json.Marshal(resp)
+		msg.client.send <- data
+		return
+	}
+
+	// 获取最近操作历史
+	history := h.gameManager.GetActionHistory(req.RoomId, 30)
+
+	resp := map[string]interface{}{
+		"type":         "sync_response",
+		"roomId":       req.RoomId,
+		"state":        state,
+		"history":      history,
+		"timestamp":    time.Now().UnixMilli(),
+	}
+	data, _ := json.Marshal(resp)
+	msg.client.send <- data
+
+	log.Printf("📤 同步请求处理: 房间 %s, 玩家 %s", req.RoomId, req.PlayerId)
 }
 
 // Broadcast 广播消息给所有客户端

@@ -2,7 +2,9 @@
 // 包含原有的所有游戏 UI
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
+import * as network from '../ws/network';
 import MapGrid from './MapGrid';
 import PlayerHUD from './PlayerHUD';
 import CardResolutionModal from './EventModal';
@@ -17,10 +19,12 @@ import DiceRoller from './DiceRoller';
 import FeedbackToast from './FeedbackToast';
 import SkillTreeModal from './SkillTreeModal';
 import PlayerInspectionModal from './PlayerInspectionModal';
-import { Bug, Skull } from 'lucide-react';
+import { Bug, Skull, LogOut } from 'lucide-react';
 
 const LocalGame: React.FC = () => {
+  const navigate = useNavigate();
   const { debugForceHaunt, isHauntActive, omenCount, initializeGame, players } = useGameStore();
+  const isNetworkMode = network.isInNetworkMode();
 
   // 初始化游戏（仅在首次挂载时）
   React.useEffect(() => {
@@ -28,6 +32,15 @@ const LocalGame: React.FC = () => {
       initializeGame();
     }
   }, []);
+
+  // 处理离开房间（网络模式）
+  const handleLeaveRoom = () => {
+    if (isNetworkMode) {
+      network.leaveRoom();
+      // 跳转到大厅
+      navigate('/game/mansion-protocol/lobby');
+    }
+  };
 
   return (
     <div className="flex w-screen h-screen bg-black text-zinc-200 overflow-hidden selection:bg-indigo-500/30">
@@ -62,6 +75,18 @@ const LocalGame: React.FC = () => {
                     >
                       <Bug size={12} />
                       调试: 触发作祟
+                    </button>
+                )}
+
+                {/* 离开房间按钮（仅网络模式） */}
+                {isNetworkMode && (
+                    <button 
+                      onClick={handleLeaveRoom}
+                      className="flex items-center gap-1.5 px-2 py-1.5 bg-red-900/20 hover:bg-red-900/40 text-red-500 border border-red-900/30 rounded text-[9px] font-bold uppercase transition-all"
+                      title="离开房间"
+                    >
+                      <LogOut size={12} />
+                      离开
                     </button>
                 )}
             </div>

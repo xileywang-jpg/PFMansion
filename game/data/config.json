@@ -1,0 +1,18 @@
+{
+  "themes": [
+    {
+      "id": "original",
+      "name": "原版",
+      "description": "经典山屋惊魂",
+      "primaryColor": "#8B4513",
+      "enabled": true
+    },
+    {
+      "id": "volantis",
+      "name": "翁法罗斯",
+      "description": "崩坏星穹铁道 - 永恒之地",
+      "primaryColor": "#FFD700",
+      "enabled": true
+    }
+  ]
+}

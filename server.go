@@ -22,10 +22,15 @@ func main() {
 	addr := flag.String("addr", "", "服务器监听地址 (默认所有)")
 	dir := flag.String("dir", ".", "静态文件目录")
 	flag.Parse()
-	
+
 	// 如果没有指定地址，默认监听本地
 	if *addr == "" {
 		*addr = "0.0.0.0"
+	}
+
+	// 加载游戏数据
+	if err := game.LoadData(); err != nil {
+		log.Printf("⚠️ 数据加载失败，将使用默认数据: %v", err)
 	}
 
 	// 初始化游戏状态管理器
