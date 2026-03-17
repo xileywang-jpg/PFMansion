@@ -46,8 +46,28 @@ const LocalGame: React.FC = () => {
       wsClient.setRoomId(savedRoomId);
       wsClient.setPlayerId(savedPlayerId);
       
-      // 请求游戏状态
-      network.getState();
+      // 初始化网络层（如果还没有初始化）
+      if (!wsClient.isConnected()) {
+        console.log('[LocalGame] 初始化网络层...');
+        network.initNetworkLayer();
+        
+        // 等待 WS 连接成功后请求状态
+        const checkConnection = setInterval(() => {
+          if (wsClient.isConnected()) {
+            clearInterval(checkConnection);
+            console.log('[LocalGame] WS已连接，请求游戏状态');
+            network.getState();
+          }
+        }, 500);
+        
+        // 10秒后如果还没连接成功就不再等待
+        setTimeout(() => {
+          clearInterval(checkConnection);
+        }, 10000);
+      } else {
+        // WS 已经连接，直接请求状态
+        network.getState();
+      }
     } else {
       // 没有保存的房间信息，可能是第一次进入，等待服务器消息
       console.log('[LocalGame] 无保存的房间信息，等待服务器状态...');
