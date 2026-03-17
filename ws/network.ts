@@ -73,6 +73,10 @@ function handleRoomCreated(msg: ServerMessage) {
   currentRoomId = msg.roomId;
   currentPlayerId = msg.playerId;
   
+  // 保存到sessionStorage以便刷新后重连
+  wsClient.setRoomId(msg.roomId);
+  wsClient.setPlayerId(msg.playerId);
+  
   const store = useGameStore.getState();
   store.showFeedback(`房间创建成功: ${msg.roomId}`, 'info');
 }
@@ -83,6 +87,10 @@ function handleRoomJoined(msg: ServerMessage) {
   console.log('👤 加入房间:', msg);
   currentRoomId = msg.roomId;
   currentPlayerId = msg.playerId;
+  
+  // 保存到sessionStorage以便刷新后重连
+  wsClient.setRoomId(msg.roomId);
+  wsClient.setPlayerId(msg.playerId);
   
   const store = useGameStore.getState();
   store.showFeedback('加入房间成功', 'info');
@@ -285,6 +293,10 @@ export function leaveRoom() {
   });
   currentRoomId = null;
   currentPlayerId = null;
+  
+  // 清除sessionStorage
+  wsClient.setRoomId(null);
+  wsClient.setPlayerId(null);
   // 离开房间后，isInNetworkMode() 会自动返回 false
 }
 

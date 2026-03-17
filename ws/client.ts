@@ -53,6 +53,10 @@ class WebSocketClient implements WSClient {
     console.log('🔌 连接 WebSocket:', this.url);
     logger.info('WebSocket连接中', { url: this.url });
     
+    // 检查是否有保存的房间信息用于重连
+    const savedRoomId = sessionStorage.getItem('roomId');
+    const savedPlayerId = sessionStorage.getItem('playerId');
+    
     try {
       this.ws = new WebSocket(this.url);
       
@@ -60,6 +64,18 @@ class WebSocketClient implements WSClient {
         console.log('✅ WebSocket 已连接');
         logger.info('WebSocket已连接', {});
         this.stopReconnect();
+        
+        // 如果有保存的房间信息，尝试重连
+        if (savedRoomId && savedPlayerId) {
+          console.log('🔄 尝试恢复房间连接:', savedRoomId);
+          logger.info('尝试恢复房间连接', { roomId: savedRoomId, playerId: savedPlayerId });
+          // 发送重连请求
+          this.send({
+            type: 'reconnect',
+            roomId: savedRoomId,
+            playerId: savedPlayerId
+          });
+        }
       };
 
       this.ws.onclose = (event) => {
@@ -136,10 +152,20 @@ class WebSocketClient implements WSClient {
 
   setRoomId(id: string | null) {
     this.roomId = id;
+    if (id) {
+      sessionStorage.setItem('roomId', id);
+    } else {
+      sessionStorage.removeItem('roomId');
+    }
   }
 
   setPlayerId(id: string | null) {
     this.playerId = id;
+    if (id) {
+      sessionStorage.setItem('playerId', id);
+    } else {
+      sessionStorage.removeItem('playerId');
+    }
   }
 
   on(type: string, handler: (msg: ServerMessage) => void) {
@@ -159,6 +185,13 @@ class WebSocketClient implements WSClient {
       case 'room_joined':
         this.roomId = msg.roomId;
         this.playerId = msg.playerId;
+        break;
+      case 'reconnect_success':
+        // 重连成功，恢复房间和玩家ID
+        this.roomId = msg.roomId;
+        this.playerId = msg.playerId;
+        console.log('✅ 重连成功，恢复房间:', msg.roomId);
+        logger.info('重连成功', { roomId: msg.roomId, playerId: msg.playerId });
         break;
       case 'player_left':
         // 处理玩家离开
