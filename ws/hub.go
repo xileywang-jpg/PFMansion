@@ -461,6 +461,8 @@ func (h *Hub) handleStartGame(msg *Message) {
 		"type": "game_started",
 	})
 
+	logger.Info("准备发送游戏状态", map[string]interface{}{"roomId": msg.client.roomID})
+
 	// 发送初始游戏状态
 	h.sendGameState(msg.client.roomID)
 }
@@ -700,8 +702,11 @@ func (h *Hub) handleGetState(msg *Message) {
 }
 
 func (h *Hub) sendGameState(roomID string) {
+	logger.Info("发送游戏状态", map[string]interface{}{"roomId": roomID})
+	
 	state, err := h.gameManager.GetGameState(roomID)
 	if err != nil {
+		logger.Error("获取游戏状态失败", map[string]interface{}{"roomId": roomID, "error": err.Error()})
 		return
 	}
 

@@ -170,8 +170,11 @@ export const LobbyScreen: React.FC = () => {
       ));
     });
 
-    wsClient.on('game_started', () => {
+    wsClient.on('game_started', (msg: any) => {
       // 游戏开始，使用 React Router 跳转到游戏页面，而不是刷新页面
+      // 注意：这里不需要手动设置 currentRoomId，因为 network.ts 中的 handleGameStarted 会处理
+      // 但我们需要确保消息被正确传递
+      console.log('🎮 游戏开始，切换到游戏页面...');
       navigate('/game/mansion-protocol');
     });
 
