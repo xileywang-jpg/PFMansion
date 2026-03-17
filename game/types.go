@@ -73,10 +73,13 @@ const (
 
 // Attribute 属性结构
 type Attribute struct {
-	Current int `json:"current"`
-	Base    int `json:"base"`
-	Floor   int `json:"floor"`
-	Max     int `json:"max"`
+	Current int   `json:"current"`
+	Base    int   `json:"base"`
+	Floor   int   `json:"floor"`
+	Max     int   `json:"max"`
+	// P0 修复：添加 values 和 index 字段，对齐前端
+	Values  []int `json:"values"` // 所有可能的值 [floor, floor+1, ..., max]
+	Index   int   `json:"index"`  // 当前值在 values 中的索引
 }
 
 // CharacterDef 角色定义
@@ -93,12 +96,22 @@ type GamePlayer struct {
 	ID          string            `json:"id"`
 	Character   CharacterDef     `json:"character"`
 	Position    Position         `json:"position"`
-	Items       []string         `json:"items"`
+	Items       []Card           `json:"items"`         // P1修复：存储完整物品对象
+	DroppedItems []Card          `json:"droppedItems"`  // P1修复：存储完整物品对象
 	IsDead      bool             `json:"isDead"`
 	Team        string           `json:"team"`
 	Buffs       []string         `json:"buffs"`
 	Skills      []string         `json:"skills"`
 	SkillPoints int              `json:"skillPoints"`
+	PersonalLogs []PersonalLog   `json:"personalLogs"` // 个人日志
+}
+
+// PersonalLog 个人日志条目
+type PersonalLog struct {
+	ID        string `json:"id"`
+	Timestamp int64  `json:"timestamp"`
+	Text      string `json:"text"`
+	Type      string `json:"type"` // info, action, event
 }
 
 // Position 位置
@@ -132,7 +145,7 @@ type TileInstance struct {
 	Edges             map[Direction]string  `json:"edges"`
 	HasEventTriggered bool                  `json:"hasEventTriggered"`
 	Visibility        string                `json:"visibility"`
-	DroppedItems      []string              `json:"droppedItems"`
+	DroppedItems      []Card                `json:"droppedItems"`  // P1修复：存储完整物品对象
 }
 
 // CardDef 卡牌定义
