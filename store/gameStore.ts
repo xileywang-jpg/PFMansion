@@ -403,7 +403,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(s => {
           const player = s.players[playerId];
           if (!player) return {};
-          const newLogs = [{ id: generateId('plog'), timestamp: Date.now(), text, type }, ...player.personalLogs];
+          // 防御性检查：确保 personalLogs 存在
+          const existingLogs = player.personalLogs || [];
+          const newLogs = [{ id: generateId('plog'), timestamp: Date.now(), text, type }, ...existingLogs];
           return {
               players: {
                   ...s.players,
