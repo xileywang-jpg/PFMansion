@@ -26,23 +26,15 @@ const LocalGame: React.FC = () => {
   const { debugForceHaunt, isHauntActive, omenCount, initializeGame, players } = useGameStore();
   const isNetworkMode = network.isInNetworkMode();
 
-  // 初始化游戏（仅在首次挂载时）
+  // 初始化游戏 - 完全由网络模式控制
+  // 网络模式: 等服务器发送 game_started + state_sync 后才有游戏状态
+  // 单机模式: 由单独的入口页面控制，这里不做自动初始化
   React.useEffect(() => {
-    // 只有在非网络模式（单机模式）下才初始化本地游戏
-    // 网络模式由 handleGameStarted 消息设置游戏状态
-    // 检查是否为网络模式（WS已连接且有房间ID）
-    const networkConnected = network.isInNetworkMode();
+    // 不再自动初始化单机游戏
+    // 网络模式由 handleGameStarted 消息触发状态同步
+    // 单机模式通过独立的单机入口进入
     
-    console.log('[LocalGame] 初始化检查:', {
-      playersLength: Object.keys(players).length,
-      isNetworkMode: networkConnected,
-      wsConnected: network.isConnectedToServer()
-    });
-    
-    if (!networkConnected && Object.keys(players).length === 0) {
-      console.log('[LocalGame] 初始化单机游戏');
-      initializeGame();
-    }
+    console.log('[LocalGame] 组件挂载，等待服务器状态...');
   }, []);
 
   // 处理离开房间（网络模式）
