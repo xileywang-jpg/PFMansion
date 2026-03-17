@@ -39,26 +39,90 @@ func (g *GameManager) StartGame(roomID string) error {
 		tileDeck[i], tileDeck[j] = tileDeck[j], tileDeck[i]
 	})
 
+	// 初始化属性辅助函数 - 从数据源加载 values 数组
+	initAttribute := func(attrName string, defaultValue int, charID string) Attribute {
+		// 尝试从角色数据中获取 values 数组
+		values, startIndex := GetCharacterAttributeValues(charID, attrName)
+		
+		if values == nil || len(values) == 0 {
+			// 降级：使用简单的 values 数组
+			floor := 0
+			max := values[len(values)-1]
+			if max < defaultValue {
+				max = defaultValue
+			}
+			simpleValues := make([]int, max-floor+1)
+			for i := range simpleValues {
+				simpleValues[i] = floor + i
+			}
+			return Attribute{
+				Current: defaultValue,
+				Base:    defaultValue,
+				Floor:   floor,
+				Max:     max,
+				Values:  simpleValues,
+				Index:   defaultValue,
+			}
+		}
+		
+		// 使用数据源中的 values 数组
+		floor := values[0]
+		max := values[len(values)-1]
+		current := values[startIndex]
+		
+		return Attribute{
+			Current: current,
+			Base:    current,
+			Floor:   floor,
+			Max:     max,
+			Values:  values,
+			Index:   startIndex,
+		}
+	}
+
+	// 获取主题的角色数据
+	themeCharacters := GetCharactersByTheme(theme)
+
 	i := 0
 	for _, p := range room.Players {
 		playerID := p.ID
 		playerIDs = append(playerIDs, playerID)
+		
+		// 根据玩家索引获取对应的角色定义
+		var charID string
+		var charName string
+		if themeCharacters != nil && i < len(themeCharacters) {
+			charID = themeCharacters[i].ID
+			charName = themeCharacters[i].Name
+		} else {
+			// 降级：使用默认角色
+			charID = "char_default"
+			charName = "冒险者"
+		}
 
 		players[playerID] = &GamePlayer{
 			ID:     playerID,
 			Team:   "UNASSIGNED",
-			Items:  []string{},
+			Items:  []Card{},
 			Buffs:  []string{},
 			Skills: []string{},
 			SkillPoints: 0,
+			PersonalLogs: []PersonalLog{
+				{
+					ID:        generateLogID(),
+					Timestamp: time.Now().UnixMilli(),
+					Text:      "进入了大厦。",
+					Type:      "info",
+				},
+			},
 			Character: CharacterDef{
-				ID:   "char_" + playerID,
-				Name: p.Name,
+				ID:   charID,
+				Name: charName,
 				Attributes: map[string]Attribute{
-					"might":     {Current: 3, Base: 3, Floor: 0, Max: 6},
-					"speed":     {Current: 3, Base: 3, Floor: 0, Max: 6},
-					"sanity":    {Current: 3, Base: 3, Floor: 0, Max: 6},
-					"knowledge": {Current: 3, Base: 3, Floor: 0, Max: 6},
+					"might":     initAttribute("might", 3, charID),
+					"speed":     initAttribute("speed", 3, charID),
+					"sanity":    initAttribute("sanity", 3, charID),
+					"knowledge": initAttribute("knowledge", 3, charID),
 				},
 			},
 			Position: Position{X: 0, Y: 0},
@@ -85,7 +149,7 @@ func (g *GameManager) StartGame(roomID string) error {
 					Edges:             map[Direction]string{DirectionNorth: "DOOR", DirectionEast: "DOOR", DirectionSouth: "DOOR", DirectionWest: "DOOR"},
 					HasEventTriggered: true,
 					Visibility:        "VISIBLE",
-					DroppedItems:      []string{},
+					DroppedItems:      []Card{},
 				},
 			},
 			TileDeck:       tileDeck,
