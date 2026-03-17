@@ -124,6 +124,9 @@ function handleGameStarted(msg: ServerMessage) {
   
   const store = useGameStore.getState();
   store.showFeedback('游戏开始!', 'turn');
+  
+  // 请求完整游戏状态
+  network.getState();
 }
 
 function handleStateSync(msg: ServerMessage) {

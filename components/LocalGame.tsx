@@ -28,7 +28,19 @@ const LocalGame: React.FC = () => {
 
   // 初始化游戏（仅在首次挂载时）
   React.useEffect(() => {
-    if (Object.keys(players).length === 0) {
+    // 只有在非网络模式（单机模式）下才初始化本地游戏
+    // 网络模式由 handleGameStarted 消息设置游戏状态
+    // 检查是否为网络模式（WS已连接且有房间ID）
+    const networkConnected = network.isInNetworkMode();
+    
+    console.log('[LocalGame] 初始化检查:', {
+      playersLength: Object.keys(players).length,
+      isNetworkMode: networkConnected,
+      wsConnected: network.isConnectedToServer()
+    });
+    
+    if (!networkConnected && Object.keys(players).length === 0) {
+      console.log('[LocalGame] 初始化单机游戏');
       initializeGame();
     }
   }, []);
