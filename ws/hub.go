@@ -3,13 +3,13 @@ package ws
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"mansion-protocol/game"
+	"mansion-protocol/logger"
 )
 
 const (
@@ -54,7 +54,7 @@ func (c *Client) readPump() {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket 错误: %v", err)
+				logger.Error("WebSocket 错误", map[string]interface{}{"error": err.Error()})
 			}
 			break
 		}
@@ -148,7 +148,7 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			log.Printf("➕ 新客户端连接: %s", client.sessionID)
+			logger.Info("新客户端连接", map[string]interface{}{"sessionId": client.sessionID})
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -167,7 +167,7 @@ func (h *Hub) Run() {
 				}
 			}
 			h.mu.Unlock()
-			log.Printf("➖ 客户端断开: %s", client.sessionID)
+			logger.Info("客户端断开", map[string]interface{}{"sessionId": client.sessionID})
 
 		case msg := <-h.message:
 			h.handleMessage(msg)
@@ -193,7 +193,7 @@ func (h *Hub) handleMessage(msg *Message) {
 	}
 	
 	if err := json.Unmarshal(msg.data, &base); err != nil {
-		log.Printf("解析消息失败: %v", err)
+		logger.Warn("解析消息失败", map[string]interface{}{"error": err.Error()})
 		return
 	}
 
@@ -227,7 +227,7 @@ func (h *Hub) handleMessage(msg *Message) {
 	case "pong":
 		// Pong already handled by writePump
 	default:
-		log.Printf("未知消息类型: %s", base.Type)
+		logger.Warn("未知消息类型", map[string]interface{}{"type": base.Type})
 	}
 }
 
@@ -250,6 +250,7 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 	}
 	
 	if err := json.Unmarshal(msg.data, &req); err != nil {
+		logger.Warn("创建房间: 解析请求失败", map[string]interface{}{"error": err.Error()})
 		return
 	}
 
@@ -258,6 +259,13 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 	if theme == "" {
 		theme = "original"
 	}
+
+	logger.Info("创建房间", map[string]interface{}{
+		"roomName": req.RoomName,
+		"playerName": req.PlayerName,
+		"theme": theme,
+		"sessionId": msg.sessionID,
+	})
 
 	room := h.gameManager.CreateRoom(req.RoomName, req.PlayerName, theme, msg.sessionID)
 	
@@ -276,6 +284,11 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 	}
 	h.rooms[room.ID][msg.client] = true
 	h.mu.Unlock()
+
+	logger.Info("房间创建成功", map[string]interface{}{
+		"roomId": room.ID,
+		"playerId": msg.client.playerID,
+	})
 
 	// 返回房间信息
 	resp := map[string]interface{}{
@@ -298,11 +311,23 @@ func (h *Hub) handleJoinRoom(msg *Message) {
 	}
 	
 	if err := json.Unmarshal(msg.data, &req); err != nil {
+		logger.Warn("加入房间: 解析请求失败", map[string]interface{}{"error": err.Error()})
 		return
 	}
 
+	logger.Info("玩家尝试加入房间", map[string]interface{}{
+		"roomId": req.RoomId,
+		"playerName": req.PlayerName,
+		"sessionId": msg.sessionID,
+	})
+
 	room, err := h.gameManager.JoinRoom(req.RoomId, req.PlayerName, msg.sessionID)
 	if err != nil {
+		logger.Warn("加入房间失败", map[string]interface{}{
+			"roomId": req.RoomId,
+			"playerName": req.PlayerName,
+			"error": err.Error(),
+		})
 		resp := map[string]interface{}{
 			"type":    "error",
 			"message": err.Error(),
@@ -328,6 +353,13 @@ func (h *Hub) handleJoinRoom(msg *Message) {
 	}
 	h.rooms[room.ID][msg.client] = true
 	h.mu.Unlock()
+
+	logger.Info("玩家加入房间成功", map[string]interface{}{
+		"roomId": room.ID,
+		"playerId": msg.client.playerID,
+		"playerName": req.PlayerName,
+		"playerCount": len(room.Players),
+	})
 
 	// 返回房间信息
 	resp := map[string]interface{}{
@@ -400,8 +432,17 @@ func (h *Hub) handleSetReady(msg *Message) {
 }
 
 func (h *Hub) handleStartGame(msg *Message) {
+	logger.Info("开始游戏", map[string]interface{}{
+		"roomId": msg.client.roomID,
+		"playerId": msg.client.playerID,
+	})
+
 	err := h.gameManager.StartGame(msg.client.roomID)
 	if err != nil {
+		logger.Error("开始游戏失败", map[string]interface{}{
+			"roomId": msg.client.roomID,
+			"error": err.Error(),
+		})
 		resp := map[string]interface{}{
 			"type":    "error",
 			"message": err.Error(),
@@ -410,6 +451,10 @@ func (h *Hub) handleStartGame(msg *Message) {
 		msg.client.send <- data
 		return
 	}
+
+	logger.Info("游戏已开始", map[string]interface{}{
+		"roomId": msg.client.roomID,
+	})
 
 	// 广播游戏开始
 	h.broadcastToRoom(msg.client.roomID, map[string]interface{}{
@@ -694,7 +739,7 @@ func (h *Hub) sendGameStateToClient(client *Client, roomID string) {
 	select {
 	case client.send <- data:
 	default:
-		log.Printf("⚠️ 客户端 %s 发送队列已满", client.sessionID)
+		logger.Warn("客户端发送队列已满", map[string]interface{}{"sessionId": client.sessionID})
 	}
 }
 
@@ -709,7 +754,7 @@ func (h *Hub) sendError(client *Client, message string) {
 	select {
 	case client.send <- data:
 	default:
-		log.Printf("⚠️ 错误消息发送失败: %s", message)
+		logger.Warn("错误消息发送失败", map[string]interface{}{"message": message})
 	}
 }
 
@@ -798,7 +843,7 @@ func (h *Hub) handleReconnect(msg *Message) {
 		"playerId":  info.PlayerID,
 	})
 
-	log.Printf("🔄 玩家 %s 重连成功 (房间 %s)", info.PlayerID, info.RoomID)
+	logger.Info("玩家重连成功", map[string]interface{}{"playerId": info.PlayerID, "roomId": info.RoomID})
 }
 
 // handleGetHistory 获取操作历史
@@ -865,7 +910,7 @@ func (h *Hub) handleSyncRequest(msg *Message) {
 	data, _ := json.Marshal(resp)
 	msg.client.send <- data
 
-	log.Printf("📤 同步请求处理: 房间 %s, 玩家 %s", req.RoomId, req.PlayerId)
+	logger.Debug("同步请求处理", map[string]interface{}{"roomId": req.RoomId, "playerId": req.PlayerId})
 }
 
 // Broadcast 广播消息给所有客户端
@@ -898,7 +943,7 @@ func (h *Hub) SendToClient(sessionID string, message interface{}) {
 func HandleWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket 升级失败: %v", err)
+	logger.Error("WebSocket 升级失败", map[string]interface{}{"error": err.Error()})
 		return
 	}
 

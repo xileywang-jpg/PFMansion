@@ -1,13 +1,21 @@
 // 游戏网络层 - 连接到后端
 import { wsClient, ServerMessage } from './client';
 import { useGameStore } from '../store/gameStore';
+import { logger, trackAction } from './logger';
 
-let isNetworkMode = false;
+// 注意：移除单机模式概念，所有游戏请求都发送到后端
+// 如果后端不可用，会有前端降级处理
 let currentRoomId: string | null = null;
 let currentPlayerId: string | null = null;
 
+// 检查是否已连接到服务器（用于决定是否需要降级到前端处理）
+export function isConnectedToServer(): boolean {
+  return wsClient.isConnected() && currentRoomId !== null;
+}
+
 // 初始化网络层
 export function initNetworkLayer() {
+  logger.info('初始化游戏网络层', { url: window.location.href });
   console.log('🌐 初始化游戏网络层');
   
   // 注册消息处理器
@@ -34,15 +42,16 @@ export function cleanupNetworkLayer() {
   wsClient.disconnect();
 }
 
-// 检查是否在网络模式
+// 检查是否已连接到服务器（网络模式）
 export function isInNetworkMode(): boolean {
-  return isNetworkMode;
+  const connected = isConnectedToServer();
+  console.log('[isInNetworkMode] wsClient.isConnected():', wsClient.isConnected(), 'currentRoomId:', currentRoomId);
+  return connected;
 }
 
-// 设置网络模式
+// 设置网络模式（保留兼容性，但不再使用）
 export function setNetworkMode(enabled: boolean) {
-  isNetworkMode = enabled;
-  console.log('🌐 网络模式:', enabled ? '启用' : '禁用');
+  console.log('⚠️ setNetworkMode 已废弃，请使用后端处理');
 }
 
 // 获取当前房间ID
@@ -58,6 +67,8 @@ export function getCurrentPlayerId(): string | null {
 // ==================== 消息处理 ====================
 
 function handleRoomCreated(msg: ServerMessage) {
+  logger.info('房间已创建', { roomId: msg.roomId, playerId: msg.playerId });
+  trackAction('ROOM_CREATED', { roomId: msg.roomId });
   console.log('🏠 房间已创建:', msg);
   currentRoomId = msg.roomId;
   currentPlayerId = msg.playerId;
@@ -67,6 +78,8 @@ function handleRoomCreated(msg: ServerMessage) {
 }
 
 function handleRoomJoined(msg: ServerMessage) {
+  logger.info('加入房间', { roomId: msg.roomId, playerId: msg.playerId });
+  trackAction('ROOM_JOINED', { roomId: msg.roomId });
   console.log('👤 加入房间:', msg);
   currentRoomId = msg.roomId;
   currentPlayerId = msg.playerId;
@@ -76,12 +89,16 @@ function handleRoomJoined(msg: ServerMessage) {
 }
 
 function handlePlayerJoined(msg: ServerMessage) {
+  logger.info('玩家加入', { playerId: msg.playerId, playerName: msg.playerName });
+  trackAction('PLAYER_JOINED', { playerId: msg.playerId, playerName: msg.playerName });
   console.log('👥 玩家加入:', msg);
   const store = useGameStore.getState();
   store.showFeedback(`${msg.playerName} 加入了房间`, 'info');
 }
 
 function handlePlayerLeft(msg: ServerMessage) {
+  logger.info('玩家离开', { playerId: msg.playerId });
+  trackAction('PLAYER_LEFT', { playerId: msg.playerId });
   console.log('👋 玩家离开:', msg);
   const store = useGameStore.getState();
   store.showFeedback(`玩家离开了房间`, 'info');
@@ -92,14 +109,17 @@ function handlePlayerReady(msg: ServerMessage) {
 }
 
 function handleGameStarted(msg: ServerMessage) {
+  logger.info('游戏开始', { roomId: currentRoomId });
+  trackAction('GAME_STARTED', { roomId: currentRoomId });
   console.log('🎮 游戏开始!');
-  isNetworkMode = true;
+  // 游戏开始时，玩家已连接到服务器，isInNetworkMode() 会自动返回 true
   
   const store = useGameStore.getState();
   store.showFeedback('游戏开始!', 'turn');
 }
 
 function handleStateSync(msg: ServerMessage) {
+  logger.debug('状态同步', { version: msg.version, timestamp: msg.timestamp });
   console.log('🔄 状态同步:', msg.state, 'version:', msg.version);
   
   const state = msg.state as any;
@@ -199,6 +219,8 @@ function handleCombatResolved(msg: ServerMessage) {
 }
 
 function handleError(msg: ServerMessage) {
+  logger.error('游戏错误', { code: msg.code, message: msg.message });
+  trackAction('GAME_ERROR', { code: msg.code, message: msg.message });
   console.error('❌ 错误:', msg.code, msg.message);
   
   const store = useGameStore.getState();
@@ -226,11 +248,12 @@ function handleError(msg: ServerMessage) {
 }
 
 function handleServerShutdown(msg: ServerMessage) {
+  logger.warn('服务器关闭', {});
   console.log('🛑 服务器关闭');
   
   const store = useGameStore.getState();
   store.showFeedback('服务器已关闭', 'error');
-  isNetworkMode = false;
+  // 服务器关闭时，currentRoomId 会被清除，isInNetworkMode() 会自动返回 false
 }
 
 // ==================== 玩家操作 ====================
@@ -262,7 +285,7 @@ export function leaveRoom() {
   });
   currentRoomId = null;
   currentPlayerId = null;
-  isNetworkMode = false;
+  // 离开房间后，isInNetworkMode() 会自动返回 false
 }
 
 // 设置准备状态

@@ -10,13 +10,25 @@ export default defineConfig(({ mode }) => {
         host: '127.0.0.1',
       },
       plugins: [react()],
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, '.'),
+        },
+        extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
+      },
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
       },
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
+      // 生产模式：保留 sourcemap 方便调试，但仍然压缩代码
+      build: {
+        minify: 'terser',
+        sourcemap: 'inline',  // 生成内联 sourcemap
+        terserOptions: {
+          compress: {
+            drop_console: false,
+            drop_debugger: true
+          }
         }
       }
     };

@@ -1,5 +1,6 @@
 // WebSocket 客户端 for Mansion Protocol
 // 用于连接游戏后端
+import { logger, trackAction } from './logger';
 
 export type MessageType = 
   | 'room_created'
@@ -50,22 +51,26 @@ class WebSocketClient implements WSClient {
     }
 
     console.log('🔌 连接 WebSocket:', this.url);
+    logger.info('WebSocket连接中', { url: this.url });
     
     try {
       this.ws = new WebSocket(this.url);
       
       this.ws.onopen = () => {
         console.log('✅ WebSocket 已连接');
+        logger.info('WebSocket已连接', {});
         this.stopReconnect();
       };
 
       this.ws.onclose = (event) => {
         console.log('❌ WebSocket 断开:', event.code, event.reason);
+        logger.warn('WebSocket断开', { code: event.code, reason: event.reason });
         this.scheduleReconnect();
       };
 
       this.ws.onerror = (error) => {
         console.error('⚠️ WebSocket 错误:', error);
+        logger.error('WebSocket错误', { error: String(error) });
       };
 
       this.ws.onmessage = (event) => {

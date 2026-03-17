@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authApi from '../api/auth';
+import { logger, trackPageView, trackAction } from '../../ws/logger';
 
 function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -10,6 +11,9 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // 页面加载日志
+  trackPageView('Login');
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -17,18 +21,27 @@ function LoginPage() {
 
     try {
       if (isLogin) {
+        logger.info('尝试登录', { username });
         const result = await authApi.login(username, password);
         localStorage.setItem('token', result.token);
         localStorage.setItem('user', JSON.stringify(result.user));
+        
+        logger.info('登录成功', { username });
+        trackAction('LOGIN_SUCCESS', { username });
         navigate('/games');
       } else {
+        logger.info('尝试注册', { username });
         await authApi.register(username, password);
         setError('');
         setIsLogin(true);
+        logger.info('注册成功', { username });
+        trackAction('REGISTER_SUCCESS', { username });
         alert('注册成功！请登录~ 🐱');
       }
     } catch (err) {
       setError(err.message);
+      logger.warn('登录/注册失败', { username, error: err.message });
+      trackAction('AUTH_FAILED', { username, error: err.message });
     } finally {
       setLoading(false);
     }

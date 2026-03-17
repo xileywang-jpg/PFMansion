@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import authApi from '../api/auth';
+import { logger, trackPageView, trackAction } from '../../ws/logger';
 
 function GamesPage() {
   const [user, setUser] = useState(null);
@@ -11,16 +12,21 @@ function GamesPage() {
   const [showThemeModal, setShowThemeModal] = useState(false);
   const navigate = useNavigate();
 
+  // 页面加载日志
+  trackPageView('Games');
+
   useEffect(() => {
     const init = async () => {
       // 验证登录状态
       const verifyResult = await authApi.verify();
       if (!verifyResult.valid) {
+        logger.warn('未登录尝试访问GamesPage', { path: '/games' });
         navigate('/login');
         return;
       }
       
       setUser(verifyResult.user);
+      logger.info('用户验证成功', { userId: verifyResult.user.id, username: verifyResult.user.username });
       
       // 获取游戏列表和主题列表
       try {
@@ -31,15 +37,15 @@ function GamesPage() {
         setGames(gamesList);
         setThemes(themesData.themes || []);
         
-        // 读取已选择的主题或使用默认
-        const savedTheme = localStorage.getItem('selectedTheme');
-        if (savedTheme && themesData.themes?.some(t => t.id === savedTheme)) {
-          setSelectedTheme(savedTheme);
-        } else {
-          setSelectedTheme(themesData.default || themesData.themes?.[0]?.id || 'original');
-        }
+        // 不再自动读取缓存的主题，每次都让用户选择
+        // 但保留用户名显示
+        setSelectedTheme(themesData.default || themesData.themes?.[0]?.id || 'original');
+        
+        // 显示确认弹窗
+        setShowThemeModal(true);
       } catch (err) {
         console.error('获取数据失败:', err);
+        logger.error('获取游戏列表失败', { error: err.message });
       } finally {
         setLoading(false);
       }
@@ -48,13 +54,20 @@ function GamesPage() {
     init();
   }, [navigate]);
 
-  const handleThemeSelect = (themeId) => {
+  // 确认身份并选择主题
+  const handleConfirm = (themeId) => {
     setSelectedTheme(themeId);
     localStorage.setItem('selectedTheme', themeId);
     setShowThemeModal(false);
+    
+    const theme = themes.find(t => t.id === themeId);
+    logger.info('选择主题', { themeId, themeName: theme?.name });
+    trackAction('SELECT_THEME', { themeId, themeName: theme?.name });
   };
 
   const handleLogout = async () => {
+    logger.info('用户登出', { username: user?.username });
+    trackAction('LOGOUT', { username: user?.username });
     await authApi.logout();
     navigate('/login');
   };
@@ -79,7 +92,7 @@ function GamesPage() {
           <span>冒险小屋</span>
         </Link>
         <div className="navbar-user">
-          {/* 主题选择按钮 */}
+          {/* 主题选择按钮 - 每次都能重新选择 */}
           <button 
             className="theme-btn"
             onClick={() => setShowThemeModal(true)}
@@ -121,12 +134,12 @@ function GamesPage() {
         </div>
       </main>
 
-      {/* 主题选择弹窗 */}
+      {/* 身份确认 + 主题选择弹窗 - 每次进入都显示 */}
       {showThemeModal && (
-        <div className="modal-overlay" onClick={() => setShowThemeModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h2>🎨 选择游戏主题</h2>
-            <p className="modal-desc">不同的主题会带来完全不同的冒险体验</p>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>👋 确认身份</h2>
+            <p className="modal-desc">你好，<strong>{user?.username}</strong>！请选择游戏主题开始冒险~</p>
             
             <div className="theme-grid">
               {themes.map(theme => (
@@ -134,7 +147,7 @@ function GamesPage() {
                   key={theme.id}
                   className={`theme-option ${selectedTheme === theme.id ? 'selected' : ''}`}
                   style={{ '--theme-color': theme.primaryColor }}
-                  onClick={() => handleThemeSelect(theme.id)}
+                  onClick={() => handleConfirm(theme.id)}
                 >
                   <div className="theme-icon">
                     {theme.id === 'volantis' ? '⚡' : '🏠'}
@@ -146,8 +159,8 @@ function GamesPage() {
               ))}
             </div>
 
-            <button className="modal-close-btn" onClick={() => setShowThemeModal(false)}>
-              确定
+            <button className="modal-close-btn" onClick={() => handleConfirm(selectedTheme)}>
+              开始游戏
             </button>
           </div>
         </div>

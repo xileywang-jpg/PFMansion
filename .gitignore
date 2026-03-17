@@ -26,3 +26,10 @@ dist-ssr
 # Go build
 mansion-server
 *.exe
+
+# Profiling
+*.cpuprofile
+*.heap-snapshot
+
+# Backup files
+*.bak
