@@ -783,24 +783,55 @@ func (h *Hub) broadcastToRoom(roomID string, message interface{}) {
 
 // ==================== 阶段3新增：重连和同步 ====================
 
-// handleReconnect 处理重连请求
+// handleReconnect 处理重连请求 (简化版: 通过 roomId + playerId 重连)
 func (h *Hub) handleReconnect(msg *Message) {
 	var req struct {
-		Type          string `json:"type"`
-		SessionID     string `json:"sessionId"`
-		ReconnectKey  string `json:"reconnectKey"`
+		Type      string `json:"type"`
+		RoomId    string `json:"roomId"`
+		PlayerId  string `json:"playerId"`
 	}
 
 	if err := json.Unmarshal(msg.data, &req); err != nil {
+		logger.Warn("重连: 解析请求失败", map[string]interface{}{"error": err.Error()})
 		return
 	}
 
-	// 尝试重连
-	info, ok := h.gameManager.ReconnectSession(req.SessionID, req.ReconnectKey)
-	if !ok {
+	logger.Info("收到重连请求", map[string]interface{}{
+		"roomId": req.RoomId,
+		"playerId": req.PlayerId,
+		"sessionId": msg.sessionID,
+	})
+
+	// 尝试通过 roomId + playerId 恢复连接
+	room, err := h.gameManager.GetGameState(req.RoomId)
+	if err != nil {
+		logger.Warn("重连失败: 房间不存在", map[string]interface{}{"roomId": req.RoomId})
 		resp := map[string]interface{}{
 			"type":    "reconnect_failed",
-			"message": "重连失败，密钥无效或会话不存在",
+			"message": "房间不存在",
+		}
+		data, _ := json.Marshal(resp)
+		msg.client.send <- data
+		return
+	}
+
+	// 检查玩家是否在房间中
+	playerFound := false
+	var playerName string
+	for _, p := range room.Players {
+		if p.ID == req.PlayerId {
+			playerFound = true
+			// 从 Character 中获取名字
+			playerName = p.Character.Name
+			break
+		}
+	}
+
+	if !playerFound {
+		logger.Warn("重连失败: 玩家不在房间中", map[string]interface{}{"playerId": req.PlayerId, "roomId": req.RoomId})
+		resp := map[string]interface{}{
+			"type":    "reconnect_failed",
+			"message": "玩家不在房间中",
 		}
 		data, _ := json.Marshal(resp)
 		msg.client.send <- data
@@ -808,42 +839,40 @@ func (h *Hub) handleReconnect(msg *Message) {
 	}
 
 	// 重连成功，恢复客户端状态
-	msg.client.roomID = info.RoomID
-	msg.client.playerID = info.PlayerID
+	msg.client.roomID = req.RoomId
+	msg.client.playerID = req.PlayerId
 
 	// 将客户端加入房间
 	h.mu.Lock()
-	if h.rooms[info.RoomID] == nil {
-		h.rooms[info.RoomID] = make(map[*Client]bool)
+	if h.rooms[req.RoomId] == nil {
+		h.rooms[req.RoomId] = make(map[*Client]bool)
 	}
-	h.rooms[info.RoomID][msg.client] = true
+	h.rooms[req.RoomId][msg.client] = true
 	h.mu.Unlock()
 
+	logger.Info("重连成功", map[string]interface{}{
+		"roomId": req.RoomId,
+		"playerId": req.PlayerId,
+		"playerName": playerName,
+	})
+
 	// 发送重连成功和当前状态
-	state, err := h.gameManager.GetGameState(info.RoomID)
-	if err != nil {
-		state = nil
+	respData := map[string]interface{}{
+		"type":     "reconnect_success",
+		"roomId":   req.RoomId,
+		"playerId": req.PlayerId,
+		"state":    room,
+		"playerName": playerName,
 	}
-
-	history := h.gameManager.GetActionHistory(info.RoomID, 20)
-
-	resp := map[string]interface{}{
-		"type":       "reconnect_success",
-		"roomId":     info.RoomID,
-		"playerId":   info.PlayerID,
-		"state":      state,
-		"history":    history,
-	}
-	data, _ := json.Marshal(resp)
+	data, _ := json.Marshal(respData)
 	msg.client.send <- data
 
 	// 通知房间内其他玩家
-	h.broadcastToRoom(info.RoomID, map[string]interface{}{
-		"type":      "player_reconnected",
-		"playerId":  info.PlayerID,
+	h.broadcastToRoom(req.RoomId, map[string]interface{}{
+		"type":       "player_reconnected",
+		"playerId":   req.PlayerId,
+		"playerName": playerName,
 	})
-
-	logger.Info("玩家重连成功", map[string]interface{}{"playerId": info.PlayerID, "roomId": info.RoomID})
 }
 
 // handleGetHistory 获取操作历史

@@ -32,6 +32,9 @@ export function initNetworkLayer() {
   wsClient.on('combat_resolved', handleCombatResolved);
   wsClient.on('error', handleError);
   wsClient.on('server_shutdown', handleServerShutdown);
+  // 重连处理
+  wsClient.on('reconnect_success', handleReconnectSuccess);
+  wsClient.on('player_reconnected', handlePlayerReconnected);
   
   // 连接 WebSocket
   wsClient.connect();
@@ -265,6 +268,59 @@ function handleServerShutdown(msg: ServerMessage) {
   const store = useGameStore.getState();
   store.showFeedback('服务器已关闭', 'error');
   // 服务器关闭时，currentRoomId 会被清除，isInNetworkMode() 会自动返回 false
+}
+
+// 处理重连成功
+function handleReconnectSuccess(msg: ServerMessage) {
+  logger.info('重连成功', { roomId: msg.roomId, playerId: msg.playerId });
+  trackAction('RECONNECT_SUCCESS', { roomId: msg.roomId });
+  console.log('✅ 重连成功:', msg);
+  
+  currentRoomId = msg.roomId;
+  currentPlayerId = msg.playerId;
+  
+  // 恢复sessionStorage
+  wsClient.setRoomId(msg.roomId);
+  wsClient.setPlayerId(msg.playerId);
+  
+  const store = useGameStore.getState();
+  
+  // 如果服务器返回了状态，直接使用
+  if (msg.state) {
+    store.setState({
+      phase: msg.state.phase || 'EXPLORATION',
+      turnPhase: msg.state.turnPhase || 'MOVING',
+      turnIndex: msg.state.turnIndex || 1,
+      players: msg.state.players || {},
+      playerIds: msg.state.playerIds || [],
+      activePlayerId: msg.state.activePlayerId || '',
+      map: msg.state.map || {},
+      tileDeck: msg.state.tileDeck || [],
+      movesRemaining: msg.state.movesRemaining ?? 3,
+      omenCount: msg.state.omenCount ?? 0,
+      isHauntActive: msg.state.isHauntActive ?? false,
+      traitorId: msg.state.traitorId || null,
+      activeCard: msg.state.activeCard || null,
+      decks: msg.state.decks || { EVENT: [], ITEM: [], OMEN: [] },
+      logs: msg.state.logs || [],
+    });
+    store.showFeedback('已恢复游戏状态', 'info');
+  } else {
+    // 请求完整状态
+    store.showFeedback('正在同步游戏状态...', 'info');
+    // 发送 get_state 请求
+    wsClient.send({
+      type: 'get_state',
+      roomId: msg.roomId
+    });
+  }
+}
+
+// 处理其他玩家重连
+function handlePlayerReconnected(msg: ServerMessage) {
+  logger.info('玩家重连', { playerId: msg.playerId, playerName: msg.playerName });
+  const store = useGameStore.getState();
+  store.showFeedback(`${msg.playerName} 重新连接了`, 'info');
 }
 
 // ==================== 玩家操作 ====================
