@@ -8,6 +8,15 @@ import { logger, trackAction } from './logger';
 let currentRoomId: string | null = null;
 let currentPlayerId: string | null = null;
 
+// 导出房间和玩家ID，供外部组件访问
+export function getCurrentRoomId(): string | null {
+  return currentRoomId;
+}
+
+export function getCurrentPlayerId(): string | null {
+  return currentPlayerId;
+}
+
 // 检查是否已连接到服务器（用于决定是否需要降级到前端处理）
 export function isConnectedToServer(): boolean {
   return wsClient.isConnected() && currentRoomId !== null;
@@ -55,16 +64,6 @@ export function isInNetworkMode(): boolean {
 // 设置网络模式（保留兼容性，但不再使用）
 export function setNetworkMode(enabled: boolean) {
   console.log('⚠️ setNetworkMode 已废弃，请使用后端处理');
-}
-
-// 获取当前房间ID
-export function getCurrentRoomId(): string | null {
-  return currentRoomId;
-}
-
-// 获取当前玩家ID
-export function getCurrentPlayerId(): string | null {
-  return currentPlayerId;
 }
 
 // ==================== 消息处理 ====================

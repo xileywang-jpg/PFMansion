@@ -172,8 +172,14 @@ export const LobbyScreen: React.FC = () => {
 
     wsClient.on('game_started', (msg: any) => {
       // 游戏开始，使用 React Router 跳转到游戏页面，而不是刷新页面
-      // 注意：这里不需要手动设置 currentRoomId，因为 network.ts 中的 handleGameStarted 会处理
-      // 但我们需要确保消息被正确传递
+      // 保存房间信息到 sessionStorage，以便 LocalGame 可以直接请求状态
+      const roomId = wsClient.getRoomId();
+      const playerId = wsClient.getPlayerId();
+      if (roomId) {
+        sessionStorage.setItem('roomId', roomId);
+        sessionStorage.setItem('playerId', playerId || '');
+        console.log('📝 保存房间信息:', roomId, playerId);
+      }
       console.log('🎮 游戏开始，切换到游戏页面...');
       navigate('/game/mansion-protocol');
     });

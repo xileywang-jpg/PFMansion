@@ -5,6 +5,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import * as network from '../ws/network';
+import { wsClient } from '../ws/client';
 import MapGrid from './MapGrid';
 import PlayerHUD from './PlayerHUD';
 import CardResolutionModal from './EventModal';
@@ -34,7 +35,23 @@ const LocalGame: React.FC = () => {
     // 网络模式由 handleGameStarted 消息触发状态同步
     // 单机模式通过独立的单机入口进入
     
-    console.log('[LocalGame] 组件挂载，等待服务器状态...');
+    // 检查是否有保存的房间信息（从 NetworkScreens 跳转过来时保存的）
+    const savedRoomId = sessionStorage.getItem('roomId');
+    const savedPlayerId = sessionStorage.getItem('playerId');
+    
+    if (savedRoomId && savedPlayerId) {
+      console.log('[LocalGame] 恢复房间连接:', savedRoomId);
+      
+      // 恢复 wsClient 的房间信息
+      wsClient.setRoomId(savedRoomId);
+      wsClient.setPlayerId(savedPlayerId);
+      
+      // 请求游戏状态
+      network.getState();
+    } else {
+      // 没有保存的房间信息，可能是第一次进入，等待服务器消息
+      console.log('[LocalGame] 无保存的房间信息，等待服务器状态...');
+    }
   }, []);
 
   // 处理离开房间（网络模式）
