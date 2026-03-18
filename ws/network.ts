@@ -5,8 +5,9 @@ import { logger, trackAction } from './logger';
 
 // 注意：移除单机模式概念，所有游戏请求都发送到后端
 // 如果后端不可用，会有前端降级处理
-let currentRoomId: string | null = null;
-let currentPlayerId: string | null = null;
+// 页面刷新后，从 sessionStorage 恢复房间信息
+let currentRoomId: string | null = sessionStorage.getItem('roomId');
+let currentPlayerId: string | null = sessionStorage.getItem('playerId');
 
 // 导出房间和玩家ID，供外部组件访问
 export function getCurrentRoomId(): string | null {
@@ -182,6 +183,8 @@ function handleStateSync(msg: ServerMessage) {
       defenderId: state.activeCombat.defenderId,
       attribute: state.activeCombat.attribute,
       phase: state.activeCombat.phase,
+      attackerRoll: state.activeCombat.attackerRoll,
+      defenderRoll: state.activeCombat.defenderRoll,
     } : null,
     
     // Phase 1: 待处理动作 (新增)
@@ -189,8 +192,8 @@ function handleStateSync(msg: ServerMessage) {
     
     // 剧本
     currentScenario: state.currentScenario || null,
-    lastTriggeredOmenId: state.lastTriggeredOmen || null,
-    lastTriggeredTileId: state.lastTriggeredTile || null,
+    lastTriggeredOmen: state.lastTriggeredOmen || null,
+    lastTriggeredTile: state.lastTriggeredTile || null,
     
     // 日志
     logs: state.logs || [],
@@ -356,6 +359,19 @@ export function leaveRoom() {
   wsClient.setRoomId(null);
   wsClient.setPlayerId(null);
   // 离开房间后，isInNetworkMode() 会自动返回 false
+}
+
+// 恢复会话（页面刷新后调用，从 sessionStorage 恢复房间信息）
+export function restoreSession() {
+  const savedRoomId = sessionStorage.getItem('roomId');
+  const savedPlayerId = sessionStorage.getItem('playerId');
+  if (savedRoomId) {
+    currentRoomId = savedRoomId;
+    console.log('[restoreSession] 恢复房间:', savedRoomId);
+  }
+  if (savedPlayerId) {
+    currentPlayerId = savedPlayerId;
+  }
 }
 
 // 设置准备状态
