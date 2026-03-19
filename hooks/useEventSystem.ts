@@ -49,7 +49,8 @@ export const useEventSystem = () => {
     const outcomes = outcomeActions.filter(a => a.message).map(a => a.message);
     const resultText = outcomes.length > 0 ? outcomes.join(' ') : (passed ? "你安然无恙。" : "你遭遇了不幸。");
 
-    executeScript(outcomeActions);
+    // 注意：后端已在 ResolveEventChoice 中应用效果，此处不再重复执行
+    // executeScript(outcomeActions);
 
     const player = players[activePlayerId];
     const tileKey = `${player.position.x},${player.position.y}`;

@@ -520,10 +520,12 @@ func (h *Hub) handleGameAction(msg *Message) {
 		}
 
 		// 检查是否有待处理的投骰子动作（属性检定或战斗）
+		// 容忍 pending 为 nil 的情况（防止超时重试或多发请求导致错误）
 		if pending == nil {
 			resp := map[string]interface{}{
-				"type":    "error",
-				"message": "当前不需要投骰子",
+				"type":  "dice_result",
+				"checkType": "STALE",
+				"message": "骰子结果已过期，请刷新状态",
 			}
 			data, _ := json.Marshal(resp)
 			msg.client.send <- data

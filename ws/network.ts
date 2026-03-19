@@ -205,7 +205,13 @@ function handleStateSync(msg: ServerMessage) {
 
 function handleDiceResult(msg: ServerMessage) {
   console.log('🎲 骰子结果:', msg);
-  
+
+  // 容忍过期请求（后端返回 STALE 类型时不处理）
+  if ((msg as any).checkType === 'STALE') {
+    console.warn('骰子请求已过期，忽略');
+    return;
+  }
+
   const store = useGameStore.getState();
   store.showFeedback(`骰子: ${msg.results.join(', ')} = ${msg.sum}`, 'info');
 }
@@ -261,6 +267,11 @@ function handleError(msg: ServerMessage) {
   }
   
   store.showFeedback(errorMessage, 'error');
+
+  // 骰子相关错误：清除 activeRoll 防止 UI 卡死
+  if (msg.message?.includes('不需要投骰子') || msg.message?.includes('骰子')) {
+    store.setState({ activeRoll: null });
+  }
 }
 
 function handleServerShutdown(msg: ServerMessage) {
