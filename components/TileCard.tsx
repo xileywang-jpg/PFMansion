@@ -2,7 +2,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TileInstance, Direction, AttributeName, Player } from '../types';
-import { TILE_DECK, STARTING_TILE, PLAYER_COLORS } from '../constants';
+import { STARTING_TILE, PLAYER_COLORS, getTilesForGame } from '../constants';
 import { useGameStore } from '../store/gameStore';
 import * as Icons from 'lucide-react';
 import { Hammer, Search, Ghost, Ban, Package, Skull } from 'lucide-react';
@@ -16,13 +16,16 @@ interface TileCardProps {
 const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) => {
   const { players, activePlayerId, interactWithWall, pickupItemFromTile, playerIds, openInspection } = useGameStore();
   
+  // 使用动态获取的地图块数据（根据主题）
+  const tileDeck = getTilesForGame();
   const def = tile.defId === STARTING_TILE.id 
     ? STARTING_TILE 
-    : TILE_DECK.find(t => t.id === tile.defId);
+    : tileDeck.find(t => t.id === tile.defId);
 
   if (!def) return null;
 
-  const IconComponent = def.icon ? (Icons as any)[def.icon] : Icons.HelpCircle;
+  // 安全获取 icon 组件，不存在的 icon 使用默认的 HelpCircle
+  const IconComponent = def.icon && (Icons as any)[def.icon] ? (Icons as any)[def.icon] : Icons.HelpCircle;
   const hasActivePlayer = playersOnTile.some(p => p.id === activePlayerId);
 
   // 根据玩家状态判断可进行的墙壁动作

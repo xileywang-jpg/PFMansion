@@ -247,6 +247,90 @@ export const executeEffects = (effects: Effect[], context: GameContext): void =>
         }
         break;
       }
+
+      // ========== 新增效果 ==========
+
+      case 'TRADE_ITEMS': {
+        const targets = resolveTargets(effect.target, context);
+        const { itemId, withPlayerId, withItemId } = effect;
+        
+        if (targets.length > 0 && withPlayerId && itemId && withItemId) {
+          const playerId = targets[0];
+          state.addLog(`[Logic] 交易: 玩家 ${playerId} 用 ${itemId} 换取 ${withPlayerId} 的 ${withItemId}`, 'info');
+          state.executeScript([{
+            type: 'trade_items',
+            playerId1: playerId,
+            itemId1: itemId,
+            playerId2: withPlayerId,
+            itemId2: withItemId
+          }]);
+        }
+        break;
+      }
+
+      case 'TELEPORT_TO_REVEALED': {
+        const targets = resolveTargets(effect.target, context);
+        targets.forEach(tid => {
+          state.executeScript([{
+            type: 'teleport_to_revealed',
+            target: tid,
+            locationId: effect.locationId
+          }]);
+        });
+        break;
+      }
+
+      case 'REVEAL_ALL_TILES': {
+        state.executeScript([{ type: 'reveal_all_tiles' }]);
+        state.addLog('[Logic] 地图已完全揭示！', 'success');
+        break;
+      }
+
+      case 'REVEAL_NEXT_EVENT': {
+        state.executeScript([{ 
+          type: 'reveal_next_event', 
+          toTop: effect.toTop !== false 
+        }]);
+        break;
+      }
+
+      case 'REVEAL_TRAIL': {
+        state.executeScript([{ type: 'reveal_trail', target: context.activePlayerId }]);
+        state.addLog('[Logic] 你的足迹已被标记在地图上', 'info');
+        break;
+      }
+
+      case 'REROLL_DICE': {
+        state.executeScript([{ 
+          type: 'reroll_dice', 
+          contextId: effect.contextId 
+        }]);
+        break;
+      }
+
+      case 'MIRROR_REFLECT': {
+        const targets = resolveTargets(effect.target, context);
+        const duration = effect.duration || 3;
+        
+        targets.forEach(tid => {
+          state.executeScript([{
+            type: 'add_status_effect',
+            target: tid,
+            effect: 'MIRROR_REFLECT',
+            duration: duration
+          }]);
+        });
+        state.addLog(`[Logic] 镜子反射效果已施加，持续 ${duration} 回合`, 'alert');
+        break;
+      }
+
+      case 'DIVINATION': {
+        state.executeScript([{
+          type: 'divination',
+          action: effect.action
+        }]);
+        break;
+      }
     }
   });
 };

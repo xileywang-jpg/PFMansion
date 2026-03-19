@@ -64,8 +64,8 @@ interface GameState {
   traitorId: string | null;
   
   // Haunt Context
-  lastTriggeredOmenId: string | null;
-  lastTriggeredTileId: string | null;
+  lastTriggeredOmen: string | null;
+  lastTriggeredTile: string | null;
 
   // Phase 1: 待处理动作 (网络同步)
   pendingAction: { type: string; target: string; data?: Record<string, unknown> } | null;
@@ -80,6 +80,9 @@ interface GameState {
   isInteractionModalOpen: boolean;
   isSkillTreeOpen: boolean; 
   inspectPlayerId: string | null;
+  
+  // 预知/互动待执行效果
+  pendingInteractionEffects: any[] | null;
 
   activeFeedback: { message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' } | null;
 
@@ -231,6 +234,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   isInteractionModalOpen: false,
   isSkillTreeOpen: false,
   inspectPlayerId: null,
+  pendingInteractionEffects: null,
   activeFeedback: null,
 
   showFeedback: (message: string, type = 'error') => {
@@ -385,13 +389,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       isHauntActive: false,
       currentScenario: null,
       traitorId: null,
-      lastTriggeredOmenId: null,
-      lastTriggeredTileId: null,
+      lastTriggeredOmen: null,
+      lastTriggeredTile: null,
       pendingAction: null,
       isInventoryOpen: false,
       isInteractionModalOpen: false,
       isSkillTreeOpen: false,
       inspectPlayerId: null,
+      pendingInteractionEffects: null,
     });
   },
 
@@ -489,6 +494,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       isInteractionModalOpen: false,
       isSkillTreeOpen: false,
       inspectPlayerId: null,
+      pendingInteractionEffects: null,
     });
 
     state.showFeedback(`${nextPlayer.character.name} 的回合`, 'turn');
@@ -600,12 +606,54 @@ export const useGameStore = create<GameState>((set, get) => ({
           });
         }
       }
+
+      // 处理地块被动效果 (buffs/debuffs)
+      if (def.effects && def.effects.length > 0) {
+        const playerId = state.activePlayerId;
+        const currentBuffs = newPlayers[playerId].buffs || [];
+        const newBuffs = [...currentBuffs];
+        
+        def.effects.forEach(effect => {
+          // 简单效果：buff/debuff 类型
+          if (effect.type === 'buff' || effect.type === 'debuff') {
+            if (!newBuffs.includes(effect.text)) {
+              newBuffs.push(effect.text);
+              state.addLog(`[${effect.type === 'buff' ? '增益' : '减益'}] ${effect.text}`, effect.type === 'buff' ? 'success' : 'warning');
+            }
+          }
+          // 复杂效果：MODIFY_STAT 等
+          else if (effect.type === 'MODIFY_STAT' || effect.type === 'modify_stat') {
+            const attr = effect.stat || effect.attribute;
+            const amount = effect.amount;
+            if (attr && amount !== undefined) {
+              const player = newPlayers[playerId];
+              const targetAttr = player.character.attributes[attr];
+              if (targetAttr) {
+                const oldVal = targetAttr.current;
+                const newVal = Math.min(targetAttr.max, Math.max(targetAttr.floor, targetAttr.current + amount));
+                targetAttr.current = newVal;
+                state.addLog(`[属性变化] ${attr} ${amount > 0 ? '+' : ''}${amount} (${oldVal} → ${newVal})`, amount > 0 ? 'success' : 'warning');
+              }
+            }
+          }
+          // 其他特殊效果
+          else if (effect.type === 'MIRROR_REFLECT') {
+            // 镜像反射效果 - 下一次攻击反射
+            if (!newBuffs.includes('镜像反射')) {
+              newBuffs.push('镜像反射');
+              state.addLog(`[特殊增益] 镜像反射 (下次攻击反射)`, 'success');
+            }
+          }
+        });
+        
+        newPlayers[playerId].buffs = newBuffs;
+      }
       
       if (!existingTile.hasEventTriggered && (def.cardSymbol || def.eventTrigger)) {
           set({ movesRemaining: 0 }); 
           nextPhase = 'EVENT_RESOLVING';
           if (def.eventTrigger) get().triggerSpecificEvent(def.eventTrigger);
-          else if (def.cardSymbol) get().drawCard(def.cardSymbol);
+          else if (def.cardSymbol && def.cardSymbol !== 'NONE') get().drawCard(def.cardSymbol);
       }
       
       set({ players: newPlayers, movesRemaining: newMoves, turnPhase: (newMoves === 0 && nextPhase !== 'EVENT_RESOLVING') ? 'DONE' : nextPhase });
@@ -658,6 +706,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       activeCombat: null,
       isInteractionModalOpen: false,
       isSkillTreeOpen: false,
+      pendingInteractionEffects: null,
     });
 
     state.addLog(`${player.character.name} 在大厦中殒落了... 随身物品散落了一地。`, 'alert');
@@ -921,6 +970,103 @@ export const useGameStore = create<GameState>((set, get) => ({
                   if (action.message) state.addLog(action.message, 'narrative');
                   break;
               }
+              case 'damage': {
+                  // 伤害效果 - 等同于 reduce stat
+                  if (action.amount) {
+                      const attr = player.character.attributes['might'];
+                      const damageMitigation = player.buffs.includes('伤害减免 +1') ? 1 : 0;
+                      const actualAmount = Math.min(0, -Math.abs(action.amount) + damageMitigation);
+                      
+                      const oldVal = attr.current;
+                      const newVal = attr.current + actualAmount;
+                      
+                      if (newVal <= attr.floor) {
+                          deathTriggeredIds.push(targetId);
+                          attr.current = attr.floor;
+                      } else {
+                          attr.current = Math.min(attr.max, newVal);
+                      }
+                      
+                      if (action.message) state.addLog(action.message, 'alert');
+                      get().addPersonalLog(targetId, `受到 ${Math.abs(action.amount)} 点伤害 (实际: ${Math.abs(actualAmount)})`, 'alert');
+                  }
+                  break;
+              }
+              case 'teleport': {
+                  // 传送效果 - 传送到随机位置或指定位置
+                  if (action.destination === 'random' || action.destination === 'any') {
+                      // 找到所有可见且空闲的地块
+                      const availableTiles = Object.entries(state.map)
+                          .filter(([_, tile]) => tile.visibility === 'VISIBLE')
+                          .filter(([key, tile]) => {
+                              const [x, y] = key.split(',').map(Number);
+                              return !Object.values(state.players).some(p => p.position.x === x && p.position.y === y && !p.isDead);
+                          });
+                      
+                      if (availableTiles.length > 0) {
+                          const randomTile = availableTiles[Math.floor(Math.random() * availableTiles.length)];
+                          const [tx, ty] = randomTile[0].split(',').map(Number);
+                          newPlayers[targetId] = {
+                              ...newPlayers[targetId],
+                              position: { x: tx, y: ty }
+                          };
+                          state.addLog(`你被传送到随机位置！`, 'narrative');
+                      }
+                  } else if (action.destination === 'basement') {
+                      state.addLog("你掉到了地下室！", 'alert');
+                  }
+                  break;
+              }
+              case 'gain_item': {
+                  // gain_item 是 add_item 的别名
+                  if (action.itemId) {
+                      const item = ITEMS_DB[action.itemId];
+                      if (item) {
+                          player.items.push(item);
+                          state.addLog(`获得了 ${item.name}`, 'success');
+                          get().addPersonalLog(targetId, `获得了物品: ${item.name}。`, 'success');
+                      }
+                  }
+                  break;
+              }
+              case 'reveal_all_tiles': {
+                  // 揭示所有地块
+                  const newMap = { ...state.map };
+                  Object.keys(newMap).forEach(key => {
+                      newMap[key] = { ...newMap[key], visibility: 'VISIBLE' };
+                  });
+                  set({ map: newMap });
+                  state.addLog(`地图已完全揭示！`, 'success');
+                  break;
+              }
+              case 'reveal_next_event': {
+                  // 揭示下一个事件（暂为提示）
+                  state.addLog(`你感觉到前方有重要的事件即将发生...`, 'info');
+                  break;
+              }
+              case 'reveal_trail': {
+                  // 显示足迹
+                  if (newPlayers[targetId]) {
+                      newPlayers[targetId].showTrail = true;
+                      state.addLog(`足迹已在地图上标记`, 'info');
+                  }
+                  break;
+              }
+              case 'reroll_dice': {
+                  // 重掷骰子（需要前端支持）
+                  state.addLog(`你可以重新投掷骰子！`, 'info');
+                  break;
+              }
+              case 'reveal_map': {
+                  // 揭示地图（等同于揭示所有地块）
+                  const revealMap = { ...state.map };
+                  Object.keys(revealMap).forEach(key => {
+                      revealMap[key] = { ...revealMap[key], visibility: 'VISIBLE' };
+                  });
+                  set({ map: revealMap });
+                  state.addLog(`地图已揭示！`, 'success');
+                  break;
+              }
               // Basic support for logic embedded in events (like "IF HAS_ITEM")
               // In a real scenario, we'd use logicEngine entirely, but here we bridge.
               // We'll rely on logicEngine for complex skill execution, but event scripts are simple.
@@ -1069,7 +1215,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         nextTurnPhase = 'EVENT_RESOLVING';
         newMovesRemaining = 0;
         get().triggerSpecificEvent(pendingTile.eventTrigger);
-    } else if (pendingTile.cardSymbol) {
+    } else if (pendingTile.cardSymbol && pendingTile.cardSymbol !== 'NONE') {
         nextTurnPhase = 'EVENT_RESOLVING';
         newMovesRemaining = 0;
         get().drawCard(pendingTile.cardSymbol);
@@ -1182,8 +1328,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     
     // Determine the scenario using the matrix
-    const omenId = state.lastTriggeredOmenId || '';
-    const tileDefId = state.lastTriggeredTileId || '';
+    const omenId = state.lastTriggeredOmen || '';
+    const tileDefId = state.lastTriggeredTile || '';
     const scenarioId = getScenarioId(omenId, tileDefId);
     
     const selectedScenario = SCENARIOS_DB[scenarioId] || SCENARIOS_DB['haunt_00'];

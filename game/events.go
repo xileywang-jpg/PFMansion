@@ -44,6 +44,8 @@ func (g *GameManager) DrawCard(roomID, playerID, cardType string) (map[string]in
 		deckName = "ITEM"
 	case "OMEN":
 		deckName = "OMEN"
+	case "NONE", "":
+		return nil, errors.New("该位置不需要抽卡")
 	default:
 		return nil, errors.New("无效的卡牌类型")
 	}

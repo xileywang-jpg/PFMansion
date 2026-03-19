@@ -22,6 +22,9 @@ var itemsData []byte
 //go:embed data/scenarios.json
 var scenariosData []byte
 
+//go:embed data/characters.json
+var charactersData []byte
+
 // ==================== 配置结构 ====================
 
 // ThemeConfig 主题配置
@@ -64,16 +67,38 @@ type HauntMatrixJSON struct {
 	Scenarios   map[string]Scenario        `json:"scenarios"`
 }
 
+// CharacterAttributeJSON 角色属性 JSON 结构
+type CharacterAttributeJSON struct {
+	Values    []int `json:"values"`
+	StartIndex int  `json:"startIndex"`
+}
+
+// CharacterJSON 角色 JSON 结构
+type CharacterJSON struct {
+	ID          string                     `json:"id"`
+	Name        string                    `json:"name"`
+	Description string                    `json:"description"`
+	Traits      []string                  `json:"traits"`
+	Attributes  map[string]CharacterAttributeJSON `json:"attributes"`
+}
+
+// CharactersJSON 角色 JSON 结构
+type CharactersJSON struct {
+	Original []CharacterJSON `json:"original"`
+	Volantis []CharacterJSON `json:"volantis"`
+}
+
 // DataLoader 数据加载器
 var dataLoader *DataLoader
 
 // DataLoader 数据加载器
 type DataLoader struct {
-	Config    ConfigJSON
-	Tiles     TileDeckJSON
-	Events    EventsJSON
-	Items     ItemsJSON
-	Scenarios HauntMatrixJSON
+	Config     ConfigJSON
+	Tiles      TileDeckJSON
+	Events     EventsJSON
+	Items      ItemsJSON
+	Scenarios  HauntMatrixJSON
+	Characters CharactersJSON
 }
 
 // LoadData 加载所有数据
@@ -109,14 +134,21 @@ func LoadData() error {
 		return err
 	}
 
-	log.Printf("✅ 数据加载完成: %d 主题, %d 房间, %d 事件, %d 物品, %d 厄运, %d 技能, %d 剧本",
+	// 加载角色数据
+	if err := json.Unmarshal(charactersData, &dataLoader.Characters); err != nil {
+		log.Printf("⚠️ 加载角色数据失败: %v", err)
+		return err
+	}
+
+	log.Printf("✅ 数据加载完成: %d 主题, %d 房间, %d 事件, %d 物品, %d 厄运, %d 技能, %d 剧本, %d 角色",
 		len(dataLoader.Config.Themes),
 		len(dataLoader.Tiles.Original)+len(dataLoader.Tiles.Volantis),
 		len(dataLoader.Events.Events),
 		len(dataLoader.Items.Items),
 		len(dataLoader.Items.Omens),
 		len(dataLoader.Items.Skills),
-		len(dataLoader.Scenarios.Scenarios))
+		len(dataLoader.Scenarios.Scenarios),
+		len(dataLoader.Characters.Original)+len(dataLoader.Characters.Volantis))
 
 	return nil
 }
@@ -297,4 +329,50 @@ func GetScenarioByID(id string) *Scenario {
 		return &scenario
 	}
 	return nil
+}
+
+// GetCharactersByTheme 获取主题角色列表
+func GetCharactersByTheme(theme string) []CharacterJSON {
+	if dataLoader == nil {
+		return nil
+	}
+	switch theme {
+	case "volantis":
+		return dataLoader.Characters.Volantis
+	default:
+		return dataLoader.Characters.Original
+	}
+}
+
+// GetCharacterByID 根据ID获取角色定义
+func GetCharacterByID(id string) *CharacterJSON {
+	if dataLoader == nil {
+		return nil
+	}
+	// 先在 original 中查找
+	for i, char := range dataLoader.Characters.Original {
+		if char.ID == id {
+			return &dataLoader.Characters.Original[i]
+		}
+	}
+	// 再在 volantis 中查找
+	for i, char := range dataLoader.Characters.Volantis {
+		if char.ID == id {
+			return &dataLoader.Characters.Volantis[i]
+		}
+	}
+	return nil
+}
+
+// GetCharacterAttributeValues 获取角色的属性 values 数组
+func GetCharacterAttributeValues(characterID, attributeName string) ([]int, int) {
+	char := GetCharacterByID(characterID)
+	if char == nil {
+		return nil, 0
+	}
+	attr, ok := char.Attributes[attributeName]
+	if !ok {
+		return nil, 0
+	}
+	return attr.Values, attr.StartIndex
 }

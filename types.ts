@@ -16,7 +16,7 @@ export enum GamePhase {
   GameOver = 'GAME_OVER',
 }
 
-export type TurnPhase = 'MOVING' | 'EVENT_RESOLVING' | 'DONE';
+export type TurnPhase = 'MOVING' | 'EVENT_RESOLVING' | 'ATTRIBUTE_CHECK' | 'CHOICE' | 'COMBAT_ATTACK' | 'COMBAT_DEFENSE' | 'DONE';
 
 export enum AttributeName {
   Might = 'might',
@@ -136,6 +136,9 @@ export interface Player {
   // 状态效果 (Phase 3)
   statusEffects: StatusEffect[];
   
+  // 轨迹显示
+  showTrail: boolean;
+  
   // Progression
   skillPoints: number;
   unlockedSkillNodes: string[]; // IDs of unlocked nodes from SkillTree
@@ -155,7 +158,8 @@ export type StatusEffectType =
   | 'STEALTH'
   | 'PHASING'
   | 'BLESSED'
-  | 'CURSED';
+  | 'CURSED'
+  | 'MIRROR_REFLECT';
 
 export interface StatusEffect {
   type: StatusEffectType;
@@ -223,6 +227,10 @@ export interface TileInteraction {
   successMessage?: string;
   failureMessage?: string;
   destination?: string;
+  // DIVINATION 专用：预知事件后放牌位置
+  divinationPosition?: 'top' | 'bottom';
+  // MIRROR 专用：持续回合数
+  mirrorDuration?: number;
 }
 
 export type EdgeType = 
@@ -269,46 +277,85 @@ export interface TileInstance {
 
 // --- Card & Item System ---
 
-export type CardSymbol = 'EVENT' | 'ITEM' | 'OMEN';
+export type CardSymbol = 'EVENT' | 'ITEM' | 'OMEN' | 'NONE';
 
-export type EventInteractionType = 'ATTRIBUTE_CHECK' | 'CHOICE';
-
-export interface EventInteractionDef {
-  type: 'ATTRIBUTE_CHECK';
-  attribute: AttributeName;
-  difficulty: number; 
-  success: ScriptAction[]; 
-  failure: ScriptAction[]; 
+// P0-2 修复：对齐后端完整的 Card 结构
+// Interaction 交互类型
+export interface Interaction {
+  type: 'ATTRIBUTE_CHECK' | 'CHOICE' | 'NONE';
+  attribute?: AttributeName;
+  difficulty?: number;
+  success?: ScriptAction[];
+  failure?: ScriptAction[];
+  options?: Choice[];
 }
 
-export type EventInteraction = 
-  | EventInteractionDef
-  | {
-      type: 'CHOICE';
-      options: { label: string; effects: ScriptAction[] }[];
-    };
+// Choice 选择选项
+export interface Choice {
+  label: string;
+  effects: ScriptAction[];
+}
 
-export interface EventCard {
+// Effect 效果定义（完整版）
+export interface Effect {
+  type: 'MODIFY_STAT' | 'DAMAGE' | 'HEAL' | 'DRAW_CARD' | 'MOVE_PLAYER' | 'LOG' | 'IF' | 'GIVE_ITEM' | 'GIVE_SKILL' | 'ROLL';
+  stat?: string;
+  amount?: number;
+  target?: string;
+  deck?: CardSymbol;
+  message?: string;
+  style?: 'info' | 'alert' | 'success' | 'narrative';
+  location?: string;
+  x?: number;
+  y?: number;
+  condition?: Condition;
+  then?: Effect[];
+  else?: Effect[];
+  attribute?: string;
+  difficulty?: number;
+}
+
+// Condition 条件
+export interface Condition {
+  op: 'HAS_ITEM' | 'HAS_SKILL';
+  itemId?: string;
+  skillId?: string;
+}
+
+// ItemUsage 物品使用
+export interface ItemUsage {
+  actionLabel?: string;
+  isConsumable: boolean;
+  target?: 'SELF' | 'OPPONENT' | 'TILE';
+  effects: ScriptAction[];
+}
+
+// P0-2 修复：完整的 Card 类型，对齐后端 data.go 中的 Card 结构
+export interface Card {
   id: string;
-  type: 'EVENT';
+  type: 'EVENT' | 'ITEM' | 'OMEN';
   title: string;
-  description: string; 
+  description: string;
   flavorText?: string;
   icon?: string;
-  triggerType?: 'ON_ENTER'; 
-  interaction: EventInteraction;
+  triggerType?: 'ON_ENTER' | 'ON_EXIT' | 'MANUAL';
+  interaction?: Interaction;
+  usage?: ItemUsage;
+  passiveEffects?: string[];
+  // 用于物品/厄运的额外字段
+  cardSymbol?: CardSymbol;
 }
 
-export type CardDef = EventCard;
+// 保留 EventCard 作为别名（用于向后兼容）
+export interface EventCard extends Card {
+  type: 'EVENT';
+  interaction: Interaction;
+}
+
+// CardDef 指向完整的 Card 结构
+export type CardDef = Card;
 
 export type ItemType = 'WEAPON' | 'CONSUMABLE' | 'PASSIVE' | 'OMEN';
-
-export interface ItemUsage {
-  actionLabel: string; 
-  isConsumable: boolean; 
-  effects: ScriptAction[]; 
-  target?: 'SELF' | 'OPPONENT' | 'TILE';
-}
 
 export interface Item {
   id: string;
@@ -336,7 +383,9 @@ export interface ItemGrantedAction {
 // --- Scripting & Event Engine ---
 
 export type ConditionType = 'stat_check' | 'has_item' | 'tile_check' | 'dice_roll';
-export type ActionType = 'modify_stat' | 'move_player' | 'add_item' | 'draw_card' | 'trigger_haunt' | 'narrative_log' | 'heal';
+export type ActionType = 'modify_stat' | 'move_player' | 'add_item' | 'draw_card' | 'trigger_haunt' | 'narrative_log' | 'heal' 
+  | 'trade_items' | 'teleport_to_revealed' | 'reveal_all_tiles' | 'reveal_next_event' | 'reveal_trail' 
+  | 'reroll_dice' | 'add_status_effect' | 'divination';
 
 export interface ScriptCondition {
   type: ConditionType;
@@ -359,6 +408,17 @@ export interface ScriptAction {
   location?: 'basement' | 'ground' | 'upper' | 'entry' | 'start' | 'random'; 
   x?: number; // 移动到指定 X 坐标
   y?: number; // 移动到指定 Y 坐标
+  // 新增字段
+  locationId?: string; // TELEPORT_TO_REVEALED
+  playerId1?: string; // TRADE_ITEMS
+  playerId2?: string;
+  itemId1?: string;
+  itemId2?: string;
+  toTop?: boolean; // REVEAL_NEXT_EVENT
+  contextId?: string; // REROLL_DICE
+  effect?: string; // add_status_effect
+  duration?: number;
+  action?: 'peek' | 'toTop' | 'toBottom'; // DIVINATION
 }
 
 export interface LogEntry {

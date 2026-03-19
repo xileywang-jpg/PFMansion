@@ -104,6 +104,7 @@ func (g *GameManager) StartGame(roomID string) error {
 			ID:     playerID,
 			Team:   "UNASSIGNED",
 			Items:  []Card{},
+			DroppedItems: []Card{},
 			Buffs:  []string{},
 			Skills: []string{},
 			SkillPoints: 0,
@@ -115,6 +116,9 @@ func (g *GameManager) StartGame(roomID string) error {
 					Type:      "info",
 				},
 			},
+			StatusEffects: []StatusEffect{},
+			UnlockedSkillNodes: []string{},
+			ShowTrail: false,
 			Character: CharacterDef{
 				ID:   charID,
 				Name: charName,
@@ -142,11 +146,16 @@ func (g *GameManager) StartGame(roomID string) error {
 			Map: map[string]*TileInstance{
 				"0,0": {
 					InstanceID:        "start",
-					DefID:             "start_tile",
+					DefID:             "tile_entry_hall",
 					X:                 0,
 					Y:                 0,
 					Rotation:          0,
-					Edges:             map[Direction]string{DirectionNorth: "DOOR", DirectionEast: "DOOR", DirectionSouth: "DOOR", DirectionWest: "DOOR"},
+					Edges:             map[Direction]string{
+						DirectionNorth: "OPEN",
+						DirectionEast:  "OPEN",
+						DirectionSouth: "OPEN",
+						DirectionWest:  "OPEN",
+					},
 					HasEventTriggered: true,
 					Visibility:        "VISIBLE",
 					DroppedItems:      []Card{},

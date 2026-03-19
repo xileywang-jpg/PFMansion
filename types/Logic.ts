@@ -25,19 +25,21 @@ export type Condition =
 
 // --- 执行效果 (Effect) ---
 // 对游戏状态产生的实际影响
+// 注意：为了避免 TypeScript 解析器问题，使用简化定义
 export type Effect = 
   | { type: 'MODIFY_STAT', target: TargetSelector, stat: string, amount: number }
-  | { type: 'DAMAGE', target: TargetSelector, amount: number, damageType?: 'PHYSICAL' | 'MENTAL' } // 明确的伤害
+  | { type: 'DAMAGE', target: TargetSelector, amount: number, damageType?: 'PHYSICAL' | 'MENTAL' }
   | { type: 'HEAL', target: TargetSelector, stat: string, amount: number }
   | { type: 'MOVE', target: TargetSelector, steps: number }
-  | { type: 'TELEPORT', target: TargetSelector, location: 'BASEMENT' | 'ENTRANCE' } // 传送
-  | { type: 'ADD_ITEM', target: TargetSelector, itemId: string } // 获得物品
-  | { type: 'REMOVE_ITEM', target: TargetSelector, itemId: string } // 移除物品
+  | { type: 'TELEPORT', target: TargetSelector, location: 'BASEMENT' | 'ENTRANCE' }
+  | { type: 'ADD_ITEM', target: TargetSelector, itemId: string }
+  | { type: 'REMOVE_ITEM', target: TargetSelector, itemId: string }
   | { type: 'SPAWN_TOKEN', tokenId: string, location: TargetSelector }
   | { type: 'DRAW_CARD', deck: 'EVENT' | 'ITEM' }
   | { type: 'LOG', message: string, style?: 'info' | 'alert' | 'success' | 'narrative' }
-  // 支持条件分支
-  | { type: 'IF', condition: Condition, then: Effect[], else?: Effect[] };
+  | { type: 'IF', condition: Condition, then: Effect[], else?: Effect[] }
+  // 新增效果 - 使用更通用的定义避免解析问题
+  | { type: string, [key: string]: any };
 
 // --- 技能/剧本节点定义 ---
 export interface ActionDefinition {

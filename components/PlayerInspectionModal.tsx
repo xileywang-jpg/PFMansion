@@ -103,7 +103,7 @@ const PlayerInspectionModal: React.FC = () => {
                         </div>
                         <p className="text-xs text-zinc-400 italic">{player.character.description}</p>
                         <div className="flex gap-2 mt-2">
-                             {player.character.traits.map(t => (
+                             {player.character.traits?.map(t => (
                                 <span key={t} className="text-[9px] bg-zinc-800 text-zinc-400 border border-zinc-700 px-1.5 py-0.5 rounded font-bold uppercase">{t}</span>
                              ))}
                         </div>

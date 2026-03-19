@@ -18,7 +18,14 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
     "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "terser": "^5.46.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

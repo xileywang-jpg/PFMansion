@@ -117,7 +117,7 @@ const PlayerHUD: React.FC = () => {
         
         {/* Traits Badges */}
         <div className="flex flex-wrap gap-1 mt-3 relative z-10">
-            {player.character.traits.map(t => (
+            {player.character.traits?.map(t => (
                 <span key={t} className="px-1.5 py-0.5 bg-zinc-800 text-zinc-400 border border-zinc-700 rounded text-[9px] font-bold uppercase">{t}</span>
             ))}
         </div>

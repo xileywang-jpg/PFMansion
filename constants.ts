@@ -13,8 +13,8 @@ function getRuntimeThemeData() {
     return null;
   }
   
-  // 每次调用时都读取最新的 localStorage，确保获取最新设置
-  const themeId = localStorage.getItem('selectedTheme') || 'original';
+  // 兼容两种 key: selectedTheme 和 gameTheme
+  const themeId = localStorage.getItem('selectedTheme') || localStorage.getItem('gameTheme') || 'original';
   cachedThemeData = getAllThemeData(themeId);
   return cachedThemeData;
 }
@@ -26,7 +26,7 @@ export function getCharactersForGame(): CharacterDef[] {
     console.log('[getCharactersForGame] themeData:', themeData);
     console.log('[getCharactersForGame] themeData.characters:', themeData?.characters);
     if (themeData && themeData.characters && Array.isArray(themeData.characters)) {
-      console.log('[getCharactersForGame] Loading characters for theme:', localStorage.getItem('selectedTheme'));
+      console.log('[getCharactersForGame] Loading characters for theme:', localStorage.getItem('gameTheme') || localStorage.getItem('selectedTheme'));
       const result = hydrateCharacters(themeData.characters);
       console.log('[getCharactersForGame] hydrated characters count:', result.length);
       return result;
@@ -58,7 +58,8 @@ export function getItemsForGame(): any {
   try {
     const themeData = getRuntimeThemeData();
     if (themeData && themeData.items) {
-      return themeData.items;
+      // 兼容数组和对象格式
+      return Array.isArray(themeData.items) ? themeData.items : Object.values(themeData.items);
     }
   } catch (e) {
     console.error('getItemsForGame error:', e);
@@ -71,8 +72,10 @@ export function getItemsForGame(): any {
 export function getEventsForGame(): any {
   try {
     const themeData = getRuntimeThemeData();
+    console.log('[getEventsForGame] themeData.events:', typeof themeData?.events, Array.isArray(themeData?.events));
     if (themeData && themeData.events) {
-      return themeData.events;
+      // 兼容数组和对象格式
+      return Array.isArray(themeData.events) ? themeData.events : Object.values(themeData.events);
     }
   } catch (e) {
     console.error('getEventsForGame error:', e);
@@ -85,8 +88,10 @@ export function getEventsForGame(): any {
 export function getOmensForGame(): any {
   try {
     const themeData = getRuntimeThemeData();
+    console.log('[getOmensForGame] themeData.omens:', typeof themeData?.omens, Array.isArray(themeData?.omens));
     if (themeData && themeData.omens) {
-      return themeData.omens;
+      // 兼容数组和对象格式
+      return Array.isArray(themeData.omens) ? themeData.omens : Object.values(themeData.omens);
     }
   } catch (e) {
     console.error('getOmensForGame error:', e);

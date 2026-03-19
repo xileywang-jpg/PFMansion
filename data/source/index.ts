@@ -70,9 +70,11 @@ export const SKILLS_DATA = original_skills;
 
 // 获取指定主题的所有数据
 export function getAllThemeData(themeId: string) {
+  console.log('[getAllThemeData] themeId:', themeId);
   switch (themeId) {
     case 'volantis':
-      return {
+      console.log('[getAllThemeData] volantis_events type:', typeof volantis_events, 'IsArray:', Array.isArray(volantis_events), 'length:', volantis_events?.length);
+      const volantisData = {
         characters: volantis_characters,
         tiles: volantis_tiles,
         items: volantis_items,
@@ -80,6 +82,8 @@ export function getAllThemeData(themeId: string) {
         omens: volantis_omens,
         scenarios: volantis_scenarios
       };
+      console.log('[getAllThemeData] returning volantis data, events:', typeof volantisData.events, Array.isArray(volantisData.events));
+      return volantisData;
     case 'original':
     default:
       return {

@@ -606,6 +606,127 @@ PF 项目目前支持以下卡牌类型：
 
 ---
 
+## 10. 地图交互系统 (Tile Interaction)
+
+地图地块可以通过 `interact` 字段定义可交互的效果。
+
+### 10.1 交互类型定义
+
+```typescript
+interface TileInteraction {
+  type: InteractionType;
+  description: string;
+  condition?: Condition;
+  effects?: Effect[];
+  cost?: { type: string; amount: number };
+  // 特定类型配置
+  destination?: string;      // TELEPORT: 传送目标
+  mirrorDuration?: number;    // MIRROR: 持续回合数
+  divinationPosition?: 'top' | 'bottom'; // DIVINATION: 预知后放牌位置
+}
+```
+
+### 10.2 支持的交互类型
+
+| 类型 | 说明 | 消耗 | 效果 |
+|------|------|------|------|
+| `TRADE` | 玩家间物品交换 | - | 交换任意1件物品 |
+| `TELEPORT` | 传送 | 1理智 | 传送到已揭示区域 |
+| `REVEAL_MAP` | 揭示地图 | - | 显示所有隐藏区域 |
+| `DIVINATION` | 占卜 | 1理智 | 查看下一张事件牌并决定位置 |
+| `MIRROR` | 镜子 | 1理智 | 伤害/回复反转 (持续3回合) |
+| `TIME_REWIND` | 时间回溯 | 2理智 | 重投所有骰子 |
+| `HEAL` | 治疗 | - | 恢复全部状态 |
+| `FORGE` | 锻造 | 知识4+ | 获得传奇物品 |
+| `CROSS` | 穿越 | 属性检定 | 通过危险区域 |
+
+### 10.3 交互效果 Effects
+
+交互触发时执行的效果列表：
+
+```typescript
+// 揭示全地图
+{ type: 'REVEAL_ALL_TILES' }
+
+// 占卜 - 查看事件牌
+{ type: 'DIVINATION', action: 'peek' }   // 查看
+{ type: 'DIVINATION', action: 'toTop' }  // 放回堆顶
+{ type: 'DIVINATION', action: 'toBottom' } // 放到堆底
+
+// 镜子 - 伤害反转
+{ type: 'MIRROR_REFLECT', target: { type: 'SELF' }, duration: 3 }
+
+// 时间回溯 - 重掷骰子
+{ type: 'REROLL_DICE', contextId: 'all' }
+
+// 传送
+{ type: 'TELEPORT_TO_REVEALED', target: { type: 'SELF' }, locationId: 'tile_id' }
+
+// 显示轨迹
+{ type: 'REVEAL_TRAIL' }
+```
+
+### 10.4 设计示例
+
+#### 示例：镜之湖
+
+```typescript
+{
+  "id": "vol_tile_lake_mirror",
+  "name": "镜之湖",
+  "type": "room",
+  "interact": {
+    "type": "MIRROR",
+    "description": "投入湖中查看自己的命运",
+    "cost": { "type": "sanity", "amount": 1 },
+    "mirrorDuration": 3,
+    "effects": [
+      { "type": "MIRROR_REFLECT", "target": { "type": "SELF" }, "duration": 3 },
+      { "type": "MODIFY_STAT", "target": { "type": "SELF" }, "stat": "sanity", "amount": -1 }
+    ]
+  }
+}
+```
+
+#### 示例：星空观测台
+
+```typescript
+{
+  "id": "vol_tile_starry_observatory",
+  "name": "星空观测台",
+  "type": "room",
+  "interact": {
+    "type": "DIVINATION",
+    "description": "预知下一个事件",
+    "cost": { "type": "sanity", "amount": 1 },
+    "effects": [
+      { "type": "DIVINATION", "action": "peek" },
+      { "type": "MODIFY_STAT", "target": { "type": "SELF" }, "stat": "knowledge", "amount": 1 }
+    ]
+  }
+}
+```
+
+#### 示例：时间扭曲区
+
+```typescript
+{
+  "id": "vol_tile_time_distortion",
+  "name": "时间扭曲区",
+  "type": "corridor",
+  "interact": {
+    "type": "TIME_REWIND",
+    "description": "回溯时间，重投所有骰子",
+    "cost": { "type": "sanity", "amount": 2 },
+    "effects": [
+      { "type": "REROLL_DICE", "contextId": "all" }
+    ]
+  }
+}
+```
+
+---
+
 ## 附录：可用图标一览
 
 | 图标 ID | 说明 |
@@ -634,5 +755,5 @@ PF 项目目前支持以下卡牌类型：
 
 ---
 
-*文档版本：1.0*
-*最后更新：2026-03-12*
+*文档版本：1.1*
+*最后更新：2026-03-17*

@@ -373,8 +373,8 @@ body {
 
 /* 主题选择按钮 */
 .theme-btn {
-  background: linear-gradient(135deg, var(--theme-color, var(--primary)) 0%, var(--bg-card) 100%;
-  border: 2px solid var(--theme-color, var(--primary));
+  background: linear-gradient(135deg, var(--theme-color, #8B5CF6) 0%, var(--bg-card) 100%);
+  border: 2px solid var(--theme-color, #8B5CF6);
   color: var(--text-primary);
   padding: 8px 16px;
   border-radius: 8px;

@@ -10,10 +10,12 @@ import (
 
 // CombatState 战斗状态
 type CombatState struct {
-	AttackerID string `json:"attackerId"`
-	DefenderID string `json:"defenderId"`
-	Attribute  string `json:"attribute"`
-	Phase      string `json:"phase"` // ATTACKING, DEFENDING, RESOLUTION
+	AttackerID    string `json:"attackerId"`
+	DefenderID   string `json:"defenderId"`
+	Attribute     string `json:"attribute"`
+	Phase         string `json:"phase"` // ATTACKING, DEFENDING, RESOLUTION
+	AttackerRoll  *int   `json:"attackerRoll,omitempty"`  // 攻击方骰子结果
+	DefenderRoll  *int   `json:"defenderRoll,omitempty"`  // 防御方骰子结果
 }
 
 // StartCombat 开始战斗

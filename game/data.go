@@ -16,6 +16,7 @@ type Card struct {
 	Interaction  *Interaction `json:"interaction,omitempty"`
 	Usage        *ItemUsage   `json:"usage,omitempty"`
 	PassiveEffects []string   `json:"passiveEffects,omitempty"`
+	CardSymbol   string       `json:"cardSymbol,omitempty"` // EVENT, ITEM, OMEN, NONE (用于物品/厄运)
 }
 
 // Interaction 交互类型

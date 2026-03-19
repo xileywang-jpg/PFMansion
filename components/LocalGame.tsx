@@ -46,6 +46,9 @@ const LocalGame: React.FC = () => {
       wsClient.setRoomId(savedRoomId);
       wsClient.setPlayerId(savedPlayerId);
       
+      // 恢复 network.ts 的 currentRoomId（关键！否则 isConnectedToServer() 会返回 false）
+      network.restoreSession();
+      
       // 初始化网络层（如果还没有初始化）
       if (!wsClient.isConnected()) {
         console.log('[LocalGame] 初始化网络层...');

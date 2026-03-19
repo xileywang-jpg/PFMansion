@@ -40,7 +40,7 @@ func (g *GameManager) UseItem(roomID, playerID, itemID, targetID string) error {
 	if item.Usage != nil && item.Usage.IsConsumable {
 		hasItem := false
 		for _, i := range player.Items {
-			if i == itemID {
+			if i.ID == itemID {
 				hasItem = true
 				break
 			}
@@ -74,8 +74,8 @@ func (g *GameManager) UseItem(roomID, playerID, itemID, targetID string) error {
 
 		// 如果是消耗品，移除物品
 		if item.Usage.IsConsumable {
-			for i, iID := range player.Items {
-				if iID == itemID {
+			for i, iCard := range player.Items {
+				if iCard.ID == itemID {
 					player.Items = append(player.Items[:i], player.Items[i+1:]...)
 					break
 				}
@@ -267,14 +267,14 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			
 			// 添加到玩家物品栏（如果是物品卡或厄运卡）
 			if card.Type == "ITEM" {
-				player.Items = append(player.Items, card.ID)
+				player.Items = append(player.Items, card)
 				g.addLog(roomID, fmt.Sprintf("%s 获得了物品: %s", player.Character.Name, card.Title), "info")
 				
 				// 检查并应用被动效果
 				g.applyPassiveEffects(roomID, playerID, card)
 			}
 			if card.Type == "OMEN" {
-				player.Items = append(player.Items, card.ID)
+				player.Items = append(player.Items, card)
 				g.addLog(roomID, fmt.Sprintf("%s 获得了厄运: %s", player.Character.Name, card.Title), "info")
 				
 				// 检查并应用被动效果
@@ -343,8 +343,8 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			switch effect.Condition.Op {
 			case "HAS_ITEM":
 				// 检查玩家是否有物品
-				for _, itemID := range player.Items {
-					if itemID == effect.Condition.ItemID {
+				for _, item := range player.Items {
+					if item.ID == effect.Condition.ItemID {
 						conditionMet = true
 						break
 					}
@@ -375,13 +375,11 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 		// 给予物品
 		itemID := effect.Message // 用 Message 存物品ID
 		if itemID != "" {
-			player.Items = append(player.Items, itemID)
 			item := GetItem(itemID)
-			itemName := itemID
 			if item != nil {
-				itemName = item.Title
+				player.Items = append(player.Items, *item)
+				g.addLog(roomID, fmt.Sprintf("%s 获得了物品: %s", player.Character.Name, item.Title), "success")
 			}
-			g.addLog(roomID, fmt.Sprintf("%s 获得了物品: %s", player.Character.Name, itemName), "success")
 		}
 
 	case "GIVE_SKILL":

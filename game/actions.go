@@ -10,10 +10,13 @@ import (
 // ==================== 玩家操作 ====================
 
 // RollDice 投骰子 (服务器端统一生成)
+// 使用山屋惊魂经典版规则：骰子点数为 0, 1, 2
+// 0: 空白面 (2/6), 1: 白点 (2/6), 2: 绿点 (2/6)
 func (g *GameManager) RollDice(numDice int) []int {
+	diceFaces := []int{0, 0, 1, 1, 2, 2}
 	results := make([]int, numDice)
 	for i := 0; i < numDice; i++ {
-		results[i] = rand.Intn(6) + 1
+		results[i] = diceFaces[rand.Intn(len(diceFaces))]
 	}
 	return results
 }
@@ -344,7 +347,7 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string) error {
 		Edges:             tileDef.Edges,
 		HasEventTriggered: false,
 		Visibility:        "VISIBLE",
-		DroppedItems:      []string{},
+		DroppedItems:      []Card{},
 	}
 
 	// 放置房间并移动玩家

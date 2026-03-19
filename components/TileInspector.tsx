@@ -1,13 +1,16 @@
 
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
-import { TILE_DECK, STARTING_TILE } from '../constants';
+import { STARTING_TILE, getTilesForGame } from '../constants';
 import { Direction, TileDef } from '../types';
 import * as Icons from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const TileInspector: React.FC = () => {
   const { hoveredTileId, map, players, activePlayerId, pendingTile } = useGameStore();
+  
+  // 使用动态获取的地图块数据（根据主题）
+  const tileDeck = getTilesForGame();
   const activePlayer = players[activePlayerId];
 
   // Prioritize pendingTile (New room being placed), then hovered tile, then current player position
@@ -30,16 +33,18 @@ const TileInspector: React.FC = () => {
       if (tileInstance) {
           def = tileInstance.defId === STARTING_TILE.id 
             ? STARTING_TILE 
-            : TILE_DECK.find(t => t.id === tileInstance.defId);
+            : tileDeck.find(t => t.id === tileInstance.defId);
           coordinateLabel = `坐标: ${tileInstance.x}, ${tileInstance.y}`;
       }
   }
 
   if (!def) return null;
-  const IconComponent = def.icon ? (Icons as any)[def.icon] : Icons.HelpCircle;
+  // 安全获取 icon 组件，不存在的 icon 使用默认的 HelpCircle
+  const IconComponent = def.icon && (Icons as any)[def.icon] ? (Icons as any)[def.icon] : Icons.HelpCircle;
 
   const renderEffect = (effect: any, idx: number) => {
-    const EffectIcon = effect.icon ? (Icons as any)[effect.icon] : Icons.Zap;
+    // 安全获取 icon 组件，不存在的 icon 使用默认的 Zap
+    const EffectIcon = effect.icon && (Icons as any)[effect.icon] ? (Icons as any)[effect.icon] : Icons.Zap;
     let colorClass = 'text-zinc-400 border-zinc-700';
     if (effect.type === 'buff') colorClass = 'text-emerald-400 border-emerald-900/50 bg-emerald-900/10';
     if (effect.type === 'debuff') colorClass = 'text-red-400 border-red-900/50 bg-red-900/10';

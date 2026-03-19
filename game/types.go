@@ -5,6 +5,18 @@ import (
 	"time"
 )
 
+// ==================== 状态效果 ====================
+
+// StatusEffect 状态效果
+type StatusEffect struct {
+	Type      string `json:"type"` // INVISIBLE, DISGUISED, PETRIFIED, BURNING, CONFUSED, STEALTH, PHASING, BLESSED, CURSED, MIRROR_REFLECT
+	Duration  int    `json:"duration"` // 剩余回合数，-1表示永久
+	Source    string `json:"source,omitempty"` // 来源
+	Damage    int    `json:"damage,omitempty"` // 燃烧伤害
+	Faction   string `json:"faction,omitempty"` // 伪装阵营
+	Amount    int    `json:"amount,omitempty"` // 数值
+}
+
 // ==================== 玩家结构 ====================
 
 // Player 房间内玩家（连接用）
@@ -93,17 +105,20 @@ type CharacterDef struct {
 
 // GamePlayer 游戏玩家
 type GamePlayer struct {
-	ID          string            `json:"id"`
-	Character   CharacterDef     `json:"character"`
-	Position    Position         `json:"position"`
-	Items       []Card           `json:"items"`         // P1修复：存储完整物品对象
-	DroppedItems []Card          `json:"droppedItems"`  // P1修复：存储完整物品对象
-	IsDead      bool             `json:"isDead"`
-	Team        string           `json:"team"`
-	Buffs       []string         `json:"buffs"`
-	Skills      []string         `json:"skills"`
-	SkillPoints int              `json:"skillPoints"`
-	PersonalLogs []PersonalLog   `json:"personalLogs"` // 个人日志
+	ID               string            `json:"id"`
+	Character        CharacterDef     `json:"character"`
+	Position         Position         `json:"position"`
+	Items            []Card           `json:"items"`         // P1修复：存储完整物品对象
+	DroppedItems     []Card           `json:"droppedItems"`  // P1修复：存储完整物品对象
+	IsDead           bool             `json:"isDead"`
+	Team             string           `json:"team"`
+	Buffs            []string         `json:"buffs"`
+	Skills           []string         `json:"skills"`
+	SkillPoints      int              `json:"skillPoints"`
+	PersonalLogs     []PersonalLog   `json:"personalLogs"` // 个人日志
+	StatusEffects   []StatusEffect  `json:"statusEffects"` // 状态效果
+	UnlockedSkillNodes []string      `json:"unlockedSkillNodes"` // 已解锁技能节点
+	ShowTrail        bool            `json:"showTrail"` // 轨迹显示
 }
 
 // PersonalLog 个人日志条目
@@ -123,16 +138,18 @@ type Position struct {
 // TileDef 房间定义
 type TileDef struct {
 	ID            string                 `json:"id"`
-	Name         string                `json:"name"`
-	Description  string                `json:"description"`
-	Type         string                `json:"type"`
-	Floors       []string              `json:"floors"`
-	Edges        map[Direction]string  `json:"edges"`
-	CardSymbol  string                `json:"cardSymbol,omitempty"`
+	Name          string                `json:"name"`
+	Description   string                `json:"description"`
+	Type          string                `json:"type"`
+	Floors        []string              `json:"floors"`
+	Edges         map[Direction]string  `json:"edges"`
+	CardSymbol   string                `json:"cardSymbol,omitempty"`
 	EventTrigger string                `json:"eventTrigger,omitempty"`
+	Icon          string                `json:"icon,omitempty"` // 图标名称
 	// 被动效果
-	OnEnterEffects []Effect `json:"onEnterEffects,omitempty"` // 进入时触发
-	OnExitEffects  []Effect `json:"onExitEffects,omitempty"`  // 离开时触发（暂未实现）
+	Effects       []Effect              `json:"effects,omitempty"` // 简化版效果数组
+	OnEnterEffects []Effect             `json:"onEnterEffects,omitempty"` // 进入时触发
+	OnExitEffects  []Effect             `json:"onExitEffects,omitempty"`  // 离开时触发（暂未实现）
 }
 
 // TileInstance 房间实例
