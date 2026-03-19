@@ -45,9 +45,8 @@ func (g *GameManager) DrawCard(roomID, playerID, cardType string) (map[string]in
 	case "OMEN":
 		deckName = "OMEN"
 	case "NONE", "":
-		return nil, errors.New("该位置不需要抽卡")
-	default:
-		return nil, errors.New("无效的卡牌类型")
+		// 前端可能在边界情况下发送 NONE，静默返回不处理
+		return nil, nil
 	}
 
 	deck := state.FullState.Decks[deckName]

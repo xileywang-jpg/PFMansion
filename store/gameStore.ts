@@ -910,7 +910,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
           switch(action.type) {
               case 'draw_card': {
-                  if (action.deck) {
+                  if (action.deck && action.deck !== 'NONE') {
                       state.drawCard(action.deck);
                   }
                   break;
