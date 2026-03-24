@@ -1,4 +1,3 @@
-
 export const ITEMS_DATA = {
   "item_revolver": {
     "id": "item_revolver",
@@ -15,7 +14,7 @@ export const ITEMS_DATA = {
         { "type": "LOG", "message": "砰！你的左轮手枪喷出了火舌。", "style": "alert" }
       ]
     },
-    "passiveEffects": [{ "type": "buff", "text": "攻击时力量 +2" }]
+    "passiveEffects": ["攻击时力量 +2"]
   },
   "item_dagger": {
     "id": "item_dagger",
@@ -24,7 +23,7 @@ export const ITEMS_DATA = {
     "icon": "Sword",
     "type": "WEAPON",
     "grantedSkills": ["skill_vampiric_strike"],
-    "passiveEffects": [{ "type": "buff", "text": "获得技能：嗜血打击" }]
+    "passiveEffects": ["获得技能：嗜血打击"]
   },
   "item_amulet": {
     "id": "item_amulet",
@@ -32,7 +31,7 @@ export const ITEMS_DATA = {
     "description": "它在你的胸口散发着淡淡的暖意。",
     "icon": "Gem",
     "type": "PASSIVE",
-    "passiveEffects": [{ "type": "buff", "text": "理智 +1" }]
+    "passiveEffects": ["理智 +1"]
   },
   "item_adrenaline": {
     "id": "item_adrenaline",
@@ -57,6 +56,6 @@ export const ITEMS_DATA = {
     "description": "不仅能挖矿，还能挖穿墙壁。",
     "icon": "Hammer",
     "type": "WEAPON",
-    "passiveEffects": [{ "type": "buff", "text": "允许破坏墙壁" }]
+    "passiveEffects": ["允许破坏墙壁"]
   }
 };

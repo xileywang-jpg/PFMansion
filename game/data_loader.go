@@ -3,6 +3,8 @@ package game
 import (
 	"encoding/json"
 	"log"
+	"math/rand"
+	"strings"
 
 	_ "embed"
 )
@@ -24,6 +26,9 @@ var scenariosData []byte
 
 //go:embed data/characters.json
 var charactersData []byte
+
+//go:embed data/skillTrees.json
+var skillTreesData []byte
 
 // ==================== 配置结构 ====================
 
@@ -88,17 +93,48 @@ type CharactersJSON struct {
 	Volantis []CharacterJSON `json:"volantis"`
 }
 
+// SkillTreeNodeJSON 技能树节点 JSON 结构
+type SkillTreeNodeJSON struct {
+	ID               string   `json:"id"`
+	Name             string   `json:"name"`
+	Description      string   `json:"description"`
+	Cost             int      `json:"cost"`
+	Icon             string   `json:"icon"`
+	Prerequisites    []string `json:"prerequisites,omitempty"`
+	RequiredTrait    string   `json:"requiredTrait,omitempty"`
+	GrantsSkillID    string   `json:"grantsSkillId,omitempty"`
+	GrantsBuff       string   `json:"grantsBuff,omitempty"`
+	Position         struct {
+		Row int `json:"row"`
+		Col int `json:"col"`
+	} `json:"position"`
+}
+
+// SkillTreeCategoryJSON 技能树类别 JSON 结构
+type SkillTreeCategoryJSON struct {
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	Nodes       []SkillTreeNodeJSON  `json:"nodes"`
+}
+
+// SkillTreesJSON 技能树 JSON 结构
+type SkillTreesJSON struct {
+	Trees []SkillTreeCategoryJSON `json:"trees"`
+}
+
 // DataLoader 数据加载器
 var dataLoader *DataLoader
 
 // DataLoader 数据加载器
 type DataLoader struct {
-	Config     ConfigJSON
-	Tiles      TileDeckJSON
-	Events     EventsJSON
-	Items      ItemsJSON
-	Scenarios  HauntMatrixJSON
-	Characters CharactersJSON
+	Config      ConfigJSON
+	Tiles       TileDeckJSON
+	Events      EventsJSON
+	Items       ItemsJSON
+	Scenarios   HauntMatrixJSON
+	Characters  CharactersJSON
+	SkillTrees  SkillTreesJSON
 }
 
 // LoadData 加载所有数据
@@ -140,7 +176,13 @@ func LoadData() error {
 		return err
 	}
 
-	log.Printf("✅ 数据加载完成: %d 主题, %d 房间, %d 事件, %d 物品, %d 厄运, %d 技能, %d 剧本, %d 角色",
+	// 加载技能树数据
+	if err := json.Unmarshal(skillTreesData, &dataLoader.SkillTrees); err != nil {
+		log.Printf("⚠️ 加载技能树数据失败: %v", err)
+		// 不返回错误，保持向后兼容
+	}
+
+	log.Printf("✅ 数据加载完成: %d 主题, %d 房间, %d 事件, %d 物品, %d 厄运, %d 技能, %d 剧本, %d 角色, %d 技能树",
 		len(dataLoader.Config.Themes),
 		len(dataLoader.Tiles.Original)+len(dataLoader.Tiles.Volantis),
 		len(dataLoader.Events.Events),
@@ -148,7 +190,8 @@ func LoadData() error {
 		len(dataLoader.Items.Omens),
 		len(dataLoader.Items.Skills),
 		len(dataLoader.Scenarios.Scenarios),
-		len(dataLoader.Characters.Original)+len(dataLoader.Characters.Volantis))
+		len(dataLoader.Characters.Original)+len(dataLoader.Characters.Volantis),
+		len(dataLoader.SkillTrees.Trees))
 
 	return nil
 }
@@ -244,6 +287,14 @@ func GetEventByID(id string) *Card {
 		}
 	}
 	return nil
+}
+
+// GetScenarios 获取所有剧本
+func GetScenarios() map[string]Scenario {
+	if dataLoader == nil {
+		return nil
+	}
+	return dataLoader.Scenarios.Scenarios
 }
 
 // GetItems 获取物品
@@ -376,3 +427,104 @@ func GetCharacterAttributeValues(characterID, attributeName string) ([]int, int)
 	}
 	return attr.Values, attr.StartIndex
 }
+
+// ==================== 技能树管理 ====================
+
+// GetSkillTrees 获取所有技能树
+func GetSkillTrees() []SkillTreeCategoryJSON {
+	if dataLoader == nil || len(dataLoader.SkillTrees.Trees) == 0 {
+		return []SkillTreeCategoryJSON{}
+	}
+	return dataLoader.SkillTrees.Trees
+}
+
+// GetSkillTreeByID 根据ID获取技能树
+func GetSkillTreeByID(treeID string) *SkillTreeCategoryJSON {
+	for _, tree := range GetSkillTrees() {
+		if tree.ID == treeID {
+			return &tree
+		}
+	}
+	return nil
+}
+
+// GetSkillNode 获取技能树节点
+func GetSkillNode(nodeId string) *SkillTreeNodeJSON {
+	for _, tree := range GetSkillTrees() {
+		for i, node := range tree.Nodes {
+			if node.ID == nodeId {
+				return &tree.Nodes[i]
+			}
+		}
+	}
+	return nil
+}
+
+// SkillNodeGrant 技能节点增益
+type SkillNodeGrant struct {
+	GrantsSkillID string // 给予的技能ID
+	GrantsBuff    string // 给予的buff描述
+}
+
+// GetSkillNodeGrant 获取技能节点增益（供 data.go 调用）
+func GetSkillNodeGrant(nodeId string) *SkillNodeGrant {
+	node := GetSkillNode(nodeId)
+	if node == nil {
+		return nil
+	}
+	return &SkillNodeGrant{
+		GrantsSkillID: node.GrantsSkillID,
+		GrantsBuff:    node.GrantsBuff,
+	}
+}
+
+// GetSkillNodeGrantFromJSON 获取技能节点增益（别名，供外部调用）
+func GetSkillNodeGrantFromJSON(nodeId string) *SkillNodeGrant {
+	return GetSkillNodeGrant(nodeId)
+}
+
+// ==================== 卡牌堆管理 ====================
+
+// InitDeck 初始化牌堆（从 JSON 加载数据）
+func InitDeck(cardType string) []Card {
+	var cards []Card
+
+	switch cardType {
+	case "EVENT":
+		// 事件卡从单独的事件数据加载
+		for _, card := range dataLoader.Events.Events {
+			cards = append(cards, card)
+		}
+	case "ITEM":
+		for _, card := range dataLoader.Items.Items {
+			cards = append(cards, card)
+		}
+	case "OMEN":
+		for _, card := range dataLoader.Items.Omens {
+			cards = append(cards, card)
+		}
+	}
+
+	// 洗牌
+	rand.Shuffle(len(cards), func(i, j int) {
+		cards[i], cards[j] = cards[j], cards[i]
+	})
+
+	return cards
+}
+
+// GetAllSkills 获取所有技能
+func GetAllSkills() []Card {
+	return dataLoader.Items.Skills
+}
+
+// FindSkillByName 模糊匹配技能名称
+func FindSkillByName(skillName string) string {
+	for _, skill := range dataLoader.Items.Skills {
+		if strings.Contains(skill.Name, skillName) || strings.Contains(skillName, skill.Name) {
+			return skill.ID
+		}
+	}
+	return ""
+}
+

@@ -13,7 +13,11 @@ export type MessageType =
   | 'state_sync'
   | 'dice_result'
   | 'error'
-  | 'server_shutdown';
+  | 'server_shutdown'
+  | 'reconnect_success'
+  | 'player_reconnected'
+  | 'card_drawn'
+  | 'combat_resolved';
 
 export interface ServerMessage {
   type: MessageType;

@@ -2,7 +2,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TileInstance, Direction, AttributeName, Player } from '../types';
-import { STARTING_TILE, PLAYER_COLORS, getTilesForGame } from '../constants';
+import { STARTING_TILE, PLAYER_COLORS } from '../constants';
 import { useGameStore } from '../store/gameStore';
 import * as Icons from 'lucide-react';
 import { Hammer, Search, Ghost, Ban, Package, Skull } from 'lucide-react';
@@ -14,13 +14,12 @@ interface TileCardProps {
 }
 
 const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) => {
-  const { players, activePlayerId, interactWithWall, pickupItemFromTile, playerIds, openInspection } = useGameStore();
+  const { players, activePlayerId, interactWithWall, pickupItemFromTile, playerIds, openInspection, getTileById } = useGameStore();
   
-  // 使用动态获取的地图块数据（根据主题）
-  const tileDeck = getTilesForGame();
+  // 使用从后端API获取的地图块数据
   const def = tile.defId === STARTING_TILE.id 
     ? STARTING_TILE 
-    : tileDeck.find(t => t.id === tile.defId);
+    : getTileById(tile.defId);
 
   if (!def) return null;
 

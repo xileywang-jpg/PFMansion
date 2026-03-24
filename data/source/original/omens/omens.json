@@ -5,7 +5,7 @@
     "description": "球体深处闪烁着不详的微光，仿佛在揭示未来的终局。",
     "icon": "Eye",
     "type": "OMEN",
-    "passiveEffects": [{ "type": "buff", "text": "知识 +2，理智 -1" }]
+    "passiveEffects": ["知识 +2，理智 -1"]
   },
   "omen_girl": {
     "id": "omen_girl",
@@ -13,7 +13,7 @@
     "description": "镜中的倒影模仿着你... 几乎完美。她似乎想帮忙。",
     "icon": "User",
     "type": "OMEN",
-    "passiveEffects": [{ "type": "buff", "text": "知识 +1" }]
+    "passiveEffects": ["知识 +1"]
   },
   "omen_book": {
     "id": "omen_book",
@@ -21,7 +21,7 @@
     "description": "封面的质感摸起来像极了人皮，让人感到极度不安。",
     "icon": "BookOpen",
     "type": "OMEN",
-    "passiveEffects": [{ "type": "buff", "text": "知识 +2，理智 -1" }]
+    "passiveEffects": ["知识 +2，理智 -1"]
   },
   "omen_ring": {
     "id": "omen_ring",
@@ -29,7 +29,7 @@
     "description": "上面刻满了令你双眼酸涩流泪的符号。",
     "icon": "Circle",
     "type": "OMEN",
-    "passiveEffects": [{ "type": "buff", "text": "理智 +1" }]
+    "passiveEffects": ["理智 +1"]
   },
   "omen_mask": {
     "id": "omen_mask",
@@ -37,7 +37,7 @@
     "description": "它在你的脸上蠕动，仿佛要与你的皮肤融合。",
     "icon": "Smile",
     "type": "OMEN",
-    "passiveEffects": [{ "type": "buff", "text": "理智 -1，知识 +1" }]
+    "passiveEffects": ["理智 -1，知识 +1"]
   },
   "omen_skull": {
     "id": "omen_skull",
@@ -45,7 +45,7 @@
     "description": "它在你耳边不断诉说着疯狂的秘密。",
     "icon": "Skull",
     "type": "OMEN",
-    "passiveEffects": [{ "type": "buff", "text": "知识 +2，理智 -2" }]
+    "passiveEffects": ["知识 +2，理智 -2"]
   },
   "omen_dog": {
     "id": "omen_dog",
@@ -53,6 +53,6 @@
     "description": "一只半透明的猎犬，它似乎只对你忠诚。",
     "icon": "Dog",
     "type": "OMEN",
-    "passiveEffects": [{ "type": "buff", "text": "速度 +1，力量 +1" }]
+    "passiveEffects": ["速度 +1，力量 +1"]
   }
 }

@@ -181,6 +181,15 @@ export enum FloorLevel {
 
 export type TileEffectType = 'buff' | 'debuff' | 'trigger' | 'item';
 
+// PassiveEffect 被动效果（与后端 PassiveEffect 对齐）
+export type PassiveEffectType = 'buff' | 'debuff' | 'special' | 'skill';
+
+export interface PassiveEffect {
+  type: PassiveEffectType;
+  text: string;
+}
+
+// 兼容别名
 export interface TileEffect {
   type: TileEffectType;
   text: string;
@@ -364,7 +373,7 @@ export interface Item {
   icon: string; 
   type: ItemType;
   usage?: ItemUsage;
-  passiveEffects?: TileEffect[]; 
+  passiveEffects?: PassiveEffect[]; 
   grantedSkills?: string[];
   // 扩展字段
   grantedActions?: ItemGrantedAction[];
@@ -385,7 +394,9 @@ export interface ItemGrantedAction {
 export type ConditionType = 'stat_check' | 'has_item' | 'tile_check' | 'dice_roll';
 export type ActionType = 'modify_stat' | 'move_player' | 'add_item' | 'draw_card' | 'trigger_haunt' | 'narrative_log' | 'heal' 
   | 'trade_items' | 'teleport_to_revealed' | 'reveal_all_tiles' | 'reveal_next_event' | 'reveal_trail' 
-  | 'reroll_dice' | 'add_status_effect' | 'divination';
+  | 'reroll_dice' | 'add_status_effect' | 'divination'
+  // 前端本地脚本执行使用的额外类型
+  | 'damage' | 'teleport' | 'gain_item' | 'reveal_map';
 
 export interface ScriptCondition {
   type: ConditionType;
@@ -419,13 +430,15 @@ export interface ScriptAction {
   effect?: string; // add_status_effect
   duration?: number;
   action?: 'peek' | 'toTop' | 'toBottom'; // DIVINATION
+  // 额外字段（用于前端执行脚本）
+  destination?: string; // TELEPORT
 }
 
 export interface LogEntry {
   id: string;
   timestamp: number;
   text: string;
-  type: 'info' | 'alert' | 'narrative' | 'success' | 'failure';
+  type: 'info' | 'alert' | 'narrative' | 'success' | 'failure' | 'warning';
 }
 
 export interface ActiveRoll {

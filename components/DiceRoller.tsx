@@ -112,7 +112,8 @@ const DiceRoller: React.FC = () => {
     network.sendRollDice(activeRoll.numberOfDice);
 
     // 设置超时：如果后端 5 秒没响应，停止动画并清理状态
-    setTimeout(() => {
+    // 使用共享的超时管理，以便 dice_result 收到时可以清除
+    const timeoutId = window.setTimeout(() => {
       if (animationIntervalRef.current !== null) {
         clearInterval(animationIntervalRef.current);
         animationIntervalRef.current = null;
@@ -122,7 +123,9 @@ const DiceRoller: React.FC = () => {
       console.warn('骰子请求超时');
       // 超时后清除 activeRoll，防止 UI 卡死（服务器会返回 STALE 响应做双保险）
       cancelActiveRoll();
+      network.setDiceRollTimeoutId(null);
     }, 5000);
+    network.setDiceRollTimeoutId(timeoutId);
   };
 
   const renderDie = (value: number, index: number) => {

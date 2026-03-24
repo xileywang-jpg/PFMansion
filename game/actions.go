@@ -100,7 +100,7 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 	}
 
 	// 获取房间定义
-	tileDef := getTileDef(tileDefID)
+	tileDef := g.getTileDef(roomID, tileDefID)
 	if tileDef == nil {
 		return nil // 没有定义，跳过
 	}
@@ -132,7 +132,7 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 						},
 					}
 					g.addLog(roomID, fmt.Sprintf("%s 触发了事件: %s - 需要进行 %s 检定", 
-						player.Character.Name, event.Title, event.Interaction.Attribute), "alert")
+						player.Character.Name, event.Name, event.Interaction.Attribute), "alert")
 					return nil // 等待玩家投骰子
 
 				case "CHOICE":
@@ -145,23 +145,34 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 						},
 					}
 					g.addLog(roomID, fmt.Sprintf("%s 触发了事件: %s - 请做出选择", 
-						player.Character.Name, event.Title), "alert")
+						player.Character.Name, event.Name), "alert")
 					return nil // 等待玩家选择
 				}
 			}
 		}
 	}
 
-	// 2. 检查 CardSymbol - 厄运/物品/事件标记
-	if tileDef.CardSymbol != "" {
-		state.FullState.OmenCount++
-		g.addLog(roomID, fmt.Sprintf("发现了 %s！大厦变得更加躁动不安...", tileDef.CardSymbol), "alert")
-
-		// 检查是否触发作祟
-		if state.FullState.OmenCount >= 6 && !state.FullState.IsHauntActive {
-			state.FullState.Phase = GamePhaseHauntRoll
-			g.addLog(roomID, "厄运积累到极限！作祟即将爆发！", "alert")
+	// 2. 检查 CardSymbol - 根据类型触发不同的抽牌效果
+	if tileDef.CardSymbol != "" && tileDef.CardSymbol != "NONE" {
+		switch tileDef.CardSymbol {
+		case "OMEN":
+			// OMEN 卡会增加作祟计数
+			state.FullState.OmenCount++
+			g.addLog(roomID, fmt.Sprintf("发现了预兆！大厦变得更加躁动不安... (预兆数: %d)", state.FullState.OmenCount), "alert")
+			// 检查是否触发作祟
+			if state.FullState.OmenCount >= 6 && !state.FullState.IsHauntActive {
+				state.FullState.Phase = GamePhaseHauntRoll
+				g.addLog(roomID, "厄运积累到极限！作祟即将爆发！", "alert")
+			}
+		case "ITEM":
+			// 物品卡不增加作祟计数，只记录日志
+			g.addLog(roomID, "发现了物品！", "info")
+		case "EVENT":
+			// 事件卡不增加作祟计数，只记录日志
+			g.addLog(roomID, "触发了事件！", "info")
 		}
+		// 注意：实际的抽卡由前端在放置房间后调用 drawCard 来处理
+		// 后端只在玩家确认捡起物品时应用效果
 	}
 
 	// 3. 执行房间被动效果 (通用化)
@@ -431,6 +442,9 @@ func (g *GameManager) ModifyStat(roomID, playerID, attribute string, amount int)
 		attr.Current = attr.Max
 	}
 
+	// 将修改后的属性存回 map
+	player.Character.Attributes[attribute] = attr
+
 	// 记录日志
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 		ID:        generateLogID(),
@@ -460,12 +474,313 @@ func formatSign(n int) string {
 	return fmt.Sprintf("%d", n)
 }
 
-// GetTileDef 获取房间定义
-func getTileDef(tileID string) *TileDef {
+// getTileDef 获取房间定义（支持主题）
+func (g *GameManager) getTileDef(roomID, tileID string) *TileDef {
+	room, ok := g.Rooms[roomID]
+	if ok && room != nil {
+		theme := room.Theme
+		// 使用 GetTileDeckByTheme 获取正确主题的牌堆
+		deck := GetTileDeckByTheme(theme)
+		for i := range deck {
+			if deck[i].ID == tileID {
+				return &deck[i]
+			}
+		}
+	}
+	// 回退到原始牌堆
 	for i := range TileDeck {
 		if TileDeck[i].ID == tileID {
 			return &TileDeck[i]
 		}
 	}
 	return nil
+}
+
+// ==================== Phase 2: 物品与互动操作 ====================
+
+// PickupItem 捡起地面上的物品
+func (g *GameManager) PickupItem(roomID, playerID, itemID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return errors.New("玩家不存在")
+	}
+
+	// 获取玩家当前位置的地块
+	posKey := fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)
+	tile, ok := state.FullState.Map[posKey]
+	if !ok {
+		return errors.New("当前位置没有房间")
+	}
+
+	// 在地块掉落的物品中查找
+	foundIdx := -1
+	for i, item := range tile.DroppedItems {
+		if item.ID == itemID {
+			foundIdx = i
+			break
+		}
+	}
+	if foundIdx == -1 {
+		return errors.New("该物品不在此处")
+	}
+
+	// 捡起物品
+	item := tile.DroppedItems[foundIdx]
+	tile.DroppedItems = append(tile.DroppedItems[:foundIdx], tile.DroppedItems[foundIdx+1:]...)
+	player.Items = append(player.Items, item)
+
+	// 记录日志
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("%s 捡起了 %s", player.Character.Name, item.Name),
+		Type:      "success",
+	})
+
+	return nil
+}
+
+// GiveItem 给予物品给其他玩家
+func (g *GameManager) GiveItem(roomID, fromPlayerID, toPlayerID, itemID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	fromPlayer, ok := state.FullState.Players[fromPlayerID]
+	if !ok {
+		return errors.New("发送者不存在")
+	}
+
+	toPlayer, ok := state.FullState.Players[toPlayerID]
+	if !ok {
+		return errors.New("接收者不存在")
+	}
+
+	// 在发送者物品中查找
+	foundIdx := -1
+	for i, item := range fromPlayer.Items {
+		if item.ID == itemID {
+			foundIdx = i
+			break
+		}
+	}
+	if foundIdx == -1 {
+		return errors.New("你没有该物品")
+	}
+
+	// 转移物品
+	item := fromPlayer.Items[foundIdx]
+	fromPlayer.Items = append(fromPlayer.Items[:foundIdx], fromPlayer.Items[foundIdx+1:]...)
+	toPlayer.Items = append(toPlayer.Items, item)
+
+	// 记录日志
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("%s 将 %s 交给了 %s", fromPlayer.Character.Name, item.Name, toPlayer.Character.Name),
+		Type:      "info",
+	})
+
+	return nil
+}
+
+// DropItem 丢弃物品到地面
+func (g *GameManager) DropItem(roomID, playerID, itemID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return errors.New("玩家不存在")
+	}
+
+	// 在玩家物品中查找
+	foundIdx := -1
+	for i, item := range player.Items {
+		if item.ID == itemID {
+			foundIdx = i
+			break
+		}
+	}
+	if foundIdx == -1 {
+		return errors.New("你没有该物品")
+	}
+
+	// 丢弃物品到当前位置
+	item := player.Items[foundIdx]
+	player.Items = append(player.Items[:foundIdx], player.Items[foundIdx+1:]...)
+
+	posKey := fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)
+	tile, ok := state.FullState.Map[posKey]
+	if !ok {
+		return errors.New("当前位置没有房间")
+	}
+	tile.DroppedItems = append(tile.DroppedItems, item)
+
+	// 记录日志
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("%s 丢弃了 %s", player.Character.Name, item.Name),
+		Type:      "info",
+	})
+
+	return nil
+}
+
+// InteractWithWall 与墙壁互动（破坏墙壁）
+func (g *GameManager) InteractWithWall(roomID, playerID, direction string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	// 验证是否是当前玩家
+	if state.FullState.ActivePlayerID != playerID {
+		return errors.New("还没轮到你")
+	}
+
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return errors.New("玩家不存在")
+	}
+
+	if player.IsDead {
+		return errors.New("已死亡的玩家无法行动")
+	}
+
+	// 获取玩家当前位置
+	posKey := fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)
+	currentTile, ok := state.FullState.Map[posKey]
+	if !ok {
+		return errors.New("当前位置没有房间")
+	}
+
+	// 检查是否有镐子
+	hasPickaxe := false
+	for _, item := range player.Items {
+		if item.ID == "item_pickaxe" {
+			hasPickaxe = true
+			break
+		}
+	}
+
+	// 获取玩家力量属性
+	might := player.Character.Attributes["might"]
+	mightVal := might.Current
+
+	// 有镐子或力量 > 5 可以破坏墙壁
+	if !hasPickaxe && mightVal <= 5 {
+		return errors.New("力量不足，无法破坏墙壁")
+	}
+
+	// 修改墙壁为碎石
+	dir := Direction(direction)
+	currentTile.Edges[dir] = "RUBBLE"
+
+	// 如果有相邻房间，也要修改相邻墙壁
+	var nx, ny int
+	switch dir {
+	case DirectionNorth:
+		ny = player.Position.Y - 1
+		nx = player.Position.X
+	case DirectionSouth:
+		ny = player.Position.Y + 1
+		nx = player.Position.X
+	case DirectionEast:
+		ny = player.Position.Y
+		nx = player.Position.X + 1
+	case DirectionWest:
+		ny = player.Position.Y
+		nx = player.Position.X - 1
+	}
+
+	neighborKey := fmt.Sprintf("%d,%d", nx, ny)
+	if neighborTile, ok := state.FullState.Map[neighborKey]; ok {
+		// 修改相邻房间的对向墙壁
+		oppositeDir := getOppositeDirection(dir)
+		neighborTile.Edges[oppositeDir] = "RUBBLE"
+	}
+
+	// 没有镐子则扣1点力量
+	if !hasPickaxe {
+		might.Current = might.Current - 1
+		if might.Current < might.Floor {
+			might.Current = might.Floor
+		}
+		// 将修改后的属性存回 map
+		player.Character.Attributes["might"] = might
+		// 记录日志
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:       fmt.Sprintf("%s 强行破坏墙壁，力量 -1", player.Character.Name),
+			Type:      "alert",
+		})
+	}
+
+	// 记录日志
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("%s 破坏了墙壁", player.Character.Name),
+		Type:      "info",
+	})
+
+	return nil
+}
+
+// getOppositeDirection 获取相反方向
+func getOppositeDirection(dir Direction) Direction {
+	switch dir {
+	case DirectionNorth:
+		return DirectionSouth
+	case DirectionSouth:
+		return DirectionNorth
+	case DirectionEast:
+		return DirectionWest
+	case DirectionWest:
+		return DirectionEast
+	}
+	return dir
 }

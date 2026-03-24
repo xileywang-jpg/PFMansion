@@ -217,6 +217,166 @@ func main() {
 		})
 	})
 
+	// ==================== 游戏数据 API ====================
+	// 静态卡牌数据（items, omens, skills, events, scenarios, characters, skillTrees, tiles）
+	
+	// 获取所有游戏数据
+	mux.HandleFunc("/api/game/data/all", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		
+		data := map[string]interface{}{
+			"themes": game.GetThemes(),
+			"tiles": map[string]interface{}{
+				"original": game.GetTileDeckByTheme("original"),
+				"volantis": game.GetTileDeckByTheme("volantis"),
+			},
+			"items": game.GetItems(),
+			"omens": game.GetOmens(),
+			"skills": game.GetSkills(),
+			"events": game.GetEvents(),
+			"scenarios": game.GetScenarios(),
+			"skillTrees": game.GetSkillTrees(),
+			"characters": map[string]interface{}{
+				"original": game.GetCharactersByTheme("original"),
+				"volantis": game.GetCharactersByTheme("volantis"),
+			},
+		}
+		
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300") // 缓存5分钟
+		json.NewEncoder(w).Encode(data)
+	})
+
+	// 获取物品数据
+	mux.HandleFunc("/api/game/data/items", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"items": game.GetItems(),
+		})
+	})
+
+	// 获取厄运数据
+	mux.HandleFunc("/api/game/data/omens", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"omens": game.GetOmens(),
+		})
+	})
+
+	// 获取技能数据
+	mux.HandleFunc("/api/game/data/skills", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"skills": game.GetSkills(),
+		})
+	})
+
+	// 获取事件数据
+	mux.HandleFunc("/api/game/data/events", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"events": game.GetEvents(),
+		})
+	})
+
+	// 获取剧本数据
+	mux.HandleFunc("/api/game/data/scenarios", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"scenarios": game.GetScenarios(),
+		})
+	})
+
+	// 获取角色数据
+	mux.HandleFunc("/api/game/data/characters", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		theme := r.URL.Query().Get("theme")
+		if theme == "" {
+			theme = "original"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"characters": game.GetCharactersByTheme(theme),
+			"theme": theme,
+		})
+	})
+
+	// 获取技能树数据
+	mux.HandleFunc("/api/game/data/skill-trees", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"skillTrees": game.GetSkillTrees(),
+		})
+	})
+
+	// 获取地图数据
+	mux.HandleFunc("/api/game/data/tiles", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		theme := r.URL.Query().Get("theme")
+		if theme == "" {
+			theme = "original"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"tiles": game.GetTileDeckByTheme(theme),
+			"theme": theme,
+		})
+	})
+
+	// 获取主题列表
+	mux.HandleFunc("/api/game/data/themes", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"themes": game.GetThemes(),
+		})
+	})
+
 	// 静态文件服务
 	staticDir := *dir
 	if _, err := os.Stat(staticDir); os.IsNotExist(err) {

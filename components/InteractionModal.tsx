@@ -29,7 +29,6 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({
     getEffectiveAttributeValue,
     setState,
     map,
-    get
   } = useGameStore();
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -125,9 +124,9 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({
             if (isSuccess && interaction.successMessage) {
               addLog(`✓ ${interaction.successMessage}`, 'success');
             } else if (!isSuccess && interaction.failureMessage) {
-              addLog(`✗ ${interaction.failureMessage}`, 'alert');
+              addLog(`✕ ${interaction.failureMessage}`, 'alert');
               // 失败时造成伤害
-              const newState = get();
+              const newState = useGameStore.getState();
               const newPlayer = newState.players[activePlayerId];
               const mightAttr = newPlayer.character.attributes.might;
               mightAttr.current = Math.max(mightAttr.floor, mightAttr.current - 2);

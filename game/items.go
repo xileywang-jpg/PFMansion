@@ -62,7 +62,7 @@ func (g *GameManager) UseItem(roomID, playerID, itemID, targetID string) error {
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 		ID:        generateLogID(),
 		Timestamp: time.Now().UnixMilli(),
-		Text:      fmt.Sprintf("%s 使用了 %s", playerName, item.Title),
+		Text:      fmt.Sprintf("%s 使用了 %s", playerName, item.Name),
 		Type:      "info",
 	})
 
@@ -147,7 +147,7 @@ func (g *GameManager) ExecuteSkill(roomID, playerID, skillID, targetID string) e
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 		ID:        generateLogID(),
 		Timestamp: time.Now().UnixMilli(),
-		Text:      fmt.Sprintf("%s 使用了技能: %s", player.Character.Name, skill.Title),
+		Text:      fmt.Sprintf("%s 使用了技能: %s", player.Character.Name, skill.Name),
 		Type:      "info",
 	})
 
@@ -203,6 +203,8 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			if attr.Current > attr.Max {
 				attr.Current = attr.Max
 			}
+			// 将修改后的属性存回 map
+			player.Character.Attributes[attrName] = attr
 			// 记录日志
 			if amount != 0 {
 				logMsg := fmt.Sprintf("%s 的 %s %s%d (当前: %d)", 
@@ -231,6 +233,8 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			if attr.Current < attr.Floor {
 				attr.Current = attr.Floor
 			}
+			// 将修改后的属性存回 map
+			player.Character.Attributes[attrName] = attr
 			g.addLog(roomID, fmt.Sprintf("%s 受到 %d 点%s伤害！", player.Character.Name, damage, attrName), "alert")
 			// 检查死亡
 			if attr.Current <= attr.Floor {
@@ -250,6 +254,8 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			if attr.Current > attr.Max {
 				attr.Current = attr.Max
 			}
+			// 将修改后的属性存回 map
+			player.Character.Attributes[attrName] = attr
 			g.addLog(roomID, fmt.Sprintf("%s 恢复了 %d 点%s！", player.Character.Name, effect.Amount, attrName), "success")
 		}
 
@@ -263,19 +269,19 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 		if len(deck) > 0 {
 			card := deck[0]
 			state.FullState.Decks[deckName] = deck[1:]
-			g.addLog(roomID, fmt.Sprintf("%s 抽到了 %s", player.Character.Name, card.Title), "success")
+			g.addLog(roomID, fmt.Sprintf("%s 抽到了 %s", player.Character.Name, card.Name), "success")
 			
 			// 添加到玩家物品栏（如果是物品卡或厄运卡）
 			if card.Type == "ITEM" {
 				player.Items = append(player.Items, card)
-				g.addLog(roomID, fmt.Sprintf("%s 获得了物品: %s", player.Character.Name, card.Title), "info")
+				g.addLog(roomID, fmt.Sprintf("%s 获得了物品: %s", player.Character.Name, card.Name), "info")
 				
 				// 检查并应用被动效果
 				g.applyPassiveEffects(roomID, playerID, card)
 			}
 			if card.Type == "OMEN" {
 				player.Items = append(player.Items, card)
-				g.addLog(roomID, fmt.Sprintf("%s 获得了厄运: %s", player.Character.Name, card.Title), "info")
+				g.addLog(roomID, fmt.Sprintf("%s 获得了厄运: %s", player.Character.Name, card.Name), "info")
 				
 				// 检查并应用被动效果
 				g.applyPassiveEffects(roomID, playerID, card)
@@ -378,7 +384,7 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			item := GetItem(itemID)
 			if item != nil {
 				player.Items = append(player.Items, *item)
-				g.addLog(roomID, fmt.Sprintf("%s 获得了物品: %s", player.Character.Name, item.Title), "success")
+				g.addLog(roomID, fmt.Sprintf("%s 获得了物品: %s", player.Character.Name, item.Name), "success")
 			}
 		}
 
@@ -399,7 +405,7 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 				skill := GetSkill(skillID)
 				skillName := skillID
 				if skill != nil {
-					skillName = skill.Title
+					skillName = skill.Name
 				}
 				g.addLog(roomID, fmt.Sprintf("%s 习得了技能: %s", player.Character.Name, skillName), "success")
 			}
@@ -424,6 +430,50 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			},
 		}
 		g.addLog(roomID, fmt.Sprintf("%s 需要进行 %s 检定 (难度 %d)", player.Character.Name, attrName, difficulty), "info")
+
+	case "ADD_STATUS":
+		// 添加状态效果
+		statusType := effect.Attribute // 用 Attribute 存状态类型
+		if statusType == "" {
+			statusType = effect.Message // 兼容用 Message
+		}
+		if statusType != "" {
+			duration := effect.Amount
+			if duration == 0 {
+				duration = -1 // 默认永久
+			}
+			status := StatusEffect{
+				Type:     statusType,
+				Duration: duration,
+				Source:   effect.Message,
+				Damage:   effect.Amount,
+				Faction:  effect.Style, // 兼容用 Style 存阵营
+				Amount:   effect.Difficulty, // 兼容
+			}
+			player.StatusEffects = append(player.StatusEffects, status)
+			g.addLog(roomID, fmt.Sprintf("%s 获得了状态: %s (持续 %d 回合)", player.Character.Name, statusType, duration), "info")
+		}
+
+	case "ADD_BUFF":
+		// 添加buff（被动效果）
+		buffText := effect.Message
+		if buffText != "" {
+			player.Buffs = append(player.Buffs, buffText)
+			g.addLog(roomID, fmt.Sprintf("%s 获得了增益: %s", player.Character.Name, buffText), "success")
+		}
+
+	case "REMOVE_BUFF":
+		// 移除buff
+		buffText := effect.Message
+		if buffText != "" {
+			for i, b := range player.Buffs {
+				if b == buffText {
+					player.Buffs = append(player.Buffs[:i], player.Buffs[i+1:]...)
+					g.addLog(roomID, fmt.Sprintf("%s 失去了增益: %s", player.Character.Name, buffText), "info")
+					break
+				}
+			}
+		}
 	}
 }
 
@@ -479,75 +529,82 @@ func (g *GameManager) applyPassiveEffects(roomID, playerID string, card Card) {
 }
 
 // parseAndApplyPassiveEffect 解析并应用单个被动效果
-func (g *GameManager) parseAndApplyPassiveEffect(roomID, playerID string, passive string, player *GamePlayer) {
-	// 解析格式："属性 +1" 或 "属性 -1" 或 "属性 +1，速度 +1"
-	// 解析格式："获得技能：xxx"
-	// 解析格式："攻击时力量 +2" (条件触发，暂存)
-	
-	// 检查是否是"获得技能"类型
-	if strings.HasPrefix(passive, "获得技能：") {
-		skillName := strings.TrimPrefix(passive, "获得技能：")
-		skillID := g.getSkillIDByName(skillName)
-		if skillID != "" {
-			// 检查是否已有
-			hasSkill := false
-			for _, s := range player.Skills {
-				if s == skillID {
-					hasSkill = true
-					break
+func (g *GameManager) parseAndApplyPassiveEffect(roomID, playerID string, passive PassiveEffect, player *GamePlayer) {
+	text := passive.Text
+
+	// 根据效果类型处理
+	switch passive.Type {
+	case "skill":
+		// 获得技能类型
+		if strings.HasPrefix(text, "获得技能：") {
+			skillName := strings.TrimPrefix(text, "获得技能：")
+			skillID := g.getSkillIDByName(skillName)
+			if skillID != "" {
+				// 检查是否已有
+				hasSkill := false
+				for _, s := range player.Skills {
+					if s == skillID {
+						hasSkill = true
+						break
+					}
+				}
+				if !hasSkill {
+					player.Skills = append(player.Skills, skillID)
+					g.addLog(roomID, fmt.Sprintf("%s 习得了技能: %s", player.Character.Name, skillName), "success")
 				}
 			}
-			if !hasSkill {
-				player.Skills = append(player.Skills, skillID)
-				g.addLog(roomID, fmt.Sprintf("%s 习得了技能: %s", player.Character.Name, skillName), "success")
+		}
+
+	case "buff", "debuff":
+		// 属性加成/减少
+		// 支持格式: "力量 +1" "速度 +1" "理智 -1" "知识 +2"
+		// 多重: "知识 +2，理智 -1" 或 "知识+2,理智-1"
+		text = strings.ReplaceAll(text, "，", ",")
+		parts := strings.Split(text, ",")
+
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+
+			// 解析 "属性 +N" 或 "属性 -N"
+			attrName, amount := parseAttributeChange(part)
+			if attrName != "" && amount != 0 {
+				if attr, ok := player.Character.Attributes[attrName]; ok {
+					// debuff 类型取反数值
+					if passive.Type == "debuff" {
+						amount = -amount
+					}
+					attr.Current += amount
+					if attr.Current < attr.Floor {
+						attr.Current = attr.Floor
+					}
+					if attr.Current > attr.Max {
+						attr.Current = attr.Max
+					}
+					// 将修改后的属性存回 map
+					player.Character.Attributes[attrName] = attr
+					logMsg := fmt.Sprintf("%s 的 %s %s%d", player.Character.Name, attrName, formatSignForPassive(amount), amount)
+					g.addLog(roomID, logMsg, "info")
+				}
 			}
 		}
-		return
-	}
 
-	// 检查是否是条件触发类型（如"攻击时力量 +2"）
-	if strings.Contains(passive, "攻击时") {
-		// 条件触发，暂存到玩家的条件buff中
-		// 格式："攻击时力量 +2"
-		player.Buffs = append(player.Buffs, passive)
-		g.addLog(roomID, fmt.Sprintf("%s 获得增益: %s", player.Character.Name, passive), "info")
-		return
-	}
-
-	// 解析属性加成/减少
-	// 支持格式: "力量 +1" "速度 +1" "理智 -1" "知识 +2"
-	// 多重: "知识 +2，理智 -1" 或 "知识+2,理智-1"
-	passive = strings.ReplaceAll(passive, "，", ",")
-	parts := strings.Split(passive, ",")
-
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
-		// 解析 "属性 +N" 或 "属性 -N"
-		attrName, amount := parseAttributeChange(part)
-		if attrName != "" && amount != 0 {
-			if attr, ok := player.Character.Attributes[attrName]; ok {
-				attr.Current += amount
-				if attr.Current < attr.Floor {
-					attr.Current = attr.Floor
-				}
-				if attr.Current > attr.Max {
-					attr.Current = attr.Max
-				}
-				sign := "+"
-				if amount < 0 {
-					sign = ""
-				}
-				g.addLog(roomID, fmt.Sprintf("%s 的 %s %s%d (被动效果)", 
-					player.Character.Name, attrName, sign, amount), "info")
-			}
-		}
+	case "special":
+		// 特殊效果（如"允许破坏墙壁"）
+		player.Buffs = append(player.Buffs, text)
+		g.addLog(roomID, fmt.Sprintf("%s 获得效果: %s", player.Character.Name, text), "info")
 	}
 }
 
+// formatSignForPassive 格式化正负号（用于日志）
+func formatSignForPassive(amount int) string {
+	if amount > 0 {
+		return "+"
+	}
+	return ""
+}
 // parseAttributeChange 解析属性变化字符串
 // 返回: 属性名, 变化值
 func parseAttributeChange(s string) (string, int) {
@@ -611,13 +668,7 @@ func (g *GameManager) getSkillIDByName(skillName string) string {
 	}
 
 	// 尝试模糊匹配
-	for id, skill := range SkillsData {
-		if strings.Contains(skill.Title, skillName) || strings.Contains(skillName, skill.Title) {
-			return id
-		}
-	}
-
-	return ""
+	return FindSkillByName(skillName)
 }
 
 // ApplyConditionalBuffs 应用条件触发的增益（需要在特定动作时调用）
@@ -673,6 +724,8 @@ func (g *GameManager) ApplyConditionalBuffs(roomID, playerID, trigger string) {
 					if attr.Current > attr.Max {
 						attr.Current = attr.Max
 					}
+					// 将修改后的属性存回 map
+					player.Character.Attributes[attrName] = attr
 					g.addLog(roomID, fmt.Sprintf("%s 的 %s %s%d (条件触发)", 
 						player.Character.Name, attrName, formatSign(amount), amount), "info")
 				}
@@ -688,4 +741,70 @@ func (g *GameManager) ApplyConditionalBuffs(roomID, playerID, trigger string) {
 	}
 
 	player.Buffs = remainingBuffs
+}
+
+// UnlockSkillNode 解锁技能树节点
+func (g *GameManager) UnlockSkillNode(roomID, playerID, nodeId string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return errors.New("玩家不存在")
+	}
+
+	// 检查是否已解锁
+	for _, unlocked := range player.UnlockedSkillNodes {
+		if unlocked == nodeId {
+			return errors.New("该节点已解锁")
+		}
+	}
+
+	// 添加到已解锁列表
+	player.UnlockedSkillNodes = append(player.UnlockedSkillNodes, nodeId)
+
+	// 应用技能节点增益
+	if grant := GetSkillNodeGrant(nodeId); grant != nil {
+		// 应用技能
+		if grant.GrantsSkillID != "" {
+			// 检查是否已有该技能
+			hasSkill := false
+			for _, s := range player.Skills {
+				if s == grant.GrantsSkillID {
+					hasSkill = true
+					break
+				}
+			}
+			if !hasSkill {
+				player.Skills = append(player.Skills, grant.GrantsSkillID)
+				skill := GetSkill(grant.GrantsSkillID)
+				skillName := grant.GrantsSkillID
+				if skill != nil {
+					skillName = skill.Name
+				}
+				g.addLog(roomID, fmt.Sprintf("%s 习得了技能: %s", player.Character.Name, skillName), "success")
+			}
+		}
+
+		// 应用buff（属性加成）
+		if grant.GrantsBuff != "" {
+			ApplySkillNodeBuff(player, grant.GrantsBuff)
+			g.addLog(roomID, fmt.Sprintf("%s 获得了增益: %s", player.Character.Name, grant.GrantsBuff), "info")
+		}
+	}
+
+	// 记录日志
+	g.addLog(roomID, fmt.Sprintf("%s 习得了技能节点: %s", player.Character.Name, nodeId), "success")
+
+	return nil
 }

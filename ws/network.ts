@@ -9,6 +9,20 @@ import { logger, trackAction } from './logger';
 let currentRoomId: string | null = sessionStorage.getItem('roomId');
 let currentPlayerId: string | null = sessionStorage.getItem('playerId');
 
+// 骰子结果超时管理 - 用于在收到 dice_result 时清除 DiceRoller 设置的超时
+let diceRollTimeoutId: number | null = null;
+
+export function setDiceRollTimeoutId(id: number | null) {
+  diceRollTimeoutId = id;
+}
+
+export function clearDiceRollTimeout() {
+  if (diceRollTimeoutId !== null) {
+    clearTimeout(diceRollTimeoutId);
+    diceRollTimeoutId = null;
+  }
+}
+
 // 导出房间和玩家ID，供外部组件访问
 export function getCurrentRoomId(): string | null {
   return currentRoomId;
@@ -129,7 +143,7 @@ function handleGameStarted(msg: ServerMessage) {
   store.showFeedback('游戏开始!', 'turn');
   
   // 请求完整游戏状态
-  network.getState();
+  getState();
 }
 
 function handleStateSync(msg: ServerMessage) {
@@ -187,8 +201,14 @@ function handleStateSync(msg: ServerMessage) {
       defenderRoll: state.activeCombat.defenderRoll,
     } : null,
     
-    // Phase 1: 待处理动作 (新增)
-    pendingAction: state.pendingAction || null,
+    // Phase 1: 待处理动作
+    pendingAction: state.pendingAction ? {
+      type: state.pendingAction.type,
+      target: state.pendingAction.target,
+      data: state.pendingAction.data,
+      cardId: state.pendingAction.cardId || undefined,
+      message: state.pendingAction.message || undefined,
+    } : null,
     
     // 剧本
     currentScenario: state.currentScenario || null,
@@ -197,6 +217,18 @@ function handleStateSync(msg: ServerMessage) {
     
     // 日志
     logs: state.logs || [],
+    
+    // Phase 2: 目标系统
+    heroObjectives: state.heroObjectives || {},
+    traitorObjectives: state.traitorObjectives || {},
+    turnsSinceHaunt: state.turnsSinceHaunt ?? 0,
+    gameWinner: state.gameWinner || null,
+
+    // Phase 3: 房间放置状态同步
+    pendingTile: state.pendingTile || null,
+    pendingTileRotation: state.pendingTileRotation ?? 0,
+    pendingTargetPosition: state.pendingTargetPos ? { x: state.pendingTargetPos.x, y: state.pendingTargetPos.y } : null,
+    pendingMoveDirection: state.pendingMoveDirection || null,
   });
   
   // 显示同步提示（仅首次同步）
@@ -209,11 +241,29 @@ function handleDiceResult(msg: ServerMessage) {
   // 容忍过期请求（后端返回 STALE 类型时不处理）
   if ((msg as any).checkType === 'STALE') {
     console.warn('骰子请求已过期，忽略');
+    // 清除可能存在的超时
+    clearDiceRollTimeout();
     return;
   }
 
   const store = useGameStore.getState();
-  store.showFeedback(`骰子: ${msg.results.join(', ')} = ${msg.sum}`, 'info');
+  
+  // 清除 DiceRoller 设置的超时，防止结果被超时逻辑清除
+  clearDiceRollTimeout();
+  
+  // 设置骰子结果和检定结果
+  const result = (msg as any).actionResult;
+  const sum = msg.sum as number;
+  const results = msg.results as number[];
+  
+  store.setState({ 
+    lastRollResult: sum,
+    activeRoll: null // 清除 activeRoll 表示投掷完成
+  });
+  
+  // 显示反馈
+  const successText = result?.success ? '成功！' : '失败...';
+  store.showFeedback(`骰子: ${results.join(', ')} = ${sum} (${successText})`, result?.success ? 'turn' : 'info');
 }
 
 // 抽卡结果处理
@@ -221,8 +271,12 @@ function handleCardDrawn(msg: ServerMessage) {
   console.log('🃏 抽卡结果:', msg);
   
   const store = useGameStore.getState();
-  if (msg.card) {
-    store.showFeedback(`抽到: ${msg.card.title || msg.card.name || '卡牌'}`, 'info');
+  const { card, deck } = msg as any;
+  
+  if (card) {
+    // 设置 activeCard 以显示卡牌弹窗
+    store.setState({ activeCard: card });
+    store.showFeedback(`抽到: ${card.title || card.name || '卡牌'}`, 'info');
   }
 }
 
@@ -612,6 +666,23 @@ export function sendExecuteSkill(skillId: string, targetId?: string) {
   });
 }
 
+// 解锁技能树节点
+export function sendUnlockSkillNode(nodeId: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId: roomId,
+    action: {
+      actionType: 'unlock_skill_node',
+      nodeId,
+    }
+  });
+}
+
 // 触发条件buff (攻击时、回合结束时、进入房间时)
 export function sendTriggerBuff(trigger: 'ATTACK' | 'END_TURN' | 'ENTER_ROOM') {
   const roomId = wsClient.getRoomId();
@@ -625,6 +696,77 @@ export function sendTriggerBuff(trigger: 'ATTACK' | 'END_TURN' | 'ENTER_ROOM') {
     action: {
       actionType: 'trigger_buff',
       trigger
+    }
+  });
+}
+
+// ==================== Phase 2: 物品与互动操作 ====================
+
+// 捡起物品
+export function sendPickupItem(itemId: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId: roomId,
+    action: {
+      actionType: 'pickup_item',
+      itemId
+    }
+  });
+}
+
+// 给予物品
+export function sendGiveItem(toPlayerId: string, itemId: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId: roomId,
+    action: {
+      actionType: 'give_item',
+      targetId: toPlayerId,
+      itemId
+    }
+  });
+}
+
+// 丢弃物品
+export function sendDropItem(itemId: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId: roomId,
+    action: {
+      actionType: 'drop_item',
+      itemId
+    }
+  });
+}
+
+// 破坏墙壁/互动
+export function sendInteractWithWall(direction: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId: roomId,
+    action: {
+      actionType: 'interact_wall',
+      direction
     }
   });
 }

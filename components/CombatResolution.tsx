@@ -1,12 +1,13 @@
 
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
+import * as network from '../ws/network';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Swords, Shield, Heart, Package, X, User } from 'lucide-react';
+import { Swords, Heart, X, User } from 'lucide-react';
 import { PLAYER_COLORS } from '../constants';
 
 const CombatResolution: React.FC = () => {
-  const { activeCombat, players, playerIds, resolveCombatDamage, resolveCombatSteal, cancelCombat } = useGameStore();
+  const { activeCombat, players, playerIds, showFeedback } = useGameStore();
 
   if (!activeCombat || activeCombat.phase !== 'RESOLUTION') return null;
 
@@ -16,10 +17,17 @@ const CombatResolution: React.FC = () => {
   const defenderRoll = activeCombat.defenderRoll || 0;
   
   const damage = Math.max(0, attackerRoll - defenderRoll);
-  const canSteal = damage >= 2 && defender.items.length > 0;
 
   const attackerColor = PLAYER_COLORS[playerIds.indexOf(attacker.id)];
   const defenderColor = PLAYER_COLORS[playerIds.indexOf(defender.id)];
+
+  const handleResolveCombat = () => {
+    if (!network.isInNetworkMode()) {
+        showFeedback("网络未连接，无法结算战斗", "error");
+        return;
+    }
+    network.sendResolveCombat();
+  };
 
   return (
     <AnimatePresence>
@@ -39,9 +47,9 @@ const CombatResolution: React.FC = () => {
               <Swords size={24} />
               战斗结算
             </h2>
-            <button onClick={cancelCombat} className="p-2 text-zinc-600 hover:text-white transition-colors">
+            <div className="p-2 text-zinc-600">
               <X size={20} />
-            </button>
+            </div>
           </div>
 
           <div className="p-8">
@@ -92,7 +100,7 @@ const CombatResolution: React.FC = () => {
                   <div className="text-sm uppercase tracking-[0.2em] text-red-400 font-bold mb-2">压制成功</div>
                   <div className="text-4xl font-serif-display text-white mb-4">点数领先: {damage}</div>
                   <div className="text-xs text-zinc-500 max-w-xs mx-auto italic">
-                    你的力量盖过了对手。你可以选择对他造成物理伤害，或者在足够强大的情况下夺取他的物品。
+                    你的力量盖过了对手。你可以对他造成物理伤害。
                   </div>
                 </>
               ) : (
@@ -107,44 +115,12 @@ const CombatResolution: React.FC = () => {
             </div>
 
             {/* Actions */}
-            <div className="flex gap-4">
-              {damage > 0 ? (
-                <>
-                  <button 
-                    onClick={resolveCombatDamage}
-                    className="flex-1 bg-red-600 hover:bg-red-500 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-lg shadow-red-900/20"
-                  >
-                    <Heart size={18} /> 造成 {damage} 点伤害
-                  </button>
-                  
-                  {canSteal && (
-                    <div className="flex-1 flex flex-col gap-2">
-                      <div className="text-[10px] uppercase font-bold text-amber-500 text-center tracking-widest">选择窃取一项</div>
-                      <div className="flex flex-wrap gap-2 justify-center">
-                        {defender.items.map(item => (
-                          <button 
-                            key={item.id}
-                            onClick={() => resolveCombatSteal(item.id)}
-                            className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 p-2 rounded flex items-center gap-2 transition-colors group"
-                            title={`窃取 ${item.name}`}
-                          >
-                            <Package size={14} className="text-indigo-400 group-hover:scale-110 transition-transform" />
-                            <span className="text-[10px] text-zinc-300 font-bold">{item.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <button 
-                  onClick={cancelCombat}
-                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all"
-                >
-                  <Shield size={18} /> 结束战斗
-                </button>
-              )}
-            </div>
+            <button 
+              onClick={handleResolveCombat}
+              className="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-lg shadow-red-900/20"
+            >
+              <Heart size={18} /> 结算战斗
+            </button>
           </div>
 
           <div className="p-4 bg-zinc-950/80 border-t border-zinc-900 text-[10px] text-zinc-600 text-center font-mono">

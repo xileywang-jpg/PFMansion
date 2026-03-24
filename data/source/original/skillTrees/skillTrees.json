@@ -1,0 +1,86 @@
+{
+  "tree_survival": {
+    "id": "tree_survival",
+    "name": "生存本能",
+    "description": "在恶劣环境中存活的技巧。强调移动力和物理抵抗。",
+    "nodes": [
+      {
+        "id": "node_runner",
+        "name": "跑者",
+        "description": "基础移动速度 +1 (被动)",
+        "cost": 1,
+        "icon": "Wind",
+        "grantsBuff": "移动速度 +1",
+        "position": { "row": 0, "col": 1 }
+      },
+      {
+        "id": "node_sprint",
+        "name": "爆发",
+        "description": "获得主动技能：消耗理智换取爆发移动。",
+        "cost": 2,
+        "icon": "Zap",
+        "prerequisites": ["node_runner"],
+        "grantsSkillId": "skill_sprint",
+        "position": { "row": 1, "col": 0 }
+      },
+      {
+        "id": "node_tough",
+        "name": "硬朗",
+        "description": "力量上限 +1 (被动)",
+        "cost": 2,
+        "icon": "Shield",
+        "prerequisites": ["node_runner"],
+        "requiredTrait": "强壮",
+        "grantsBuff": "力量上限 +1",
+        "position": { "row": 1, "col": 2 }
+      },
+      {
+        "id": "node_survivor",
+        "name": "幸存者",
+        "description": "遭受任何伤害时，伤害点数 -1。",
+        "cost": 3,
+        "icon": "Heart",
+        "prerequisites": ["node_tough"],
+        "grantsBuff": "伤害减免 +1",
+        "position": { "row": 2, "col": 2 }
+      }
+    ]
+  },
+  "tree_occult": {
+    "id": "tree_occult",
+    "name": "神秘学",
+    "description": "探究未知的禁忌知识。强调理智和知识。",
+    "nodes": [
+      {
+        "id": "node_scholar",
+        "name": "学者",
+        "description": "知识检定时 +1 骰子 (被动)",
+        "cost": 1,
+        "icon": "Book",
+        "grantsBuff": "知识检定 +1",
+        "position": { "row": 0, "col": 1 }
+      },
+      {
+        "id": "node_meditate",
+        "name": "冥想",
+        "description": "获得主动技能：原地恢复理智。",
+        "cost": 2,
+        "icon": "Moon",
+        "prerequisites": ["node_scholar"],
+        "grantsSkillId": "skill_meditate",
+        "position": { "row": 1, "col": 1 }
+      },
+      {
+        "id": "node_exorcist",
+        "name": "驱魔人",
+        "description": "对灵体类敌人造成双倍伤害。",
+        "cost": 3,
+        "icon": "Cross",
+        "prerequisites": ["node_meditate"],
+        "requiredTrait": "受祝福",
+        "grantsBuff": "灵体伤害 x2",
+        "position": { "row": 2, "col": 1 }
+      }
+    ]
+  }
+}

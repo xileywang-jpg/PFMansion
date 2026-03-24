@@ -3,7 +3,6 @@
     {
       "id": "event_burning_man",
       "type": "EVENT",
-      "title": "燃烧之人",
       "description": "一个被火焰包围的鬼魅人影在你面前无声地尖叫。",
       "flavorText": "这火焰虽是幻象，但恐惧却真实无比。",
       "icon": "Flame",
@@ -38,12 +37,12 @@
             "style": "narrative"
           }
         ]
-      }
+      },
+      "name": "燃烧之人"
     },
     {
       "id": "event_creaky_floor",
       "type": "EVENT",
-      "title": "腐烂的地板",
       "description": "脚下的木头伴随着刺耳的断裂声突然崩塌。",
       "flavorText": "下方的黑暗在等待着你。",
       "icon": "ArrowDown",
@@ -72,12 +71,12 @@
             "style": "narrative"
           }
         ]
-      }
+      },
+      "name": "腐烂的地板"
     },
     {
       "id": "event_ghost_whisper",
       "type": "EVENT",
-      "title": "幽灵低语",
       "description": "一个声音从阴影中低语着你的名字。\"离开这里...\"它嘶嘶作响。",
       "icon": "Ghost",
       "triggerType": "ON_ENTER",
@@ -101,12 +100,12 @@
             "message": "这声音像爪子一样撕扯着你的理智。"
           }
         ]
-      }
+      },
+      "name": "幽灵低语"
     },
     {
       "id": "event_vines",
       "type": "EVENT",
-      "title": "纠缠的藤蔓",
       "description": "枯死的植物突然像活了一样，紧紧缠住了你的双脚！",
       "icon": "Trees",
       "triggerType": "ON_ENTER",
@@ -129,12 +128,12 @@
             "message": "长刺刺伤了你的腿，行动受阻。"
           }
         ]
-      }
+      },
+      "name": "纠缠的藤蔓"
     },
     {
       "id": "event_vault_chest",
       "type": "EVENT",
-      "title": "上锁的宝箱",
       "description": "金库的中心放着一个沉重的铁箱，需要巨大的力量才能撬开。",
       "icon": "Lock",
       "triggerType": "ON_ENTER",
@@ -156,12 +155,12 @@
             "style": "narrative"
           }
         ]
-      }
+      },
+      "name": "上锁的宝箱"
     },
     {
       "id": "event_coffin",
       "type": "EVENT",
-      "title": "漆黑的棺材",
       "description": "你发现了一个打开的棺材，里面躺着一具苍白的躯体。",
       "icon": "Moon",
       "triggerType": "ON_ENTER",
@@ -229,12 +228,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "漆黑的棺材"
     },
     {
       "id": "event_strange_book",
       "type": "EVENT",
-      "title": "禁忌之书",
       "description": "书架上有一本古老的书籍，封面上的符号让你感到不安。",
       "icon": "Book",
       "triggerType": "ON_ENTER",
@@ -268,12 +267,12 @@
             "style": "narrative"
           }
         ]
-      }
+      },
+      "name": "禁忌之书"
     },
     {
       "id": "event_crystal_orb",
       "type": "EVENT",
-      "title": "水晶球",
       "description": "房间中央摆放着一个发光的水晶球，里面似乎有影像在流动。",
       "icon": "Sparkles",
       "triggerType": "ON_ENTER",
@@ -302,12 +301,12 @@
             "message": "水晶球的影像让你头晕目眩。"
           }
         ]
-      }
+      },
+      "name": "水晶球"
     },
     {
       "id": "event_blood_stain",
       "type": "EVENT",
-      "title": "神秘血迹",
       "description": "墙上的血迹像是某种仪式的一部分，还在微微发亮。",
       "icon": "Droplet",
       "triggerType": "ON_ENTER",
@@ -357,12 +356,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "神秘血迹"
     },
     {
       "id": "event_mirror",
       "type": "EVENT",
-      "title": "破碎的镜子",
       "description": "一面大镜子碎裂在地，镜中的你似乎...不太对劲。",
       "icon": "CircleDot",
       "triggerType": "ON_ENTER",
@@ -390,12 +389,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "破碎的镜子"
     },
     {
       "id": "event_underground_lake",
       "type": "EVENT",
-      "title": "地下湖",
       "description": "你来到一个地下洞穴，平静的湖面反射着诡异的光芒。",
       "icon": "Waves",
       "triggerType": "ON_ENTER",
@@ -429,12 +428,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "地下湖"
     },
     {
       "id": "event_abandoned_camp",
       "type": "EVENT",
-      "title": "废弃营地",
       "description": "一个探险队留下的临时营地，看起来他们遭遇了什么可怕的事情。",
       "icon": "Tent",
       "triggerType": "ON_ENTER",
@@ -478,12 +477,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "废弃营地"
     },
     {
       "id": "vol_event_divine_light",
       "type": "EVENT",
-      "title": "诸神的光辉",
       "description": "光辉神庙的光芒笼罩着你，一种神圣的感觉油然而生。",
       "icon": "Sun",
       "triggerType": "ON_ENTER",
@@ -523,12 +522,12 @@
             "style": "narrative"
           }
         ]
-      }
+      },
+      "name": "诸神的光辉"
     },
     {
       "id": "vol_event_shadow_touch",
       "type": "EVENT",
-      "title": "幽影之触",
       "description": "虚无的阴影向你伸出触手，试图将你拉入永恒的黑暗...",
       "icon": "Ghost",
       "triggerType": "ON_ENTER",
@@ -568,12 +567,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "幽影之触"
     },
     {
       "id": "vol_event_arena_spirit",
       "type": "EVENT",
-      "title": "永火英灵",
       "description": "竞技场的亡魂从看台上一跃而起，向你发出挑战的怒吼！",
       "icon": "Sword",
       "triggerType": "ON_ENTER",
@@ -629,12 +628,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "永火英灵"
     },
     {
       "id": "vol_event_death_gate",
       "type": "EVENT",
-      "title": "冥潭之门",
       "description": "死亡的气息在这里凝聚成实质，你能听到冥潭深处的呼唤...",
       "icon": "Skull",
       "triggerType": "ON_ENTER",
@@ -668,12 +667,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "冥潭之门"
     },
     {
       "id": "vol_event_market_trade",
       "type": "EVENT",
-      "title": "神秘商人",
       "description": "一个戴着面具的神秘商人向你招手，展示着奇怪的货物。",
       "icon": "ShoppingBag",
       "triggerType": "ON_ENTER",
@@ -717,12 +716,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "神秘商人"
     },
     {
       "id": "vol_event_forbidden_knowledge",
       "type": "EVENT",
-      "title": "被封印的真相",
       "description": "图书馆最深处的禁书散发出诱人的光芒，诱惑着你翻开它...",
       "icon": "BookOpen",
       "triggerType": "ON_ENTER",
@@ -756,12 +755,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "被封印的真相"
     },
     {
       "id": "vol_event_dragon_treasure",
       "type": "EVENT",
-      "title": "巨龙遗产",
       "description": "巢穴中堆满了黄金与珍宝，但最中央的是一颗仍然跳动的龙心...",
       "icon": "Gem",
       "triggerType": "ON_ENTER",
@@ -811,12 +810,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "巨龙遗产"
     },
     {
       "id": "vol_event_time_warp",
       "type": "EVENT",
-      "title": "时间漩涡",
       "description": "空间的扭曲让你看到了过去与未来的幻象，时间在这里失去了意义...",
       "icon": "Clock",
       "triggerType": "ON_ENTER",
@@ -856,12 +855,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "时间漩涡"
     },
     {
       "id": "vol_event_hotel_encounter",
       "type": "EVENT",
-      "title": "销金窟奇遇",
       "description": "奢华的酒店中，一场危险的交易正在进行...",
       "icon": "Heart",
       "triggerType": "ON_ENTER",
@@ -917,12 +916,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "销金窟奇遇"
     },
     {
       "id": "vol_event_abyss_gaze",
       "type": "EVENT",
-      "title": "深渊凝视",
       "description": "你站在世界的边缘，无尽的虚空正在呼唤你跳下去...",
       "icon": "Eye",
       "triggerType": "ON_ENTER",
@@ -962,12 +961,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "深渊凝视"
     },
     {
       "id": "vol_event_trinity_wisdom",
       "type": "EVENT",
-      "title": "时间的秘密",
       "description": "档案馆中保存着缇宝三姐妹的记忆碎片，你似乎能听到时间的低语...",
       "icon": "Clock",
       "triggerType": "ON_ENTER",
@@ -1001,12 +1000,12 @@
             "style": "narrative"
           }
         ]
-      }
+      },
+      "name": "时间的秘密"
     },
     {
       "id": "vol_event_theater_performance",
       "type": "EVENT",
-      "title": "黄金剧院的演出",
       "description": "剧院正在上演《黄金裔的陨落》，演员们的表演深深打动了你...",
       "icon": "TheaterMasks",
       "triggerType": "ON_ENTER",
@@ -1050,12 +1049,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "黄金剧院的演出"
     },
     {
       "id": "vol_event_penumbra_choice",
       "type": "EVENT",
-      "title": "光暗抉择",
       "description": "半影区的力量在你面前分裂成两条道路：一条通往光明，一条堕入黑暗...",
       "icon": "SunMoon",
       "triggerType": "ON_ENTER",
@@ -1101,12 +1100,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "光暗抉择"
     },
     {
       "id": "vol_event_void_portal",
       "type": "EVENT",
-      "title": "虚空传送门",
       "description": "中庭中央的传送门散发出诡异的光芒，似乎通往某个未知的地方...",
       "icon": "Portal",
       "triggerType": "ON_ENTER",
@@ -1140,12 +1139,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "虚空传送门"
     },
     {
       "id": "vol_event_mirror_reflection",
       "type": "EVENT",
-      "title": "镜中自我",
       "description": "湖面的倒影突然动了起来，镜中的你露出了诡异的笑容...",
       "icon": "Mirror",
       "triggerType": "ON_ENTER",
@@ -1179,12 +1178,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "镜中自我"
     },
     {
       "id": "vol_event_titan_blessing",
       "type": "EVENT",
-      "title": "泰坦的祝福",
       "description": "塔顶供奉着一尊泰坦神像，散发出远古的力量波动...",
       "icon": "Mountain",
       "triggerType": "ON_ENTER",
@@ -1218,12 +1217,12 @@
             "style": "narrative"
           }
         ]
-      }
+      },
+      "name": "泰坦的祝福"
     },
     {
       "id": "vol_event_forgotten_prayer",
       "type": "EVENT",
-      "title": "失传的祈祷",
       "description": "神坛上刻着古老的祈祷文，你忍不住轻声吟诵起来...",
       "icon": "Pray",
       "triggerType": "ON_ENTER",
@@ -1257,12 +1256,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "失传的祈祷"
     },
     {
       "id": "vol_event_desert_storm",
       "type": "EVENT",
-      "title": "沙尘暴",
       "description": "沙漠中突然刮起了猛烈的沙尘暴，能见度急剧下降！",
       "icon": "Wind",
       "triggerType": "ON_ENTER",
@@ -1290,12 +1289,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "沙尘暴"
     },
     {
       "id": "vol_event_shadow_prince",
       "type": "EVENT",
-      "title": "暗影王子",
       "description": "宫殿深处，一个身披黑袍的身影缓缓转身...「你终于来了。」",
       "icon": "Crown",
       "triggerType": "ON_ENTER",
@@ -1351,12 +1350,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "暗影王子"
     },
     {
       "id": "vol_event_ancient_warrior",
       "type": "EVENT",
-      "title": "远古战士的挑战",
       "description": "斗技场的尘土飞扬，一个身披远古铠甲的战士向你走来...",
       "icon": "Sword",
       "triggerType": "ON_ENTER",
@@ -1390,12 +1389,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "远古战士的挑战"
     },
     {
       "id": "vol_event_starlight_test",
       "type": "EVENT",
-      "title": "星辉学院的入学测试",
       "description": "学院大门前正在进行招生测试，你是否能通过考验？",
       "icon": "GraduationCap",
       "triggerType": "ON_ENTER",
@@ -1423,12 +1422,12 @@
             "style": "narrative"
           }
         ]
-      }
+      },
+      "name": "星辉学院的入学测试"
     },
     {
       "id": "vol_event_forgotten_memory",
       "type": "EVENT",
-      "title": "被遗忘的记忆",
       "description": "记忆宫殿中浮现出一段你不该知道的记忆...",
       "icon": "Brain",
       "triggerType": "ON_ENTER",
@@ -1462,12 +1461,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "被遗忘的记忆"
     },
     {
       "id": "vol_event_aurora_song",
       "type": "EVENT",
-      "title": "极光之歌",
       "description": "草原上空的极光仿佛有生命般舞动着，发出美妙的歌声...",
       "icon": "Music",
       "triggerType": "ON_ENTER",
@@ -1501,12 +1500,12 @@
             "style": "narrative"
           }
         ]
-      }
+      },
+      "name": "极光之歌"
     },
     {
       "id": "vol_event_crystal_resonance",
       "type": "EVENT",
-      "title": "水晶共鸣",
       "description": "矿洞中的巨大水晶与你产生了奇妙的共鸣...",
       "icon": "Gem",
       "triggerType": "ON_ENTER",
@@ -1550,12 +1549,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "水晶共鸣"
     },
     {
       "id": "vol_event_dream_walk",
       "type": "EVENT",
-      "title": "梦境漫步",
       "description": "踏上梦想家之路，你的意识开始模糊，仿佛行走在梦境与现实的边缘...",
       "icon": "Cloud",
       "triggerType": "ON_ENTER",
@@ -1589,12 +1588,12 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "梦境漫步"
     },
     {
       "id": "vol_event_spring_blessing",
       "type": "EVENT",
-      "title": "生命之泉",
       "description": "苗圃中央的喷泉散发着生命的气息，据说能治百病...",
       "icon": "Droplets",
       "triggerType": "ON_ENTER",
@@ -1642,12 +1641,12 @@
             ]
           }
         ]
-      }
+      },
+      "name": "生命之泉"
     },
     {
       "id": "vol_event_eternal_flame",
       "type": "EVENT",
-      "title": "永恒之火",
       "description": "瀑布源头竟然燃烧着永不熄灭的火焰，这是世界最后的余晖...",
       "icon": "Flame",
       "triggerType": "ON_ENTER",
@@ -1681,7 +1680,8 @@
             "style": "alert"
           }
         ]
-      }
+      },
+      "name": "永恒之火"
     }
   ]
 }

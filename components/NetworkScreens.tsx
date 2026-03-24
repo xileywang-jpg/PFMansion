@@ -172,7 +172,7 @@ export const LobbyScreen: React.FC = () => {
 
     wsClient.on('game_started', (msg: any) => {
       // 游戏开始，使用 React Router 跳转到游戏页面，而不是刷新页面
-      // 保存房间信息到 sessionStorage，以便 LocalGame 可以直接请求状态
+      // 保存房间信息到 sessionStorage，以便 GameScreen 可以直接请求状态
       const roomId = wsClient.getRoomId();
       const playerId = wsClient.getPlayerId();
       if (roomId) {

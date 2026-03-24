@@ -73,7 +73,7 @@ export function getAllThemeData(themeId: string) {
   console.log('[getAllThemeData] themeId:', themeId);
   switch (themeId) {
     case 'volantis':
-      console.log('[getAllThemeData] volantis_events type:', typeof volantis_events, 'IsArray:', Array.isArray(volantis_events), 'length:', volantis_events?.length);
+      console.log('[getAllThemeData] volantis_events type:', typeof volantis_events, 'IsArray:', Array.isArray(volantis_events), 'keys length:', Object.keys(volantis_events).length);
       const volantisData = {
         characters: volantis_characters,
         tiles: volantis_tiles,

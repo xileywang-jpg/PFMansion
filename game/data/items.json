@@ -3,7 +3,7 @@
     {
       "id": "item_revolver",
       "type": "ITEM",
-      "title": "生锈的左轮手枪",
+      "name": "生锈的左轮手枪",
       "description": "一把旧式勤务武器。握在手里沉稳可靠。",
       "icon": "Crosshair",
       "usage": {
@@ -15,12 +15,14 @@
           { "type": "LOG", "message": "砰！你的左轮手枪喷出了火舌。", "style": "alert" }
         ]
       },
-      "passiveEffects": ["攻击时力量 +2"]
+      "passiveEffects": [
+        { "type": "buff", "text": "攻击时力量 +2" }
+      ]
     },
     {
       "id": "item_dagger",
       "type": "ITEM",
-      "title": "祭祀匕首",
+      "name": "祭祀匕首",
       "description": "刀刃上刻有奇怪的凹槽，似乎渴望着鲜血。",
       "icon": "Sword",
       "usage": {
@@ -31,20 +33,24 @@
           { "type": "DAMAGE", "stat": "might", "amount": 1, "target": "SELECTED_PARTNER" }
         ]
       },
-      "passiveEffects": ["获得技能：嗜血打击"]
+      "passiveEffects": [
+        { "type": "skill", "text": "获得技能：嗜血打击" }
+      ]
     },
     {
       "id": "item_amulet",
       "type": "ITEM",
-      "title": "神圣护身符",
+      "name": "神圣护身符",
       "description": "它在你的胸口散发着淡淡的暖意。",
       "icon": "Gem",
-      "passiveEffects": ["理智 +1"]
+      "passiveEffects": [
+        { "type": "buff", "text": "理智 +1" }
+      ]
     },
     {
       "id": "item_adrenaline",
       "type": "ITEM",
-      "title": "肾上腺素针剂",
+      "name": "肾上腺素针剂",
       "description": "紧急医疗兴奋剂。请谨慎使用。",
       "icon": "Syringe",
       "usage": {
@@ -61,7 +67,7 @@
     {
       "id": "item_pickaxe",
       "type": "ITEM",
-      "title": "矿工镐",
+      "name": "矿工镐",
       "description": "不仅能挖矿，还能挖穿墙壁。",
       "icon": "Hammer",
       "usage": {
@@ -72,12 +78,14 @@
           { "type": "LOG", "message": "你挥动镐头挖穿了墙壁！", "style": "success" }
         ]
       },
-      "passiveEffects": ["允许破坏墙壁"]
+      "passiveEffects": [
+        { "type": "special", "text": "允许破坏墙壁" }
+      ]
     },
     {
       "id": "item_health_potion",
       "type": "ITEM",
-      "title": "治疗药水",
+      "name": "治疗药水",
       "description": "能恢复伤口的魔法药水。",
       "icon": "Flask",
       "usage": {
@@ -93,7 +101,7 @@
     {
       "id": "item_sanity_potion",
       "type": "ITEM",
-      "title": "清醒药剂",
+      "name": "清醒药剂",
       "description": "能让混乱的思绪重新清晰的药水。",
       "icon": "Brain",
       "usage": {
@@ -109,7 +117,7 @@
     {
       "id": "item_spear_of_light",
       "type": "ITEM",
-      "title": "光辉长枪",
+      "name": "光辉长枪",
       "description": "黄金裔战士的传奇武器，散发着永恒的光芒。",
       "icon": "Target",
       "usage": {
@@ -121,12 +129,15 @@
           { "type": "LOG", "message": "光辉长枪划破长空，带着诸神的祝福命中敌人！", "style": "success" }
         ]
       },
-      "passiveEffects": ["攻击时额外造成 1 点伤害", "对暗影生物伤害 +2"]
+      "passiveEffects": [
+        { "type": "buff", "text": "攻击时额外造成 1 点伤害" },
+        { "type": "buff", "text": "对暗影生物伤害 +2" }
+      ]
     },
     {
       "id": "item_shadow_cloak",
       "type": "ITEM",
-      "title": "幽影斗篷",
+      "name": "幽影斗篷",
       "description": "用幽影领域的力量编织而成，能让你与黑暗融为一体。",
       "icon": "CloudMoon",
       "usage": {
@@ -137,12 +148,15 @@
           { "type": "LOG", "message": "你融入了周围的阴影之中。", "style": "info" }
         ]
       },
-      "passiveEffects": ["速度 +1", "进入房间时理智 -1"]
+      "passiveEffects": [
+        { "type": "buff", "text": "速度 +1" },
+        { "type": "debuff", "text": "进入房间时理智 -1" }
+      ]
     },
     {
       "id": "item_elixir_vitality",
       "type": "ITEM",
-      "title": "生命精华",
+      "name": "生命精华",
       "description": "从永恒之地的神泉中取出的珍贵秘药。",
       "icon": "Droplets",
       "usage": {
@@ -159,7 +173,7 @@
     {
       "id": "item_tome_wisdom",
       "type": "ITEM",
-      "title": "智慧宝典",
+      "name": "智慧宝典",
       "description": "记载着黄金裔所有知识的圣典。",
       "icon": "Book",
       "usage": {
@@ -171,12 +185,14 @@
           { "type": "LOG", "message": "你从宝典中领悟了无尽的知识！", "style": "success" }
         ]
       },
-      "passiveEffects": ["知识 +2"]
+      "passiveEffects": [
+        { "type": "buff", "text": "知识 +2" }
+      ]
     },
     {
       "id": "item_dragons_heart",
       "type": "ITEM",
-      "title": "龙心",
+      "name": "龙心",
       "description": "仍然跳动的巨龙心脏，蕴含着无尽的力量。",
       "icon": "Heart",
       "usage": {
@@ -193,7 +209,7 @@
     {
       "id": "item_compass_eternity",
       "type": "ITEM",
-      "title": "永恒罗盘",
+      "name": "永恒罗盘",
       "description": "指引方向的永恒神器，永远指向正确的道路。",
       "icon": "Navigation",
       "usage": {
@@ -204,96 +220,128 @@
           { "type": "LOG", "message": "罗盘为你指明了前进的方向。", "style": "info" }
         ]
       },
-      "passiveEffects": ["不会迷失方向", "速度 +1"]
+      "passiveEffects": [
+        { "type": "special", "text": "不会迷失方向" },
+        { "type": "buff", "text": "速度 +1" }
+      ]
     }
   ],
   "omens": [
     {
       "id": "omen_crystal_ball",
       "type": "OMEN",
-      "title": "水晶球",
+      "name": "水晶球",
       "description": "球体深处闪烁着不详的微光，仿佛在揭示未来的终局。",
       "icon": "Eye",
-      "passiveEffects": ["知识 +2，理智 -1"]
+      "passiveEffects": [
+        { "type": "buff", "text": "知识 +2" },
+        { "type": "debuff", "text": "理智 -1" }
+      ]
     },
     {
       "id": "omen_girl",
       "type": "OMEN",
-      "title": "镜中少女",
+      "name": "镜中少女",
       "description": "镜中的倒影模仿着你... 几乎完美。她似乎想帮忙。",
       "icon": "User",
-      "passiveEffects": ["知识 +1"]
+      "passiveEffects": [
+        { "type": "buff", "text": "知识 +1" }
+      ]
     },
     {
       "id": "omen_book",
       "type": "OMEN",
-      "title": "亡灵之书",
+      "name": "亡灵之书",
       "description": "封面的质感摸起来像极了人皮，让人感到极度不安。",
       "icon": "BookOpen",
-      "passiveEffects": ["知识 +2，理智 -1"]
+      "passiveEffects": [
+        { "type": "buff", "text": "知识 +2" },
+        { "type": "debuff", "text": "理智 -1" }
+      ]
     },
     {
       "id": "omen_ring",
       "type": "OMEN",
-      "title": "所罗门之戒",
+      "name": "所罗门之戒",
       "description": "上面刻满了令你双眼酸涩流泪的符号。",
       "icon": "Circle",
-      "passiveEffects": ["理智 +1"]
+      "passiveEffects": [
+        { "type": "buff", "text": "理智 +1" }
+      ]
     },
     {
       "id": "omen_mask",
       "type": "OMEN",
-      "title": "千面面具",
+      "name": "千面面具",
       "description": "它在你的脸上蠕动，仿佛要与你的皮肤融合。",
       "icon": "Smile",
-      "passiveEffects": ["理智 -1，知识 +1"]
+      "passiveEffects": [
+        { "type": "debuff", "text": "理智 -1" },
+        { "type": "buff", "text": "知识 +1" }
+      ]
     },
     {
       "id": "omen_skull",
       "type": "OMEN",
-      "title": "低语头骨",
+      "name": "低语头骨",
       "description": "它在你耳边不断诉说着疯狂的秘密。",
       "icon": "Skull",
-      "passiveEffects": ["知识 +2，理智 -2"]
+      "passiveEffects": [
+        { "type": "buff", "text": "知识 +2" },
+        { "type": "debuff", "text": "理智 -2" }
+      ]
     },
     {
       "id": "omen_dog",
       "type": "OMEN",
-      "title": "幽灵猎犬",
+      "name": "幽灵猎犬",
       "description": "一只半透明的猎犬，它似乎只对你忠诚。",
       "icon": "Dog",
-      "passiveEffects": ["速度 +1，力量 +1"]
+      "passiveEffects": [
+        { "type": "buff", "text": "速度 +1" },
+        { "type": "buff", "text": "力量 +1" }
+      ]
     },
     {
       "id": "omen_statuette",
       "type": "OMEN",
-      "title": "黄金雏像",
+      "name": "黄金雏像",
       "description": "黄金裔诸神的小型雕像，散发着神圣的气息。",
       "icon": "Star",
-      "passiveEffects": ["理智 +2", "知识 +1"]
+      "passiveEffects": [
+        { "type": "buff", "text": "理智 +2" },
+        { "type": "buff", "text": "知识 +1" }
+      ]
     },
     {
       "id": "omen_bone_fragment",
       "type": "OMEN",
-      "title": "英灵遗骨",
+      "name": "英灵遗骨",
       "description": "英雄安息地的残骸，蕴含着战士的执念。",
       "icon": "Bone",
-      "passiveEffects": ["力量 +1", "速度 +1", "理智 -1"]
+      "passiveEffects": [
+        { "type": "buff", "text": "力量 +1" },
+        { "type": "buff", "text": "速度 +1" },
+        { "type": "debuff", "text": "理智 -1" }
+      ]
     },
     {
       "id": "omen_void_shard",
       "type": "OMEN",
-      "title": "虚空碎片",
+      "name": "虚空碎片",
       "description": "从幽影领域掉落的碎片，冰冷而诡异。",
       "icon": "Hexagon",
-      "passiveEffects": ["知识 +2", "理智 -2"]
+      "passiveEffects": [
+        { "type": "buff", "text": "知识 +2" },
+        { "type": "debuff", "text": "理智 -2" }
+      ]
     }
   ],
   "skills": [
     {
       "id": "skill_vampiric_strike",
       "type": "SKILL",
-      "title": "嗜血打击",
+      "name": "嗜血打击",
       "description": "攻击敌人并吸取其生命。",
       "icon": "Zap",
       "usage": {
@@ -310,7 +358,7 @@
     {
       "id": "skill_sprint",
       "type": "SKILL",
-      "title": "爆发",
+      "name": "爆发",
       "description": "消耗理智换取爆发移动。",
       "icon": "Zap",
       "usage": {
@@ -327,7 +375,7 @@
     {
       "id": "skill_meditate",
       "type": "SKILL",
-      "title": "冥想",
+      "name": "冥想",
       "description": "原地恢复理智。",
       "icon": "Moon",
       "usage": {
@@ -343,7 +391,7 @@
     {
       "id": "skill_dodge",
       "type": "SKILL",
-      "title": "闪避",
+      "name": "闪避",
       "description": "提升防御闪避下一次攻击。",
       "icon": "Wind",
       "usage": {
@@ -358,7 +406,7 @@
     {
       "id": "skill_divine_blessing",
       "type": "SKILL",
-      "title": "神圣祝福",
+      "name": "神圣祝福",
       "description": "祈求诸神的祝福，短时间内获得力量。",
       "icon": "Sun",
       "usage": {
@@ -375,7 +423,7 @@
     {
       "id": "skill_shadow_step",
       "type": "SKILL",
-      "title": "幽影步",
+      "name": "幽影步",
       "description": "短暂的幽影领域穿梭。",
       "icon": "Cloud",
       "usage": {
@@ -392,7 +440,7 @@
     {
       "id": "skill_truth_seeker",
       "type": "SKILL",
-      "title": "真理探寻",
+      "name": "真理探寻",
       "description": "激发潜藏的知识。",
       "icon": "Search",
       "usage": {
@@ -408,7 +456,7 @@
     {
       "id": "skill_berserker_rage",
       "type": "SKILL",
-      "title": "狂战士之怒",
+      "name": "狂战士之怒",
       "description": "燃烧生命换取极致的力量。",
       "icon": "Flame",
       "usage": {

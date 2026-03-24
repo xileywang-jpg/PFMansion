@@ -51,7 +51,9 @@ func (g *GameManager) CheckVictory(roomID string) string {
 	if scenario.TraitorObjective != nil && turnsSinceHaunt >= scenario.TraitorObjective.Turns {
 		traitorProgress := 0
 		if state.FullState.TraitorObjectives != nil {
-			traitorProgress = state.FullState.TraitorObjectives[state.FullState.TraitorID]
+			if obj := state.FullState.TraitorObjectives[state.FullState.TraitorID]; obj != nil {
+				traitorProgress = obj.Progress
+			}
 		}
 		// 检查目标是否需要额外进度
 		if scenario.TraitorObjective.Type == "REACH" || scenario.TraitorObjective.Type == "COLLECT" {
@@ -67,8 +69,8 @@ func (g *GameManager) CheckVictory(roomID string) string {
 				return "TRAITOR"
 			}
 		} else if scenario.TraitorObjective.Type == "CUSTOM" {
-			// CUSTOM 类型直接检查进度是否等于回合数（表示完成）
-			if traitorProgress >= scenario.TraitorObjective.Turns {
+			// CUSTOM 类型直接检查进度是否等于 Required（表示完成）
+			if traitorProgress >= 1 {
 				state.FullState.GameWinner = "TRAITOR"
 				state.FullState.Phase = GamePhaseGameOver
 				state.FullState.Logs = append(state.FullState.Logs, LogEntry{
@@ -99,7 +101,9 @@ func (g *GameManager) CheckVictory(roomID string) string {
 		if scenario.HeroObjective.Type == "SURVIVE" {
 			survived := 0
 			if state.FullState.HeroObjectives != nil {
-				survived = state.FullState.HeroObjectives["survived"]
+				if obj := state.FullState.HeroObjectives["survived"]; obj != nil {
+					survived = obj.Progress
+				}
 			}
 			if survived >= scenario.HeroObjective.Turns {
 				state.FullState.GameWinner = "HERO"
@@ -185,7 +189,9 @@ func (g *GameManager) checkObjectiveVictory(state *GameStateFull) string {
 	if scenario.TraitorObjective != nil {
 		traitorProgress := 0
 		if state.TraitorObjectives != nil {
-			traitorProgress = state.TraitorObjectives[state.TraitorID]
+			if obj := state.TraitorObjectives[state.TraitorID]; obj != nil {
+				traitorProgress = obj.Progress
+			}
 		}
 
 		switch scenario.TraitorObjective.Type {
@@ -267,7 +273,9 @@ func (g *GameManager) checkObjectiveVictory(state *GameStateFull) string {
 			// 生存指定回合数
 			survived := 0
 			if state.HeroObjectives != nil {
-				survived = state.HeroObjectives["survived"]
+				if obj := state.HeroObjectives["survived"]; obj != nil {
+					survived = obj.Progress
+				}
 			}
 			if survived >= scenario.HeroObjective.Turns {
 				state.GameWinner = "HERO"
@@ -348,9 +356,18 @@ func (g *GameManager) UpdateObjectives(roomID string, eventType string, data map
 				if scenario.TraitorObjective.Target == tileID && playerID == state.FullState.TraitorID {
 					// 叛徒到达目标房间
 					if state.FullState.TraitorObjectives == nil {
-						state.FullState.TraitorObjectives = make(map[string]int)
+						state.FullState.TraitorObjectives = make(map[string]*PlayerObjective)
 					}
-					state.FullState.TraitorObjectives[state.FullState.TraitorID]++
+					if obj, ok := state.FullState.TraitorObjectives[state.FullState.TraitorID]; ok {
+						obj.Progress++
+					} else {
+						state.FullState.TraitorObjectives[state.FullState.TraitorID] = &PlayerObjective{
+							ObjectiveID: scenario.TraitorObjective.Name,
+							Progress:    1,
+							Required:    1,
+							Completed:   false,
+						}
+					}
 					state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 						ID:        generateLogID(),
 						Timestamp: time.Now().UnixMilli(),
@@ -364,9 +381,18 @@ func (g *GameManager) UpdateObjectives(roomID string, eventType string, data map
 			if scenario.HeroObjective != nil && scenario.HeroObjective.Type == "REACH" {
 				if scenario.HeroObjective.Target == tileID {
 					if state.FullState.HeroObjectives == nil {
-						state.FullState.HeroObjectives = make(map[string]int)
+						state.FullState.HeroObjectives = make(map[string]*PlayerObjective)
 					}
-					state.FullState.HeroObjectives[playerID]++
+					if obj, ok := state.FullState.HeroObjectives[playerID]; ok {
+						obj.Progress++
+					} else {
+						state.FullState.HeroObjectives[playerID] = &PlayerObjective{
+							ObjectiveID: scenario.HeroObjective.Name,
+							Progress:    1,
+							Required:    1,
+							Completed:   false,
+						}
+					}
 					state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 						ID:        generateLogID(),
 						Timestamp: time.Now().UnixMilli(),
@@ -385,9 +411,18 @@ func (g *GameManager) UpdateObjectives(roomID string, eventType string, data map
 			if scenario.TraitorObjective != nil && scenario.TraitorObjective.Type == "COLLECT" {
 				if scenario.TraitorObjective.Target == itemID && playerID == state.FullState.TraitorID {
 					if state.FullState.TraitorObjectives == nil {
-						state.FullState.TraitorObjectives = make(map[string]int)
+						state.FullState.TraitorObjectives = make(map[string]*PlayerObjective)
 					}
-					state.FullState.TraitorObjectives[state.FullState.TraitorID]++
+					if obj, ok := state.FullState.TraitorObjectives[state.FullState.TraitorID]; ok {
+						obj.Progress++
+					} else {
+						state.FullState.TraitorObjectives[state.FullState.TraitorID] = &PlayerObjective{
+							ObjectiveID: scenario.TraitorObjective.Name,
+							Progress:    1,
+							Required:    1,
+							Completed:   false,
+						}
+					}
 					state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 						ID:        generateLogID(),
 						Timestamp: time.Now().UnixMilli(),
@@ -402,9 +437,14 @@ func (g *GameManager) UpdateObjectives(roomID string, eventType string, data map
 		// 仪式完成 (CUSTOM 类型目标)
 		if scenario.TraitorObjective != nil && scenario.TraitorObjective.Type == "CUSTOM" {
 			if state.FullState.TraitorObjectives == nil {
-				state.FullState.TraitorObjectives = make(map[string]int)
+				state.FullState.TraitorObjectives = make(map[string]*PlayerObjective)
 			}
-			state.FullState.TraitorObjectives[state.FullState.TraitorID] = scenario.TraitorObjective.Turns // 标记完成
+			state.FullState.TraitorObjectives[state.FullState.TraitorID] = &PlayerObjective{
+				ObjectiveID: scenario.TraitorObjective.Name,
+				Progress:    scenario.TraitorObjective.Turns,
+				Required:    scenario.TraitorObjective.Turns,
+				Completed:   true,
+			}
 			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 				ID:        generateLogID(),
 				Timestamp: time.Now().UnixMilli(),
@@ -418,9 +458,18 @@ func (g *GameManager) UpdateObjectives(roomID string, eventType string, data map
 		if scenario.HeroObjective != nil && scenario.HeroObjective.Type == "SURVIVE" {
 			turnsSurvived, _ := data["turns"].(int)
 			if state.FullState.HeroObjectives == nil {
-				state.FullState.HeroObjectives = make(map[string]int)
+				state.FullState.HeroObjectives = make(map[string]*PlayerObjective)
 			}
-			state.FullState.HeroObjectives["survived"] = turnsSurvived
+			if obj, ok := state.FullState.HeroObjectives["survived"]; ok {
+				obj.Progress = turnsSurvived
+			} else {
+				state.FullState.HeroObjectives["survived"] = &PlayerObjective{
+					ObjectiveID: scenario.HeroObjective.Name,
+					Progress:    turnsSurvived,
+					Required:    scenario.HeroObjective.Turns,
+					Completed:   false,
+				}
+			}
 			
 			remaining := scenario.HeroObjective.Turns - turnsSurvived
 			if remaining > 0 && remaining <= 3 {
@@ -438,9 +487,14 @@ func (g *GameManager) UpdateObjectives(roomID string, eventType string, data map
 		if scenario.TraitorObjective != nil && scenario.TraitorObjective.Type == "USE_OMEN" {
 			omenCount, _ := data["omenCount"].(int)
 			if state.FullState.TraitorObjectives == nil {
-				state.FullState.TraitorObjectives = make(map[string]int)
+				state.FullState.TraitorObjectives = make(map[string]*PlayerObjective)
 			}
-			state.FullState.TraitorObjectives[state.FullState.TraitorID] = omenCount
+			state.FullState.TraitorObjectives[state.FullState.TraitorID] = &PlayerObjective{
+				ObjectiveID: scenario.TraitorObjective.Name,
+				Progress:    omenCount,
+				Required:    scenario.TraitorObjective.Turns,
+				Completed:   false,
+			}
 		}
 
 	case "ROOM_EXPLORED":
@@ -448,9 +502,18 @@ func (g *GameManager) UpdateObjectives(roomID string, eventType string, data map
 		if scenario.TraitorObjective != nil && scenario.TraitorObjective.Type == "EXPLORE" {
 			exploredCount, _ := data["count"].(int)
 			if state.FullState.TraitorObjectives == nil {
-				state.FullState.TraitorObjectives = make(map[string]int)
+				state.FullState.TraitorObjectives = make(map[string]*PlayerObjective)
 			}
-			state.FullState.TraitorObjectives[state.FullState.TraitorID] = exploredCount
+			if obj, ok := state.FullState.TraitorObjectives[state.FullState.TraitorID]; ok {
+				obj.Progress = exploredCount
+			} else {
+				state.FullState.TraitorObjectives[state.FullState.TraitorID] = &PlayerObjective{
+					ObjectiveID: scenario.TraitorObjective.Name,
+					Progress:    exploredCount,
+					Required:    scenario.TraitorObjective.Turns,
+					Completed:   false,
+				}
+			}
 		}
 	}
 }
@@ -474,8 +537,8 @@ func (g *GameManager) InitializeObjectives(roomID string) {
 	state.FullState.TurnsSinceHaunt = 0
 
 	// 初始化目标进度
-	state.FullState.HeroObjectives = make(map[string]int)
-	state.FullState.TraitorObjectives = make(map[string]int)
+	state.FullState.HeroObjectives = make(map[string]*PlayerObjective)
+	state.FullState.TraitorObjectives = make(map[string]*PlayerObjective)
 
 	// 记录目标
 	if scenario := state.FullState.CurrentScenario; scenario != nil {
@@ -599,16 +662,46 @@ func (g *GameManager) checkVictoryInternal(state *GameStateFull) string {
 	turnsSinceHaunt := state.TurnsSinceHaunt
 	scenario := state.CurrentScenario
 
+	// 只有在目标类型允许时才检查回合限制
 	if scenario.TraitorObjective != nil && turnsSinceHaunt >= scenario.TraitorObjective.Turns {
-		state.GameWinner = "TRAITOR"
-		state.Phase = GamePhaseGameOver
-		state.Logs = append(state.Logs, LogEntry{
-			ID:        generateLogID(),
-			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("叛徒在 %d 回合内完成了目标！叛徒胜利！", turnsSinceHaunt),
-			Type:      "alert",
-		})
-		return "TRAITOR"
+		// 检查叛徒目标是否实际完成
+		traitorProgress := 0
+		if state.TraitorObjectives != nil {
+			if obj := state.TraitorObjectives[state.TraitorID]; obj != nil {
+				traitorProgress = obj.Progress
+			}
+		}
+
+		// ELIMINATE 类型需要检查是否真的消灭了英雄
+		if scenario.TraitorObjective.Type == "ELIMINATE" {
+			// 如果还没消灭所有英雄，叛徒不能获胜（应该已经在 checkBasicVictory 处理）
+			// 继续检查英雄目标
+		} else if scenario.TraitorObjective.Type == "REACH" || scenario.TraitorObjective.Type == "COLLECT" {
+			if traitorProgress >= 1 {
+				state.GameWinner = "TRAITOR"
+				state.Phase = GamePhaseGameOver
+				state.Logs = append(state.Logs, LogEntry{
+					ID:        generateLogID(),
+					Timestamp: time.Now().UnixMilli(),
+					Text:      fmt.Sprintf("叛徒在 %d 回合内完成了目标！叛徒胜利！", turnsSinceHaunt),
+					Type:      "alert",
+				})
+				return "TRAITOR"
+			}
+		} else if scenario.TraitorObjective.Type == "CUSTOM" {
+			if traitorProgress >= 1 {
+				state.GameWinner = "TRAITOR"
+				state.Phase = GamePhaseGameOver
+				state.Logs = append(state.Logs, LogEntry{
+					ID:        generateLogID(),
+					Timestamp: time.Now().UnixMilli(),
+					Text:      fmt.Sprintf("叛徒在 %d 回合内完成了目标！叛徒胜利！", turnsSinceHaunt),
+					Type:      "alert",
+				})
+				return "TRAITOR"
+			}
+		}
+		// 对于 ELIMINATE 类型且目标未完成，不判定叛徒获胜，继续检查英雄目标
 	}
 
 	if scenario.HeroObjective != nil && turnsSinceHaunt >= scenario.HeroObjective.Turns {

@@ -10,7 +10,7 @@ export const ITEMS_DATA = [
     "icon": "Spear",
     "type": "WEAPON",
     "usage": {"actionLabel":"投掷","isConsumable":false,"target":"OPPONENT","effects":[{"type":"DAMAGE","target":{"type":"SELECTED_PARTNER"},"amount":3},{"type":"LOG","message":"长矛划过一道完美的弧线，击中目标！","style":"alert"}]},
-    "passiveEffects": [{"type":"buff","text":"力量+1"}]
+    "passiveEffects": ["力量+1"]
   },
   {
     "id": "vol_weapon_sword_ares",
@@ -19,7 +19,7 @@ export const ITEMS_DATA = [
     "icon": "Sword",
     "type": "WEAPON",
     "usage": {"actionLabel":"猛砍","isConsumable":false,"target":"OPPONENT","effects":[{"type":"DAMAGE","target":{"type":"SELECTED_PARTNER"},"amount":4},{"type":"DAMAGE","target":{"type":"SELF"},"amount":1}]},
-    "passiveEffects": [{"type":"buff","text":"力量+2"}]
+    "passiveEffects": ["力量+2"]
   },
   {
     "id": "vol_weapon_dagger_sifere",
@@ -28,7 +28,7 @@ export const ITEMS_DATA = [
     "icon": "Dagger",
     "type": "WEAPON",
     "usage": {"actionLabel":"穿刺","isConsumable":false,"target":"OPPONENT","effects":[{"type":"DAMAGE","target":{"type":"SELECTED_PARTNER"},"amount":2},{"type":"MODIFY_STAT","target":{"type":"SELF"},"stat":"speed","amount":1}]},
-    "passiveEffects": [{"type":"buff","text":"速度+1"},{"type":"special","text":"可穿越敌人位置"}]
+    "passiveEffects": ["速度+1", "可穿越敌人位置"]
   },
   {
     "id": "vol_weapon_bow_apollo",
@@ -37,7 +37,7 @@ export const ITEMS_DATA = [
     "icon": "Bow",
     "type": "WEAPON",
     "usage": {"actionLabel":"狙击","isConsumable":false,"target":"OPPONENT","effects":[{"type":"DAMAGE","target":{"type":"SELECTED_PARTNER"},"amount":3}]},
-    "passiveEffects": [{"type":"special","text":"远程攻击+1"}]
+    "passiveEffects": ["远程攻击+1"]
   },
   {
     "id": "vol_weapon_staff_nyx",
@@ -46,7 +46,7 @@ export const ITEMS_DATA = [
     "icon": "Staff",
     "type": "WEAPON",
     "usage": {"actionLabel":"暗影冲击","isConsumable":false,"target":"OPPONENT","effects":[{"type":"DAMAGE","target":{"type":"SELECTED_PARTNER"},"amount":2},{"type":"MODIFY_STAT","target":{"type":"SELECTED_PARTNER"},"stat":"speed","amount":-1}]},
-    "passiveEffects": [{"type":"buff","text":"知识+1"},{"type":"special","text":"攻击时附加减速效果"}]
+    "passiveEffects": ["知识+1", "攻击时附加减速效果"]
   },
   {
     "id": "vol_weapon_hammer_hephaestus",
@@ -55,7 +55,7 @@ export const ITEMS_DATA = [
     "icon": "Hammer",
     "type": "WEAPON",
     "usage": {"actionLabel":"粉碎","isConsumable":false,"target":"OPPONENT","effects":[{"type":"DAMAGE","target":{"type":"SELECTED_PARTNER"},"amount":5}]},
-    "passiveEffects": [{"type":"buff","text":"力量+2，但速度-1"}]
+    "passiveEffects": ["力量+2，但速度-1"]
   },
   {
     "id": "vol_potion_ambrosia",
@@ -120,7 +120,7 @@ export const ITEMS_DATA = [
     "icon": "Cloak",
     "type": "PASSIVE",
     "usage": {"actionLabel":"装备","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"special","text":"可主动使用伪装（持续3回合）"}],
+    "passiveEffects": ["可主动使用伪装（持续3回合）"],
     "grantedActions": [{"id":"action_disguise","name":"伪装","description":"伪装成敌人或中立单位","cost":{"type":"sanity","amount":1},"effects":[{"type":"special","effect":"disguise","duration":3},{"type":"LOG","message":"你伪装成功！","style":"success"}]}]
   },
   {
@@ -130,7 +130,7 @@ export const ITEMS_DATA = [
     "icon": "Eye",
     "type": "PASSIVE",
     "usage": {"actionLabel":"装备","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"buff","text":"知识+2"},{"type":"special","text":"免疫心智控制"},{"type":"special","text":"可看破隐匿单位"}]
+    "passiveEffects": ["知识+2", "免疫心智控制", "可看破隐匿单位"]
   },
   {
     "id": "vol_ring_detection",
@@ -139,7 +139,7 @@ export const ITEMS_DATA = [
     "icon": "Ring",
     "type": "PASSIVE",
     "usage": {"actionLabel":"装备","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"special","text":"自动侦测陷阱"},{"type":"special","text":"进入区域时自动揭示隐藏内容"}]
+    "passiveEffects": ["自动侦测陷阱", "进入区域时自动揭示隐藏内容"]
   },
   {
     "id": "vol_boots_hermes",
@@ -148,7 +148,7 @@ export const ITEMS_DATA = [
     "icon": "Boot",
     "type": "PASSIVE",
     "usage": {"actionLabel":"装备","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"buff","text":"速度+2"},{"type":"special","text":"移动时无视障碍物"},{"type":"special","text":"可无条件穿越地形"}]
+    "passiveEffects": ["速度+2", "移动时无视障碍物", "可无条件穿越地形"]
   },
   {
     "id": "vol_ring_teleport",
@@ -157,7 +157,7 @@ export const ITEMS_DATA = [
     "icon": "Ring",
     "type": "PASSIVE",
     "usage": {"actionLabel":"装备","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"special","text":"每场战斗可传送1次到任意已探索区域"}],
+    "passiveEffects": ["每场战斗可传送1次到任意已探索区域"],
     "grantedActions": [{"id":"action_teleport","name":"任意传送","description":"传送到任意已探索区域","cost":{"type":"sanity","amount":1},"effects":[{"type":"TELEPORT","target":{"type":"SELF"},"location":"any_revealed"}]}]
   },
   {
@@ -167,7 +167,7 @@ export const ITEMS_DATA = [
     "icon": "Cloak",
     "type": "PASSIVE",
     "usage": {"actionLabel":"装备","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"special","text":"每回合可选择进入相位状态1次"},{"type":"special","text":"相位状态下可穿过墙壁和敌人"}]
+    "passiveEffects": ["每回合可选择进入相位状态1次", "相位状态下可穿过墙壁和敌人"]
   },
   {
     "id": "vol_armor_aegis",
@@ -176,7 +176,7 @@ export const ITEMS_DATA = [
     "icon": "Shield",
     "type": "PASSIVE",
     "usage": {"actionLabel":"装备","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"buff","text":"受到伤害-1"},{"type":"buff","text":"知识+1"}]
+    "passiveEffects": ["受到伤害-1", "知识+1"]
   },
   {
     "id": "vol_crown_glory",
@@ -185,7 +185,7 @@ export const ITEMS_DATA = [
     "icon": "Crown",
     "type": "PASSIVE",
     "usage": {"actionLabel":"装备","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"buff","text":"力量+1"},{"type":"buff","text":"知识+1"},{"type":"buff","text":"队伍攻击+1"}]
+    "passiveEffects": ["力量+1", "知识+1", "队伍攻击+1"]
   },
   {
     "id": "vol_charm_lucky",
@@ -194,7 +194,7 @@ export const ITEMS_DATA = [
     "icon": "Clover",
     "type": "PASSIVE",
     "usage": {"actionLabel":"装备","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"special","text":"检定+1"},{"type":"special","text":"暴击率+10%"}]
+    "passiveEffects": ["检定+1", "暴击率+10%"]
   },
   {
     "id": "vol_orb_prophecy",
@@ -203,7 +203,7 @@ export const ITEMS_DATA = [
     "icon": "Crystal",
     "type": "PASSIVE",
     "usage": {"actionLabel":"使用","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"special","text":"每场战斗可预判一次攻击"},{"type":"buff","text":"知识+2"}],
+    "passiveEffects": ["每场战斗可预判一次攻击", "知识+2"],
     "grantedActions": [{"id":"action_prophecy","name":"预言","description":"预知下一次事件","effects":[{"type":"special","effect":"reveal_next_event"},{"type":"LOG","message":"水晶球揭示了未来！","style":"info"}]}]
   },
   {
@@ -213,6 +213,6 @@ export const ITEMS_DATA = [
     "icon": "Lyre",
     "type": "PASSIVE",
     "usage": {"actionLabel":"演奏","isConsumable":false,"target":"SELF"},
-    "passiveEffects": [{"type":"special","text":"队友速度+1"},{"type":"heal","text":"每回合队友恢复1点生命"}]
+    "passiveEffects": ["队友速度+1", "每回合队友恢复1点生命"]
   }
 ];

@@ -1,16 +1,15 @@
 
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
-import { STARTING_TILE, getTilesForGame } from '../constants';
+import { STARTING_TILE } from '../constants';
 import { Direction, TileDef } from '../types';
 import * as Icons from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const TileInspector: React.FC = () => {
-  const { hoveredTileId, map, players, activePlayerId, pendingTile } = useGameStore();
+  const { hoveredTileId, map, players, activePlayerId, pendingTile, getTileById } = useGameStore();
   
-  // 使用动态获取的地图块数据（根据主题）
-  const tileDeck = getTilesForGame();
+  // 使用从后端API获取的地图块数据
   const activePlayer = players[activePlayerId];
 
   // Prioritize pendingTile (New room being placed), then hovered tile, then current player position
@@ -33,7 +32,7 @@ const TileInspector: React.FC = () => {
       if (tileInstance) {
           def = tileInstance.defId === STARTING_TILE.id 
             ? STARTING_TILE 
-            : tileDeck.find(t => t.id === tileInstance.defId);
+            : getTileById(tileInstance.defId);
           coordinateLabel = `坐标: ${tileInstance.x}, ${tileInstance.y}`;
       }
   }

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useEventSystem } from '../hooks/useEventSystem';
 import { Dice5, Skull, Gem, CheckCircle, XCircle, MousePointerClick } from 'lucide-react';
@@ -9,11 +9,12 @@ import { Item } from '../types';
 const CardResolutionModal: React.FC = () => {
   const { activeCard, players, activePlayerId, lastRollResult, activeRoll, eventOutcome, acknowledgeEventOutcome, resolveEventChoice } = useGameStore();
   const { initiateEventRoll, resolveItemPickup } = useEventSystem();
+  const [choiceMade, setChoiceMade] = useState(false);
   const player = players[activePlayerId];
   if (!activeCard) return null;
 
   const isItem = 'usage' in activeCard || ['OMEN', 'WEAPON', 'PASSIVE', 'CONSUMABLE'].includes(activeCard.type);
-  const cardTitle = 'title' in activeCard ? activeCard.title : activeCard.name;
+  const cardTitle = 'name' in activeCard ? activeCard.name : activeCard.title || '未知卡牌';
   const cardType = activeCard.type;
   const isEvent = activeCard.type === 'EVENT';
   const interaction = isEvent ? activeCard.interaction : null;
@@ -122,11 +123,15 @@ const CardResolutionModal: React.FC = () => {
                             {interaction.options.map((option, idx) => (
                                 <button
                                     key={idx}
-                                    onClick={() => resolveEventChoice(option.effects)}
-                                    className="w-full text-left p-4 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg transition-all hover:border-indigo-500 group"
+                                    onClick={() => {
+                                        if (choiceMade) return;
+                                        setChoiceMade(true);
+                                        resolveEventChoice(option.effects, idx);
+                                    }}
+                                    disabled={choiceMade}
+                                    className={`w-full text-left p-4 bg-zinc-800 border border-zinc-700 rounded-lg transition-all group ${choiceMade ? 'opacity-50 cursor-not-allowed' : 'hover:bg-zinc-700 hover:border-indigo-500'}`}
                                 >
                                     <div className="text-sm font-bold text-zinc-200 group-hover:text-white mb-1">{option.label}</div>
-                                    {/* Ideally we could show a hint of effects, but for mystery we assume label describes it */}
                                 </button>
                             ))}
                         </div>
@@ -134,14 +139,14 @@ const CardResolutionModal: React.FC = () => {
                 </div>
                 <div className="p-6 bg-zinc-950/50 border-t border-zinc-800/50 flex justify-end">
                     {isAttributeCheck && lastRollResult === null ? (
-                        <button onClick={() => initiateEventRoll(activeCard as any)} disabled={!!activeRoll} className="w-full bg-zinc-100 hover:bg-white text-black px-6 py-4 rounded font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2">
+                        <button onClick={() => { if (choiceMade) return; setChoiceMade(true); initiateEventRoll(activeCard as any); }} disabled={!!activeRoll || choiceMade} className={`w-full px-6 py-4 rounded font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 ${choiceMade ? 'opacity-50 cursor-not-allowed bg-zinc-700 text-zinc-400' : 'bg-zinc-100 hover:bg-white text-black'}`}>
                             <Dice5 size={16} /> 进行 {attributeLabel} 检定
                         </button>
                     ) : isChoice ? (
                         // Choice handling is inside the options buttons above
                         null
                     ) : (
-                        <button onClick={() => isItem ? resolveItemPickup(activeCard as Item) : null} disabled={!!activeRoll} className={`w-full px-6 py-4 rounded font-bold uppercase tracking-wider text-xs ${isItem ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-zinc-100 text-black'}`}>
+                        <button onClick={() => { if (choiceMade) return; setChoiceMade(true); if (isItem) resolveItemPickup(activeCard as Item); }} disabled={!!activeRoll || choiceMade} className={`w-full px-6 py-4 rounded font-bold uppercase tracking-wider text-xs ${choiceMade ? 'opacity-50 cursor-not-allowed' : isItem ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-zinc-100 text-black'}`}>
                             {isItem ? '捡起道具' : '继续'}
                         </button>
                     )}

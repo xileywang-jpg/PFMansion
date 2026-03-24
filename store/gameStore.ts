@@ -6,6 +6,7 @@ import {
   Scenario, EventOutcome
 } from '../types';
 import { ActionDefinition } from '../types/Logic';
+import { GameDataBundle } from '../src/services/gameData';
 import { 
   MOCK_CHARACTERS, STARTING_TILE, TILE_DECK, 
   MOCK_EVENTS_DECK, MOCK_ITEMS_DECK, MOCK_OMENS_DECK,
@@ -13,6 +14,10 @@ import {
 } from '../constants';
 import { EVENTS_DB } from '../data/events';
 import { ITEMS_DB } from '../data/items';
+import { ITEMS_DATA } from '../data/source/items';
+import { OMENS_DATA } from '../data/source/omens';
+import { SKILLS_DATA } from '../data/source/skills';
+import { SCENARIOS_DATA } from '../data/source/scenarios';
 import { SCENARIOS_DB } from '../data/scenarios';
 import { SKILL_TREES } from '../data/source/skillTrees';
 import { getScenarioId } from '../data/hauntMatrix';
@@ -66,9 +71,15 @@ interface GameState {
   // Haunt Context
   lastTriggeredOmen: string | null;
   lastTriggeredTile: string | null;
+  
+  // Phase 2: 目标系统
+  heroObjectives: Record<string, any>;
+  traitorObjectives: Record<string, any>;
+  turnsSinceHaunt: number;
+  gameWinner: string | null;
 
   // Phase 1: 待处理动作 (网络同步)
-  pendingAction: { type: string; target: string; data?: Record<string, unknown> } | null;
+  pendingAction: { type: string; target: string; data?: Record<string, unknown>; cardId?: string; message?: string } | null;
 
   pendingTile: TileDef | null;
   pendingTileRotation: number;
@@ -86,6 +97,27 @@ interface GameState {
 
   activeFeedback: { message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' } | null;
 
+  // 游戏静态数据（从后端 API 获取）
+  gameData: GameDataBundle | null;
+  dataLoaded: boolean;
+  setGameData: (data: GameDataBundle) => void;
+  
+  // 数据访问辅助函数
+  getAllItems: () => any[];
+  getItemById: (id: string) => any | undefined;
+  getAllOmens: () => any[];
+  getOmenById: (id: string) => any | undefined;
+  getAllEvents: () => any[];
+  getEventById: (id: string) => any | undefined;
+  getAllSkills: () => any[];
+  getSkillById: (id: string) => any | undefined;
+  getScenarios: () => Record<string, any>;
+  getScenarioById: (id: string) => any | undefined;
+  getTilesByTheme: (theme?: string) => any[];
+  getTileById: (id: string, theme?: string) => any | undefined;
+  getCharactersByTheme: (theme?: string) => any[];
+  getCharacterById: (id: string, theme?: string) => any | undefined;
+
   initializeGame: () => void;
   nextTurn: () => void;
   movePlayer: (direction: Direction) => void;
@@ -98,7 +130,7 @@ interface GameState {
   resolveDiceRoll: (total: number) => void;
   applyCardOutcome: () => void;
   acknowledgeEventOutcome: () => void;
-  resolveEventChoice: (actions: ScriptAction[]) => void;
+  resolveEventChoice: (actions: ScriptAction[], choiceIndex?: number) => void;
   incrementOmenCount: () => void;
   performHauntRoll: () => void; 
   startHaunt: () => void;
@@ -116,9 +148,6 @@ interface GameState {
   giveItem: (fromId: string, toId: string, itemId: string) => void;
 
   startCombat: (attackerId: string, defenderId: string, attribute: AttributeName) => void;
-  resolveCombatDamage: () => void;
-  resolveCombatSteal: (itemId: string) => void;
-  cancelCombat: () => void;
 
   debugForceHaunt: () => void;
 
@@ -221,8 +250,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   isHauntActive: false,
   currentScenario: null,
   traitorId: null,
-  lastTriggeredOmenId: null,
-  lastTriggeredTileId: null,
+  lastTriggeredOmen: null,
+  lastTriggeredTile: null,
+  heroObjectives: {},
+  traitorObjectives: {},
+  turnsSinceHaunt: 0,
+  gameWinner: null,
   // Phase 1: 待处理动作
   pendingAction: null,
   pendingTile: null,
@@ -236,6 +269,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   inspectPlayerId: null,
   pendingInteractionEffects: null,
   activeFeedback: null,
+
+  // 游戏静态数据
+  gameData: null,
+  dataLoaded: false,
+  setGameData: (data: GameDataBundle) => set({ gameData: data, dataLoaded: true }),
 
   showFeedback: (message: string, type = 'error') => {
     set({ activeFeedback: { message, type } });
@@ -290,6 +328,169 @@ export const useGameStore = create<GameState>((set, get) => ({
       return Math.max(0, total);
   },
 
+  // ==================== 数据访问辅助函数 ====================
+  // 注意: API数据优先，本地数据仅作为降级方案使用
+
+  // 获取所有物品（从API或本地）
+  getAllItems: (): any[] => {
+    const state = get();
+    if (state.gameData?.items?.length) {
+      return state.gameData.items;
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Items) - API数据不可用');
+    return Object.values(ITEMS_DATA as unknown as Record<string, any>);
+  },
+
+  // 根据ID获取物品
+  getItemById: (id: string): any | undefined => {
+    const state = get();
+    if (state.gameData?.items) {
+      return state.gameData.items.find(item => item.id === id);
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Item:', id, ') - API数据不可用');
+    return (ITEMS_DATA as unknown as Record<string, any>)[id];
+  },
+
+  // 获取所有厄运（从API或本地）
+  getAllOmens: (): any[] => {
+    const state = get();
+    if (state.gameData?.omens?.length) {
+      return state.gameData.omens;
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Omens) - API数据不可用');
+    return Object.values(OMENS_DATA as unknown as Record<string, any>);
+  },
+
+  // 根据ID获取厄运
+  getOmenById: (id: string): any | undefined => {
+    const state = get();
+    if (state.gameData?.omens) {
+      return state.gameData.omens.find(omen => omen.id === id);
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Omen:', id, ') - API数据不可用');
+    return (OMENS_DATA as unknown as Record<string, any>)[id];
+  },
+
+  // 获取所有事件（从API或本地）
+  getAllEvents: (): any[] => {
+    const state = get();
+    if (state.gameData?.events?.length) {
+      return state.gameData.events;
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Events) - API数据不可用');
+    return Object.values(EVENTS_DB);
+  },
+
+  // 根据ID获取事件
+  getEventById: (id: string): any | undefined => {
+    const state = get();
+    if (state.gameData?.events) {
+      return state.gameData.events.find(event => event.id === id);
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Event:', id, ') - API数据不可用');
+    return EVENTS_DB[id];
+  },
+
+  // 获取所有技能（从API或本地）
+  getAllSkills: (): any[] => {
+    const state = get();
+    if (state.gameData?.skills?.length) {
+      return state.gameData.skills;
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Skills) - API数据不可用');
+    return Object.values(SKILLS_DATA as unknown as Record<string, any>);
+  },
+
+  // 根据ID获取技能
+  getSkillById: (id: string): any | undefined => {
+    const state = get();
+    if (state.gameData?.skills) {
+      return state.gameData.skills.find(skill => skill.id === id);
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Skill:', id, ') - API数据不可用');
+    return (SKILLS_DATA as unknown as Record<string, any>)[id];
+  },
+
+  // 获取剧本
+  getScenarios: (): Record<string, any> => {
+    const state = get();
+    if (state.gameData?.scenarios && Object.keys(state.gameData.scenarios).length > 0) {
+      return state.gameData.scenarios;
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Scenarios) - API数据不可用');
+    return SCENARIOS_DATA;
+  },
+
+  // 根据ID获取剧本
+  getScenarioById: (id: string): any | undefined => {
+    const state = get();
+    const scenarios = get().getScenarios();
+    if (!scenarios[id]) {
+      console.error('[GameData] ❌ 使用降级数据 (Scenario:', id, ') - API数据不可用');
+    }
+    return scenarios[id];
+  },
+
+  // 获取地图（根据主题）
+  getTilesByTheme: (theme: string = 'original'): any[] => {
+    const state = get();
+    if (state.gameData?.tiles?.[theme]?.length) {
+      return state.gameData.tiles[theme];
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Tiles:', theme, ') - API数据不可用');
+    return TILE_DECK;
+  },
+
+  // 根据ID获取地图 (自动识别主题)
+  getTileById: (id: string, theme?: string): any | undefined => {
+    // 根据ID前缀自动判断主题
+    const autoTheme = theme || (id.startsWith('vol_') ? 'volantis' : 'original');
+    const tiles = get().getTilesByTheme(autoTheme);
+    const tile = tiles.find(tile => tile.id === id);
+    if (!tile) {
+      // 尝试在另一个主题中查找
+      const fallbackTheme = autoTheme === 'volantis' ? 'original' : 'volantis';
+      const fallbackTiles = get().getTilesByTheme(fallbackTheme);
+      const fallbackTile = fallbackTiles.find(t => t.id === id);
+      if (fallbackTile) {
+        return fallbackTile;
+      }
+      console.error('[GameData] ❌ 使用降级数据 (Tile:', id, ') - API数据不可用');
+    }
+    return tile;
+  },
+
+  // 获取角色（根据主题）
+  getCharactersByTheme: (theme: string = 'original'): any[] => {
+    const state = get();
+    if (state.gameData?.characters?.[theme]?.length) {
+      return state.gameData.characters[theme];
+    }
+    // 降级到本地数据
+    console.error('[GameData] ❌ 使用降级数据 (Characters:', theme, ') - API数据不可用');
+    return MOCK_CHARACTERS;
+  },
+
+  // 根据ID获取角色
+  getCharacterById: (id: string, theme: string = 'original'): any | undefined => {
+    const characters = get().getCharactersByTheme(theme);
+    const char = characters.find(char => char.id === id);
+    if (!char) {
+      console.error('[GameData] ❌ 使用降级数据 (Character:', id, ') - API数据不可用');
+    }
+    return char;
+  },
+
   initializeGame: () => {
     // 根据主题动态获取起始Tile
     const startingTile = getStartingTileForGame();
@@ -335,7 +536,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             timestamp: Date.now(),
             text: '进入了大厦。',
             type: 'info'
-        }]
+        }],
+        showTrail: false,
       };
     });
 
@@ -422,87 +624,31 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   nextTurn: () => {
     const state = get();
-    const currentIndex = state.playerIds.indexOf(state.activePlayerId);
-    
-    let nextIndex = (currentIndex + 1) % state.playerIds.length;
-    let nextId = state.playerIds[nextIndex];
-    let attempts = 0;
-    
-    while (state.players[nextId].isDead && attempts < state.playerIds.length) {
-      nextIndex = (nextIndex + 1) % state.playerIds.length;
-      nextId = state.playerIds[nextIndex];
-      attempts++;
-    }
-
-    if (attempts === state.playerIds.length) {
-      set({ phase: GamePhase.GameOver });
-      state.addLog("大厦赢了。所有人都在黑暗中陨落了...", 'alert');
-      state.showFeedback("游戏结束：全员阵亡", "death");
-      return;
-    }
-
-    // === 回合结束处理 ===
-    // 处理当前玩家回合结束时的状态效果
-    const currentPlayer = state.players[state.activePlayerId];
-    if (currentPlayer.statusEffects && currentPlayer.statusEffects.length > 0) {
-      const removedEffects = decrementStatusEffects(currentPlayer);
-      if (removedEffects.length > 0) {
-        state.addLog(`${currentPlayer.character.name} 的状态效果结束: ${removedEffects.join(', ')}`, 'info');
-      }
-    }
-
-    const nextPlayer = state.players[nextId];
-    const shouldGainSkillPoint = (state.turnIndex + 1) % 3 === 0;
-    if (shouldGainSkillPoint) {
-        state.addLog(`${nextPlayer.character.name} 在探索中获得了新的领悟 (+1 技能点)`, 'success');
-        get().addPersonalLog(nextId, '随着探索深入，获得了 1 点技能点 (SP)。', 'success');
-        const newPlayers = { ...state.players };
-        newPlayers[nextId].skillPoints += 1;
-        set({ players: newPlayers });
-    }
-
-    // 处理回合开始时的状态效果
-    const nextPlayerBefore = state.players[nextId];
-    if (nextPlayerBefore.statusEffects && nextPlayerBefore.statusEffects.length > 0) {
-      const effectLogs = applyStatusEffectOnTurnStart(nextPlayerBefore);
-      effectLogs.forEach(log => {
-        state.addLog(`[${nextPlayerBefore.character.name}] ${log}`, 'info');
-      });
-      
-      // 检查石化状态 - 无法行动
-      if (nextPlayerBefore.statusEffects.some(e => e.type === 'PETRIFIED')) {
-        state.addLog(`${nextPlayerBefore.character.name} 处于石化状态，无法行动！`, 'alert');
-      }
-    }
-
-    // Use calculated speed (包含状态效果修正)
-    const effectiveSpeed = get().getEffectiveAttributeValue(nextId, AttributeName.Speed);
-
-    set({
-      activePlayerId: nextId,
-      movesRemaining: effectiveSpeed,
-      turnPhase: 'MOVING',
-      turnIndex: state.turnIndex + 1,
-      activeCard: null,
-      lastRollResult: null,
-      pendingTile: null,
-      activeRoll: null,
-      activeCombat: null,
-      eventOutcome: null,
-      phase: state.phase === GamePhase.GameOver ? GamePhase.GameOver : (state.isHauntActive ? GamePhase.Haunt : GamePhase.Exploration),
-      isInventoryOpen: false,
-      isInteractionModalOpen: false,
-      isSkillTreeOpen: false,
-      inspectPlayerId: null,
-      pendingInteractionEffects: null,
+    console.log('[nextTurn] called', {
+      turnPhase: state.turnPhase,
+      activeCard: !!state.activeCard,
+      activeRoll: !!state.activeRoll,
+      pendingTile: !!state.pendingTile,
+      activeCombat: !!state.activeCombat,
+      isNetworkMode: network.isInNetworkMode()
     });
-
-    state.showFeedback(`${nextPlayer.character.name} 的回合`, 'turn');
-    state.addLog(`第 ${state.turnIndex + 1} 回合：${nextPlayer.character.name} 开始行动。`, 'info');
+    if (!network.isInNetworkMode()) {
+        get().showFeedback("网络未连接，无法结束回合", "error");
+        return;
+    }
+    network.sendEndTurn();
+    get().showFeedback("正在结束回合...", "info");
   },
 
   movePlayer: (direction: Direction) => {
     const state = get();
+    
+    if (!network.isInNetworkMode()) {
+      state.showFeedback("网络未连接，无法移动", "error");
+      return;
+    }
+    
+    // 前置检查（与后端一致）
     if (state.activeCard || state.pendingTile || state.activeRoll || state.phase === GamePhase.HauntRoll || state.activeCombat) {
         state.showFeedback("等待当前交互完成", "warning");
         return;
@@ -517,162 +663,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       state.showFeedback("体力已耗尽", "error");
       return;
     }
-
+    
     const player = state.players[state.activePlayerId];
+    if (!player) return;
+    
     const currentTile = state.map[`${player.position.x},${player.position.y}`];
+    if (!currentTile) return;
+    
     const currentEdge = currentTile.edges[direction];
     
+    // PHASING buff 可以穿墙
     if (currentEdge === 'WALL' && !player.buffs.includes('PHASING')) {
       state.showFeedback("前方无路", "error");
       return;
     }
-
-    let newX = player.position.x;
-    let newY = player.position.y;
-    if (direction === Direction.North) newY--;
-    else if (direction === Direction.South) newY++;
-    else if (direction === Direction.East) newX++;
-    else if (direction === Direction.West) newX--;
-
-    const targetKey = `${newX},${newY}`;
-    const existingTile = state.map[targetKey];
-
-    if (existingTile) {
-      if (!areConnected(direction, existingTile.edges) && !player.buffs.includes('PHASING')) {
-        state.showFeedback("这扇门无法开启", "error");
-        return;
-      }
-      
-      const newPlayers = { ...state.players };
-      newPlayers[state.activePlayerId] = {
-          ...newPlayers[state.activePlayerId],
-          position: { x: newX, y: newY }
-      };
-
-      // 获取当前位置的地块定义（用于离开触发）
-      const currentTileDef = TILE_DECK.find(t => t.id === currentTile.defId) || STARTING_TILE;
-      
-      // 处理地块离开触发器
-      if (currentTileDef.onLeave) {
-        const leaveContext: GameContext = {
-          state: get(),
-          activePlayerId: state.activePlayerId
-        };
-        const leaveResult = handleTileTrigger(currentTileDef.onLeave, leaveContext);
-        
-        if (leaveResult.results.length > 0) {
-          leaveResult.results.forEach(result => {
-            if (result.type === 'modify_stat' || result.type === 'damage' || result.type === 'heal') {
-              executeEffects([{
-                type: result.type === 'damage' ? 'DAMAGE' : result.type === 'heal' ? 'HEAL' : 'MODIFY_STAT',
-                target: { type: 'SELF' },
-                stat: result.attribute,
-                amount: result.amount
-              }], leaveContext);
-            }
-            if (result.message) {
-              state.addLog(result.message, leaveResult.success ? 'success' : 'alert');
-            }
-          });
-        }
-      }
-      
-      const newMoves = state.movesRemaining - 1;
-      let nextPhase: TurnPhase = 'MOVING';
-      const def = TILE_DECK.find(t => t.id === existingTile.defId) || STARTING_TILE;
-      
-      // 处理地块进入触发器
-      if (def.onEnter) {
-        const context: GameContext = {
-          state: get(),
-          activePlayerId: state.activePlayerId
-        };
-        const triggerResult = handleTileTrigger(def.onEnter, context);
-        
-        // 执行触发效果
-        if (triggerResult.results.length > 0) {
-          triggerResult.results.forEach(result => {
-            if (result.type === 'modify_stat' || result.type === 'damage' || result.type === 'heal') {
-              executeEffects([{
-                type: result.type === 'damage' ? 'DAMAGE' : result.type === 'heal' ? 'HEAL' : 'MODIFY_STAT',
-                target: { type: 'SELF' },
-                stat: result.attribute,
-                amount: result.amount
-              }], context);
-            }
-            if (result.message) {
-              state.addLog(result.message, triggerResult.success ? 'success' : 'alert');
-            }
-          });
-        }
-      }
-
-      // 处理地块被动效果 (buffs/debuffs)
-      if (def.effects && def.effects.length > 0) {
-        const playerId = state.activePlayerId;
-        const currentBuffs = newPlayers[playerId].buffs || [];
-        const newBuffs = [...currentBuffs];
-        
-        def.effects.forEach(effect => {
-          // 简单效果：buff/debuff 类型
-          if (effect.type === 'buff' || effect.type === 'debuff') {
-            if (!newBuffs.includes(effect.text)) {
-              newBuffs.push(effect.text);
-              state.addLog(`[${effect.type === 'buff' ? '增益' : '减益'}] ${effect.text}`, effect.type === 'buff' ? 'success' : 'warning');
-            }
-          }
-          // 复杂效果：MODIFY_STAT 等
-          else if (effect.type === 'MODIFY_STAT' || effect.type === 'modify_stat') {
-            const attr = effect.stat || effect.attribute;
-            const amount = effect.amount;
-            if (attr && amount !== undefined) {
-              const player = newPlayers[playerId];
-              const targetAttr = player.character.attributes[attr];
-              if (targetAttr) {
-                const oldVal = targetAttr.current;
-                const newVal = Math.min(targetAttr.max, Math.max(targetAttr.floor, targetAttr.current + amount));
-                targetAttr.current = newVal;
-                state.addLog(`[属性变化] ${attr} ${amount > 0 ? '+' : ''}${amount} (${oldVal} → ${newVal})`, amount > 0 ? 'success' : 'warning');
-              }
-            }
-          }
-          // 其他特殊效果
-          else if (effect.type === 'MIRROR_REFLECT') {
-            // 镜像反射效果 - 下一次攻击反射
-            if (!newBuffs.includes('镜像反射')) {
-              newBuffs.push('镜像反射');
-              state.addLog(`[特殊增益] 镜像反射 (下次攻击反射)`, 'success');
-            }
-          }
-        });
-        
-        newPlayers[playerId].buffs = newBuffs;
-      }
-      
-      if (!existingTile.hasEventTriggered && (def.cardSymbol || def.eventTrigger)) {
-          set({ movesRemaining: 0 }); 
-          nextPhase = 'EVENT_RESOLVING';
-          if (def.eventTrigger) get().triggerSpecificEvent(def.eventTrigger);
-          else if (def.cardSymbol && def.cardSymbol !== 'NONE') get().drawCard(def.cardSymbol);
-      }
-      
-      set({ players: newPlayers, movesRemaining: newMoves, turnPhase: (newMoves === 0 && nextPhase !== 'EVENT_RESOLVING') ? 'DONE' : nextPhase });
-      state.addLog(`${player.character.name} 进入了 ${def.name}。`, 'info');
-    } else {
-      if (state.tileDeck.length === 0) {
-        state.showFeedback("大厦已无处探索", "error");
-        return;
-      }
-      const nextTileDef = state.tileDeck[0];
-      set({
-        movesRemaining: state.movesRemaining - 1,
-        tileDeck: state.tileDeck.slice(1),
-        pendingTile: nextTileDef,
-        pendingTileRotation: 0,
-        pendingTargetPosition: { x: newX, y: newY },
-        pendingMoveDirection: direction
-      });
-    }
+    
+    // 发送移动请求到后端
+    network.sendMove(direction);
+    state.showFeedback("正在移动...", "info");
   },
 
   handlePlayerDeath: (playerId: string) => {
@@ -715,166 +723,35 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   pickupItemFromTile: (itemId: string) => {
     const state = get();
-    const player = state.players[state.activePlayerId];
-    const playerPos = `${player.position.x},${player.position.y}`;
-    const tile = state.map[playerPos];
     
-    const itemIndex = tile.droppedItems.findIndex(i => i.id === itemId);
-    if (itemIndex === -1) return;
-
-    const item = tile.droppedItems[itemIndex];
-    const newDroppedItems = tile.droppedItems.filter((_, i) => i !== itemIndex);
+    if (!network.isInNetworkMode()) {
+      state.showFeedback("网络未连接，无法拾取物品", "error");
+      return;
+    }
     
-    const newPlayers = { ...state.players };
-    newPlayers[state.activePlayerId] = {
-      ...newPlayers[state.activePlayerId],
-      items: [...newPlayers[state.activePlayerId].items, item]
-    };
-
-    set({
-      players: newPlayers,
-      map: { ...state.map, [playerPos]: { ...tile, droppedItems: newDroppedItems } }
-    });
-    state.addLog(`捡起了掉落在地上的 ${item.name}。`, 'success');
-    get().addPersonalLog(state.activePlayerId, `拾取了 ${item.name}。`, 'success');
+    network.sendPickupItem(itemId);
+    state.showFeedback("正在拾取...", "info");
   },
 
   giveItem: (fromId: string, toId: string, itemId: string) => {
     const state = get();
-    const fromPlayer = state.players[fromId];
-    const toPlayer = state.players[toId];
-    if (!fromPlayer || !toPlayer) return;
-
-    const itemIndex = fromPlayer.items.findIndex(i => i.id === itemId);
-    if (itemIndex === -1) return;
-
-    const item = fromPlayer.items[itemIndex];
-    const newFromItems = fromPlayer.items.filter((_, i) => i !== itemIndex);
-    const newToItems = [...toPlayer.items, item];
-
-    const newPlayers = { ...state.players };
-    newPlayers[fromId] = { ...fromPlayer, items: newFromItems };
-    newPlayers[toId] = { ...toPlayer, items: newToItems };
-
-    set({ players: newPlayers, isInteractionModalOpen: false });
-    state.addLog(`${fromPlayer.character.name} 将 ${item.name} 交给了 ${toPlayer.character.name}。`, 'info');
-    get().addPersonalLog(fromId, `将 ${item.name} 交给了 ${toPlayer.character.name}。`, 'info');
-    get().addPersonalLog(toId, `收到了 ${fromPlayer.character.name} 给予的 ${item.name}。`, 'success');
-  },
-
-  startCombat: (attackerId, defenderId, attribute) => {
-    // 检查是否在网络模式
-    if (network.isInNetworkMode()) {
-        // 网络模式：发送战斗开始请求
-        network.sendStartCombat(defenderId, attribute);
-        return;
+    
+    if (!network.isInNetworkMode()) {
+      state.showFeedback("网络未连接，无法交付物品", "error");
+      return;
     }
     
-    // 本地模式：直接处理
-    const state = get();
-    const attacker = state.players[attackerId];
-    const defender = state.players[defenderId];
+    network.sendGiveItem(toId, itemId);
+    state.showFeedback("正在交付物品...", "info");
+  },
 
-    if (!defender || defender.isDead) {
-        state.showFeedback("无法攻击已阵亡的目标", "error");
+  startCombat: (attackerId: string, defenderId: string, attribute: AttributeName) => {
+    if (!network.isInNetworkMode()) {
+        get().showFeedback("网络未连接，无法发起战斗", "error");
         return;
     }
-
-    // Use effective value for combat roll
-    let attackerDice = get().getEffectiveAttributeValue(attackerId, attribute);
-    
-    // Check combat-specific buffs from items (hardcoded check for demo purposes as parser is simple)
-    // Example: Revolver adds to Might only during attack
-    if (attribute === AttributeName.Might) {
-        const hasRevolver = attacker.items.some(i => i.id === 'item_revolver');
-        if (hasRevolver) attackerDice += 2;
-    }
-
-    set({
-      isInteractionModalOpen: false,
-      activeCombat: { attackerId, defenderId, attribute, phase: 'ATTACKING' },
-      activeRoll: {
-        id: 'combat_attack',
-        attributeName: `${attacker.character.name} 的进攻 (${attribute})`,
-        numberOfDice: attackerDice,
-        isCancellable: true,
-        onComplete: (total) => {
-          const s = get();
-          const defender = s.players[defenderId];
-          // Use effective value for defense
-          const defenderDice = s.getEffectiveAttributeValue(defenderId, attribute);
-          
-          set({
-            activeCombat: { ...s.activeCombat!, attackerRoll: total, phase: 'DEFENDING' },
-            activeRoll: {
-              id: 'combat_defense',
-              attributeName: `${defender.character.name} 的防御 (${attribute})`,
-              numberOfDice: defenderDice,
-              onComplete: (defTotal) => {
-                set(prev => ({
-                  activeCombat: { ...prev.activeCombat!, defenderRoll: defTotal, phase: 'RESOLUTION' },
-                  activeRoll: null
-                }));
-              }
-            }
-          });
-        }
-      }
-    });
+    network.sendStartCombat(defenderId, attribute);
   },
-
-  resolveCombatDamage: () => {
-    const state = get();
-    const combat = state.activeCombat;
-    if (!combat || combat.attackerRoll === undefined || combat.defenderRoll === undefined) return;
-
-    const damage = Math.max(0, combat.attackerRoll - combat.defenderRoll);
-    if (damage > 0) {
-      get().executeScript([{
-        type: 'modify_stat',
-        target: combat.defenderId,
-        attribute: AttributeName.Might,
-        amount: -damage,
-        message: `战斗中受到了 ${damage} 点伤害！`
-      }]);
-      
-      const attackerName = state.players[combat.attackerId].character.name;
-      get().addPersonalLog(combat.defenderId, `被 ${attackerName} 攻击，受到了 ${damage} 点物理伤害。`, 'alert');
-      get().addPersonalLog(combat.attackerId, `成功攻击了 ${state.players[combat.defenderId].character.name}，造成 ${damage} 点伤害。`, 'success');
-      
-    } else {
-      state.addLog("进攻被化解了，未造成伤害。", 'info');
-      get().addPersonalLog(combat.attackerId, `对 ${state.players[combat.defenderId].character.name} 的攻击失败。`, 'info');
-    }
-
-    set({ activeCombat: null, turnPhase: 'DONE' });
-  },
-
-  resolveCombatSteal: (itemId) => {
-    const state = get();
-    const combat = state.activeCombat;
-    if (!combat) return;
-
-    const attacker = state.players[combat.attackerId];
-    const defender = state.players[combat.defenderId];
-    const itemIndex = defender.items.findIndex(i => i.id === itemId);
-    if (itemIndex === -1) return;
-
-    const item = defender.items[itemIndex];
-    const newDefenderItems = defender.items.filter((_, i) => i !== itemIndex);
-    const newAttackerItems = [...attacker.items, item];
-
-    const newPlayers = { ...state.players };
-    newPlayers[combat.defenderId] = { ...defender, items: newDefenderItems };
-    newPlayers[combat.attackerId] = { ...attacker, items: newAttackerItems };
-
-    set({ players: newPlayers, activeCombat: null, turnPhase: 'DONE' });
-    state.addLog(`${attacker.character.name} 趁乱偷走了 ${defender.character.name} 的 ${item.name}！`, 'success');
-    get().addPersonalLog(combat.attackerId, `从 ${defender.character.name} 身上偷走了 ${item.name}。`, 'success');
-    get().addPersonalLog(combat.defenderId, `${item.name} 被 ${attacker.character.name} 偷走了！`, 'alert');
-  },
-
-  cancelCombat: () => set({ activeCombat: null, activeRoll: null }),
 
   debugForceHaunt: () => {
     const state = get();
@@ -894,7 +771,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   executeScript: (actions: ScriptAction[]) => {
       const state = get();
-      const newPlayers = { ...state.players };
+      // 深拷贝 players，避免修改原始状态
+      const newPlayers = JSON.parse(JSON.stringify(state.players)) as typeof state.players;
       const currentPlayerId = state.activePlayerId;
       
       let deathTriggeredIds: string[] = [];
@@ -1006,10 +884,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                       if (availableTiles.length > 0) {
                           const randomTile = availableTiles[Math.floor(Math.random() * availableTiles.length)];
                           const [tx, ty] = randomTile[0].split(',').map(Number);
-                          newPlayers[targetId] = {
-                              ...newPlayers[targetId],
-                              position: { x: tx, y: ty }
-                          };
+                          player.position = { x: tx, y: ty };
                           state.addLog(`你被传送到随机位置！`, 'narrative');
                       }
                   } else if (action.destination === 'basement') {
@@ -1082,64 +957,32 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   resolveEventChoice: (actions: ScriptAction[], choiceIndex?: number) => {
-      // 检查是否在网络模式
-      if (network.isInNetworkMode() && choiceIndex !== undefined) {
-          // 网络模式：发送事件选择请求
-          network.sendResolveEvent(choiceIndex);
-          // 关闭模态框
-          set({
-              eventOutcome: null,
-              activeCard: null,
-              turnPhase: 'DONE'
-          });
+      if (!network.isInNetworkMode()) {
+          get().showFeedback("网络未连接，无法进行选择", "error");
           return;
       }
-      
-      // 本地模式：直接处理
-      const state = get();
-      
-      const context: GameContext = {
-          state: state,
-          activePlayerId: state.activePlayerId
-      };
-      
-      const effects = actions as any[]; 
-      executeEffects(effects, context);
-
-      set({
-          eventOutcome: null,
-          activeCard: null,
-          turnPhase: 'DONE'
-      });
+      if (choiceIndex === undefined) {
+          get().showFeedback("无效的选择", "error");
+          return;
+      }
+      // 发送选择到后端，等待 state_sync 更新状态
+      network.sendResolveEvent(choiceIndex);
   },
 
   executeLogicAction: (action: ActionDefinition, selectedPartnerId?: string) => {
-    // 检查是否在网络模式
-    if (network.isInNetworkMode()) {
-        // 网络模式：发送技能执行请求
-        network.sendExecuteSkill(action.id || action.name, selectedPartnerId);
+    if (!network.isInNetworkMode()) {
+        get().showFeedback("网络未连接，无法执行技能", "error");
         return;
     }
-    
-    // 本地模式：直接处理
-    const state = get();
-    const context: GameContext = {
-      state: state,
-      activePlayerId: state.activePlayerId,
-      selectedPartnerId: selectedPartnerId
-    };
-
-    if (action.condition && !evaluateCondition(action.condition, context)) {
-      state.showFeedback(`无法执行: ${action.name} (条件未满足)`, 'warning');
-      return;
-    }
-
-    state.addLog(`执行技能: ${action.name}`, 'info');
-    get().addPersonalLog(state.activePlayerId, `使用了技能: ${action.name}。`, 'info');
-    executeEffects(action.effects, context);
+    network.sendExecuteSkill(action.id || action.name, selectedPartnerId);
   },
   
   unlockSkillNode: (nodeId: string) => {
+      if (!network.isInNetworkMode()) {
+          get().showFeedback("网络未连接，无法解锁技能", "error");
+          return;
+      }
+      
       const state = get();
       const player = state.players[state.activePlayerId];
       
@@ -1156,84 +999,45 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!nodeToUnlock) return;
       
       if (player.skillPoints < nodeToUnlock.cost) {
-          state.showFeedback("技能点不足", "error");
+          get().showFeedback("技能点不足", "error");
           return;
       }
       
+      // 立即更新UI（乐观更新技能点）
       const newPlayers = { ...state.players };
-      const updatedPlayer = newPlayers[state.activePlayerId];
-      
+      const updatedPlayer = { ...newPlayers[state.activePlayerId] };
       updatedPlayer.skillPoints -= nodeToUnlock.cost;
-      updatedPlayer.unlockedSkillNodes.push(nodeId);
-      
-      if (nodeToUnlock.grantsBuff) {
-          updatedPlayer.buffs.push(nodeToUnlock.grantsBuff);
-      }
-      
-      if (nodeToUnlock.grantsSkillId) {
-          updatedPlayer.skills.push(nodeToUnlock.grantsSkillId);
-      }
-      
+      newPlayers[state.activePlayerId] = updatedPlayer;
       set({ players: newPlayers });
-      state.addLog(`${updatedPlayer.character.name} 习得了 ${nodeToUnlock.name}。`, 'success');
-      get().addPersonalLog(state.activePlayerId, `解锁了技能: ${nodeToUnlock.name}。`, 'success');
+      
+      get().showFeedback(`解锁 ${nodeToUnlock.name}...`, "info");
+      
+      // 发送解锁请求到后端（后端会处理技能解锁并广播state_sync）
+      network.sendUnlockSkillNode(nodeId);
   },
 
   rotatePendingTile: () => set(s => ({ pendingTileRotation: (s.pendingTileRotation + 90) % 360 })),
 
   confirmTilePlacement: () => {
     const state = get();
+    
+    if (!network.isInNetworkMode()) {
+      state.showFeedback("网络未连接，无法放置房间", "error");
+      return;
+    }
+    
     if (!state.isPlacementValid()) {
         state.showFeedback("门必须相连", "error");
         return;
     }
-    const { pendingTile, pendingTileRotation, pendingTargetPosition } = state;
-    if (!pendingTile || !pendingTargetPosition) return;
-
-    const newTileInstance: TileInstance = {
-        instanceId: generateId('tile'),
-        defId: pendingTile.id,
-        x: pendingTargetPosition.x,
-        y: pendingTargetPosition.y,
-        rotation: pendingTileRotation,
-        edges: getRotatedEdges(pendingTile.edges, pendingTileRotation),
-        hasEventTriggered: false,
-        visibility: 'VISIBLE',
-        droppedItems: []
-    };
-
-    const newPlayers = { ...state.players };
-    newPlayers[state.activePlayerId] = {
-        ...newPlayers[state.activePlayerId],
-        position: { x: newTileInstance.x, y: newTileInstance.y }
-    };
-
-    let nextTurnPhase: TurnPhase = 'MOVING';
-    let newMovesRemaining = state.movesRemaining;
-
-    if (pendingTile.eventTrigger) {
-        nextTurnPhase = 'EVENT_RESOLVING';
-        newMovesRemaining = 0;
-        get().triggerSpecificEvent(pendingTile.eventTrigger);
-    } else if (pendingTile.cardSymbol && pendingTile.cardSymbol !== 'NONE') {
-        nextTurnPhase = 'EVENT_RESOLVING';
-        newMovesRemaining = 0;
-        get().drawCard(pendingTile.cardSymbol);
-    } else {
-        if (newMovesRemaining === 0) nextTurnPhase = 'DONE';
+    const { pendingMoveDirection } = state;
+    if (!pendingMoveDirection) {
+        state.showFeedback("没有待放置的房间", "error");
+        return;
     }
-
-    set({
-        map: { ...state.map, [`${newTileInstance.x},${newTileInstance.y}`]: newTileInstance },
-        players: newPlayers,
-        pendingTile: null,
-        pendingTargetPosition: null,
-        pendingMoveDirection: null,
-        turnPhase: nextTurnPhase,
-        movesRemaining: newMovesRemaining 
-    });
-    state.addLog(`探索发现了 ${pendingTile.name}。`, 'success');
-    get().addPersonalLog(state.activePlayerId, `探索并进入了 ${pendingTile.name}。`, 'info');
+    
+    network.sendPlaceTile(pendingMoveDirection);
+    state.showFeedback("正在放置房间...", "info");
   },
 
   isPlacementValid: () => {
@@ -1258,26 +1062,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   drawCard: (type: CardSymbol) => {
-      // 检查是否在网络模式
-      if (network.isInNetworkMode()) {
-          // 网络模式：发送抽卡请求
-          network.sendDrawCard(type);
+      if (!network.isInNetworkMode()) {
+          get().showFeedback("网络未连接，无法抽卡", "error");
           return;
       }
-      
-      // 本地模式：直接处理
-      const state = get();
-      const deck = state.decks[type];
-      if (deck.length === 0) {
-          state.addLog(`${type} 牌组已空！`, 'alert');
-          set({ turnPhase: 'DONE' });
-          return;
-      }
-      set({ activeCard: deck[0], decks: { ...state.decks, [type]: deck.slice(1) } });
+      network.sendDrawCard(type);
   },
 
   triggerSpecificEvent: (eventId: string) => {
-      const event = EVENTS_DB[eventId];
+      const event = get().getEventById(eventId);
       if (event) set({ activeCard: event });
   },
 
@@ -1377,146 +1170,35 @@ export const useGameStore = create<GameState>((set, get) => ({
   closeInspection: () => set({ inspectPlayerId: null }),
 
   useItem: (itemId: string, targetId?: string) => {
-      // 检查是否在网络模式
-      if (network.isInNetworkMode()) {
-          // 网络模式：发送使用物品请求
-          network.sendUseItem(itemId, targetId);
+      if (!network.isInNetworkMode()) {
+          get().showFeedback("网络未连接，无法使用物品", "error");
           return;
       }
-      
-      // 本地模式：直接处理
-      const state = get();
-      const player = state.players[state.activePlayerId];
-      if (player.isDead) return;
-      
-      const itemIndex = player.items.findIndex(i => i.id === itemId);
-      if (itemIndex === -1) return;
-      const item = player.items[itemIndex];
-      get().addPersonalLog(state.activePlayerId, `使用了 ${item.name}。`, 'info');
-      
-      // Check if item needs a target and none was provided
-      if (item.usage?.target === 'OPPONENT' && !targetId) {
-          state.showFeedback('该物品需要指定目标，请在交互菜单中使用。', 'warning');
-          return;
-      }
-
-      if (item.usage?.effects) {
-          // Prepare context with specific target if needed
-          const context: GameContext = {
-              state: state,
-              activePlayerId: state.activePlayerId,
-              selectedPartnerId: targetId
-          };
-          
-          // Adapt script action to logic engine effects if possible
-          const effects = item.usage.effects as any[];
-          executeEffects(effects, context);
-
-          if (item.usage.isConsumable) {
-              const newPlayers = { ...state.players };
-              newPlayers[state.activePlayerId].items.splice(itemIndex, 1);
-              set({ players: newPlayers });
-          }
-          set({ isInventoryOpen: false });
-      }
+      network.sendUseItem(itemId, targetId);
   },
 
   dropItem: (itemId) => {
       const state = get();
-      const player = state.players[state.activePlayerId];
-      const playerPos = `${player.position.x},${player.position.y}`;
-      const tile = state.map[playerPos];
       
-      const itemIndex = player.items.findIndex(i => i.id === itemId);
-      if (itemIndex === -1) return;
-
-      const item = player.items[itemIndex];
-      const newItems = player.items.filter((_, i) => i !== itemIndex);
+      if (!network.isInNetworkMode()) {
+        state.showFeedback("网络未连接，无法丢弃物品", "error");
+        return;
+      }
       
-      const newPlayers = { ...state.players };
-      newPlayers[state.activePlayerId].items = newItems;
-
-      const updatedTile = {
-          ...tile,
-          droppedItems: [...tile.droppedItems, item]
-      };
-
-      set({ 
-          players: newPlayers, 
-          map: { ...state.map, [playerPos]: updatedTile } 
-      });
-      state.addLog(`放下了物品 ${item.name}。`, 'info');
-      get().addPersonalLog(state.activePlayerId, `丢弃了 ${item.name}。`, 'info');
+      network.sendDropItem(itemId);
+      state.showFeedback("正在丢弃...", "info");
   },
 
   interactWithWall: (direction) => {
       const state = get();
-      const player = state.players[state.activePlayerId];
-      if (player.isDead) return;
       
-      const hasPickaxe = player.items.some(i => i.id === 'item_pickaxe');
-      const might = get().getEffectiveAttributeValue(state.activePlayerId, AttributeName.Might);
-      
-      if (hasPickaxe || might > 5) {
-          const newPlayers = { ...state.players };
-          if (!hasPickaxe) {
-             const attr = newPlayers[state.activePlayerId].character.attributes[AttributeName.Might];
-             attr.current = Math.max(attr.floor, attr.current - 1);
-             get().addPersonalLog(state.activePlayerId, '强行破坏墙壁导致力量 -1', 'alert');
-          }
-          set({ players: newPlayers });
-          
-          const currentTile = state.map[`${player.position.x},${player.position.y}`];
-          const updatedCurrent = { ...currentTile, edges: { ...currentTile.edges, [direction]: 'RUBBLE' } };
-          const newMap = { ...state.map, [`${updatedCurrent.x},${updatedCurrent.y}`]: updatedCurrent as TileInstance };
-
-          let nx = player.position.x, ny = player.position.y;
-          if (direction === Direction.North) ny--;
-          else if (direction === Direction.South) ny++;
-          else if (direction === Direction.East) nx++;
-          else if (direction === Direction.West) nx--;
-          
-          const neighbor = newMap[`${nx},${ny}`];
-          if (neighbor) {
-             const updatedNeighbor = { ...neighbor, edges: { ...neighbor.edges, [getOpposite(direction)]: 'RUBBLE' } };
-             newMap[`${nx},${ny}`] = updatedNeighbor as TileInstance;
-          }
-          set({ map: newMap });
-          return;
+      if (!network.isInNetworkMode()) {
+        state.showFeedback("网络未连接，无法破坏墙壁", "error");
+        return;
       }
       
-      const knowledge = get().getEffectiveAttributeValue(state.activePlayerId, AttributeName.Knowledge);
-      set({ 
-        activeRoll: {
-          id: 'search_wall',
-          attributeName: '知识',
-          numberOfDice: knowledge,
-          targetValue: 4,
-          isCancellable: true,
-          onComplete: (total) => {
-              if (total >= 4) {
-                  const s = get();
-                  const p = s.players[s.activePlayerId];
-                  const t = s.map[`${p.position.x},${p.position.y}`];
-                  const ut = { ...t, edges: { ...t.edges, [direction]: 'SECRET_DOOR' } };
-                  const nm = { ...s.map, [`${ut.x},${ut.y}`]: ut as TileInstance };
-                  
-                  let nx = p.position.x, ny = p.position.y;
-                  if (direction === Direction.North) ny--;
-                  else if (direction === Direction.South) ny++;
-                  else if (direction === Direction.East) nx++;
-                  else if (direction === Direction.West) nx--;
-                  const n = nm[`${nx},${ny}`];
-                  if (n) {
-                      nm[`${nx},${ny}`] = { ...n, edges: { ...n.edges, [getOpposite(direction)]: 'SECRET_DOOR' } } as TileInstance;
-                  }
-                  set({ map: nm, activeRoll: null, lastRollResult: total, turnPhase: 'DONE' });
-              } else {
-                  set({ activeRoll: null, lastRollResult: total, turnPhase: 'DONE' });
-              }
-          }
-        }
-      });
+      network.sendInteractWithWall(direction);
+      state.showFeedback("正在破坏墙壁...", "info");
   },
   
   cancelActiveRoll: () => {

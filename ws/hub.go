@@ -630,6 +630,9 @@ func (h *Hub) handleGameAction(msg *Message) {
 	case "resolve_event":
 		choiceIndex, _ := req.Action["choiceIndex"].(float64)
 		err = h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, int(choiceIndex))
+		if err == nil {
+			h.sendGameState(roomID)
+		}
 	// ===== 阶段1新增：战斗系统 =====
 	case "start_combat":
 		defenderID, _ := req.Action["defenderId"].(string)
@@ -657,6 +660,13 @@ func (h *Hub) handleGameAction(msg *Message) {
 		skillID, _ := req.Action["skillId"].(string)
 		targetID, _ := req.Action["targetId"].(string)
 		err = h.gameManager.ExecuteSkill(roomID, msg.client.playerID, skillID, targetID)
+	case "unlock_skill_node":
+		nodeID, _ := req.Action["nodeId"].(string)
+		if nodeID == "" {
+			err = errors.New("未指定节点ID")
+		} else {
+			err = h.gameManager.UnlockSkillNode(roomID, msg.client.playerID, nodeID)
+		}
 	// ===== 条件触发buff =====
 	case "trigger_buff":
 		trigger, _ := req.Action["trigger"].(string)
@@ -665,6 +675,36 @@ func (h *Hub) handleGameAction(msg *Message) {
 		} else {
 			// 应用条件触发的buff
 			h.gameManager.ApplyConditionalBuffs(roomID, msg.client.playerID, trigger)
+		}
+	// ===== Phase 2: 物品与互动操作 =====
+	case "pickup_item":
+		itemID, _ := req.Action["itemId"].(string)
+		if itemID == "" {
+			err = errors.New("未指定物品ID")
+		} else {
+			err = h.gameManager.PickupItem(roomID, msg.client.playerID, itemID)
+		}
+	case "give_item":
+		targetID, _ := req.Action["targetId"].(string)
+		itemID, _ := req.Action["itemId"].(string)
+		if targetID == "" || itemID == "" {
+			err = errors.New("未指定目标或物品")
+		} else {
+			err = h.gameManager.GiveItem(roomID, msg.client.playerID, targetID, itemID)
+		}
+	case "drop_item":
+		itemID, _ := req.Action["itemId"].(string)
+		if itemID == "" {
+			err = errors.New("未指定物品ID")
+		} else {
+			err = h.gameManager.DropItem(roomID, msg.client.playerID, itemID)
+		}
+	case "interact_wall":
+		dir, _ := req.Action["direction"].(string)
+		if dir == "" {
+			err = errors.New("未指定方向")
+		} else {
+			err = h.gameManager.InteractWithWall(roomID, msg.client.playerID, dir)
 		}
 	default:
 		// 未知操作

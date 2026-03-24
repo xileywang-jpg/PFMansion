@@ -69,8 +69,10 @@ const (
 // PendingAction 待处理动作（用于状态控制）
 type PendingAction struct {
 	Type      string                 `json:"type"`      // "ATTRIBUTE_CHECK", "CHOICE", "COMBAT"
-	Target    string                 `json:"target"`    // 目标玩家ID
-	Data      map[string]interface{} `json:"data"` // 额外数据
+	Target    string                 `json:"target"`    // 等待哪个玩家输入
+	Data      map[string]interface{} `json:"data"`      // 额外数据（attribute, difficulty, eventID 等）
+	CardID    string                `json:"cardId,omitempty"` // 关联的卡牌ID
+	Message   string                `json:"message,omitempty"` // 显示给玩家的提示
 }
 
 // AttributeName 属性类型
@@ -200,6 +202,7 @@ type Objective struct {
 type PlayerObjective struct {
 	ObjectiveID string `json:"objectiveId"`
 	Progress    int    `json:"progress"`
+	Required    int    `json:"required"` // 目标所需进度
 	Completed   bool   `json:"completed"`
 }
 
@@ -245,8 +248,8 @@ type GameStateFull struct {
 	LastTriggeredTile string    `json:"lastTriggeredTile,omitempty"`
 	
 	// Phase 3: 目标系统
-	HeroObjectives      map[string]int  `json:"heroObjectives,omitempty"`      // playerID -> progress
-	TraitorObjectives   map[string]int  `json:"traitorObjectives,omitempty"`   // traitorID -> progress
+	HeroObjectives      map[string]*PlayerObjective `json:"heroObjectives,omitempty"`      // playerID -> PlayerObjective
+	TraitorObjectives   map[string]*PlayerObjective `json:"traitorObjectives,omitempty"`   // traitorID -> PlayerObjective
 	TurnsSinceHaunt    int             `json:"turnsSinceHaunt,omitempty"`    // 作祟后的回合数
 	GameWinner         string          `json:"gameWinner,omitempty"`          // HERO, TRAITOR, NONE
 	
@@ -263,6 +266,20 @@ type GameStateFull struct {
 
 	// Phase 1: 等待玩家输入（状态控制）
 	PendingAction *PendingAction `json:"pendingAction,omitempty"`
+
+	// Phase 3: 房间放置状态 (前端 <-> 后端同步)
+	PendingTile          *TileDef `json:"pendingTile,omitempty"`          // 待放置的房间
+	PendingTileRotation  int      `json:"pendingTileRotation,omitempty"` // 旋转角度 (0, 90, 180, 270)
+	PendingTargetPos     *Pos     `json:"pendingTargetPos,omitempty"`    // 放置目标位置
+
+	// Phase 3: 移动等待确认
+	PendingMoveDirection string   `json:"pendingMoveDirection,omitempty"` // 等待确认的移动方向
+}
+
+// Pos 位置坐标
+type Pos struct {
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 // ToSyncState 转换为同步状态（添加版本信息）

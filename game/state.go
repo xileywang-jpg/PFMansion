@@ -32,11 +32,11 @@ func (g *GameStateFull) SyncStateJSON() (string, error) {
 }
 
 // ==================== 游戏数据 ====================
-// TODO: 剧本目标系统 (待完善)
-// - 英雄胜利条件
-// - 叛徒胜利条件  
-// - 任务目标追踪
-// - 胜利/失败判定
+// 剧本目标系统已实现 (objectives.go)
+// - CheckVictory: 英雄/叛徒胜利条件检查
+// - UpdateObjectives: 目标进度追踪
+// - InitializeObjectives: 目标初始化
+// - IncrementHauntTurns: 作祟回合递增
 
 // ==================== 兼容旧接口 ====================
 // 这些函数现在使用 JSON 数据 + embed，定义在 data_loader.go 中

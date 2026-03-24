@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { EventCard, ActiveRoll, Item, GamePhase } from '../types';
 import { generateId } from '../utils/idGenerator';
+import { applyPassiveEffects } from '../utils/passiveEffectParser';
 
 export const useEventSystem = () => {
   const { 
@@ -78,14 +79,27 @@ export const useEventSystem = () => {
 
   const resolveItemPickup = useCallback((item: Item) => {
     const player = players[activePlayerId];
-    const newPlayers = { ...players };
-    newPlayers[activePlayerId] = {
-        ...newPlayers[activePlayerId],
-        items: [...newPlayers[activePlayerId].items, item]
-    };
+    // 深拷贝玩家数据，避免修改原对象
+    const newPlayers = JSON.parse(JSON.stringify(players)) as typeof players;
+    const newPlayer = newPlayers[activePlayerId];
+    newPlayer.items = [...(newPlayer.items || []), item];
     
     addLog(`${player.character.name} 获得了 ${item.name}。`, 'success');
     addPersonalLog(activePlayerId, `拾取了 ${item.name}。`, 'success');
+
+    // 应用被动效果
+    if (item.passiveEffects && item.passiveEffects.length > 0) {
+      const effectResults = applyPassiveEffects(newPlayer, item.passiveEffects);
+      
+      for (const result of effectResults) {
+        if (result.startsWith('[')) {
+          addLog(`${item.name}: ${result}`, 'info');
+        } else {
+          addLog(`${item.name}效果: ${result}`, 'success');
+        }
+        addPersonalLog(activePlayerId, `获得效果: ${result}`, 'success');
+      }
+    }
 
     const tileKey = `${player.position.x},${player.position.y}`;
     const currentTile = map[tileKey];
@@ -104,8 +118,8 @@ export const useEventSystem = () => {
             activeCard: null,
             phase: GamePhase.HauntRoll,
             // 记录作祟上下文
-            lastTriggeredOmenId: item.id,
-            lastTriggeredTileId: currentTile.defId
+            lastTriggeredOmen: item.id,
+            lastTriggeredTile: currentTile.defId
         });
     } else {
         setState({

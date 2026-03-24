@@ -108,6 +108,20 @@ func (g *GameManager) nextTurnInternal(room *Room) error {
 		}
 	}
 
+	// ===== 回合结束处理：当前玩家状态效果 =====
+	currentPlayer := state.FullState.Players[state.FullState.ActivePlayerID]
+	if currentPlayer != nil && len(currentPlayer.StatusEffects) > 0 {
+		removedEffects := g.ProcessStatusEffectsOnTurnEnd(currentPlayer)
+		if len(removedEffects) > 0 {
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 的状态效果结束: %v", currentPlayer.Character.Name, removedEffects),
+				Type:      "info",
+			})
+		}
+	}
+
 	// 找到当前玩家索引
 	currentIndex := -1
 	for i, pid := range state.FullState.PlayerIDs {
@@ -133,6 +147,42 @@ func (g *GameManager) nextTurnInternal(room *Room) error {
 			state.FullState.TurnIndex++
 			state.FullState.TurnPhase = "MOVING"
 			state.FullState.MovesRemaining = g.getEffectiveSpeed(nextPlayerID, state.FullState)
+			
+			// 清除待处理动作（跨玩家状态）
+			state.FullState.PendingAction = nil
+
+			// ===== Phase 3: 作祟回合计数 =====
+			// 当叛徒开始其回合时，表示新一轮作祟回合开始
+			if state.FullState.IsHauntActive && nextPlayerID == state.FullState.TraitorID {
+				g.IncrementHauntTurns(room.ID)
+			}
+
+			// ===== 回合开始处理：下一玩家状态效果 =====
+			if len(player.StatusEffects) > 0 {
+				removedEffects := g.ProcessStatusEffectsOnTurnStart(player)
+				if len(removedEffects) > 0 {
+					state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+						ID:        generateLogID(),
+						Timestamp: time.Now().UnixMilli(),
+						Text:      fmt.Sprintf("%s 的状态效果结束: %v", player.Character.Name, removedEffects),
+						Type:      "info",
+					})
+				}
+				
+				// 检查石化状态 - 无法行动
+				for _, effect := range player.StatusEffects {
+					if effect.Type == "PETRIFIED" {
+						state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+							ID:        generateLogID(),
+							Timestamp: time.Now().UnixMilli(),
+							Text:      fmt.Sprintf("%s 处于石化状态，无法行动！", player.Character.Name),
+							Type:      "alert",
+						})
+						// 石化状态：跳过该玩家，继续找下一个
+						continue
+					}
+				}
+			}
 
 			// Phase 3: 作祟阶段增加回合计数
 			if state.FullState.IsHauntActive {
@@ -346,8 +396,8 @@ func (g *GameManager) determineTraitor(scenario Scenario, state *GameStateFull) 
 // initializeObjectivesInternal 内部初始化目标（需要持有锁）
 func (g *GameManager) initializeObjectivesInternal(state *GameStateFull) {
 	// 初始化目标进度
-	state.HeroObjectives = make(map[string]int)
-	state.TraitorObjectives = make(map[string]int)
+	state.HeroObjectives = make(map[string]*PlayerObjective)
+	state.TraitorObjectives = make(map[string]*PlayerObjective)
 
 	// 记录目标
 	if scenario := state.CurrentScenario; scenario != nil {
@@ -375,4 +425,94 @@ func (g *GameManager) initializeObjectivesInternal(state *GameStateFull) {
 			})
 		}
 	}
+}
+
+// ==================== 状态效果处理 ====================
+
+// ProcessStatusEffectsOnTurnEnd 回合结束时处理状态效果
+// 返回被移除的效果列表
+func (g *GameManager) ProcessStatusEffectsOnTurnEnd(player *GamePlayer) []string {
+	if player == nil || len(player.StatusEffects) == 0 {
+		return nil
+	}
+
+	var removed []string
+	var remaining []StatusEffect
+
+	for _, effect := range player.StatusEffects {
+		// duration 为 -1 表示永久效果，不递减
+		if effect.Duration > 0 {
+			effect.Duration--
+		}
+
+		// 燃烧效果每回合结束造成伤害
+		if effect.Type == "BURNING" && effect.Damage > 0 {
+			if attr, ok := player.Character.Attributes["might"]; ok {
+				attr.Current -= effect.Damage
+				if attr.Current < attr.Floor {
+					attr.Current = attr.Floor
+				}
+			}
+		}
+
+		if effect.Duration == 0 {
+			removed = append(removed, effect.Type)
+		} else {
+			remaining = append(remaining, effect)
+		}
+	}
+
+	player.StatusEffects = remaining
+	return removed
+}
+
+// ProcessStatusEffectsOnTurnStart 回合开始时处理状态效果
+// 返回被移除的效果列表
+func (g *GameManager) ProcessStatusEffectsOnTurnStart(player *GamePlayer) []string {
+	if player == nil || len(player.StatusEffects) == 0 {
+		return nil
+	}
+
+	var removed []string
+	var remaining []StatusEffect
+
+	for _, effect := range player.StatusEffects {
+		// duration 为 -1 表示永久效果，不递减
+		if effect.Duration > 0 {
+			effect.Duration--
+		}
+
+		if effect.Duration == 0 {
+			removed = append(removed, effect.Type)
+		} else {
+			remaining = append(remaining, effect)
+		}
+	}
+
+	player.StatusEffects = remaining
+	return removed
+}
+
+// ApplyStatusEffect 应用状态效果到玩家
+func (g *GameManager) ApplyStatusEffect(roomID, playerID string, effect StatusEffect) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return errors.New("玩家不存在")
+	}
+
+	player.StatusEffects = append(player.StatusEffects, effect)
+	return nil
 }
