@@ -2,14 +2,23 @@
 import React, { useEffect, useMemo } from 'react';
 import { useGameStore } from '../store/gameStore';
 import TileCard from './TileCard';
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw, Check, X, XCircle } from 'lucide-react';
-import { Direction, TileInstance, DirectionalEdges } from '../types';
+import { isInNetworkMode, sendAttackNPC } from '../ws/network';
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw, Check, X, XCircle, Ghost, PawPrint, Skull, Heart, Swords } from 'lucide-react';
+import { Direction, TileInstance, DirectionalEdges, GameNPC } from '../types';
 
 const TILE_SIZE = 140;
 
+// NPC 图标映射
+const NPCIcon: Record<string, React.ReactNode> = {
+  GHOST: <Ghost size={20} className="text-purple-400" />,
+  BEAST: <PawPrint size={20} className="text-orange-400" />,
+  SPIRIT: <Skull size={20} className="text-cyan-400" />,
+  ZOMBIE: <Heart size={20} className="text-green-400" />,
+};
+
 const MapGrid: React.FC = () => {
-  const { 
-    map, players, activePlayerId, movePlayer, activeCard,
+  const {
+    map, players, npcs, activePlayerId, movePlayer, activeCard,
     pendingTile, pendingTargetPosition, pendingTileRotation, rotatePendingTile, confirmTilePlacement, isPlacementValid,
     setHoveredTileId, cancelTilePlacement
   } = useGameStore();
@@ -88,6 +97,42 @@ const MapGrid: React.FC = () => {
                 </div>
             </div>
         )}
+
+        {/* ========== Phase X: NPC 渲染 ========== */}
+        {Object.values(npcs).map((npc: GameNPC) => {
+          if (npc.isDead) return null;
+          return (
+            <div
+              key={npc.instanceId}
+              className="absolute z-30 flex flex-col items-center justify-center cursor-pointer hover:scale-110 transition-transform group"
+              style={{ left: npc.position.x * TILE_SIZE + 64 - 16, top: npc.position.y * TILE_SIZE + 64 - 16, width: 32, height: 32 }}
+              title={`${npc.name} (${npc.health}/${npc.maxHealth} HP) - 点击攻击`}
+              onClick={() => {
+                if (isInNetworkMode()) {
+                  sendAttackNPC(npc.instanceId);
+                } else {
+                  useGameStore.getState().showFeedback('只能在网络模式下攻击 NPC', 'error');
+                }
+              }}
+            >
+              <div className="w-8 h-8 rounded-full bg-red-900/80 border-2 border-red-500 flex items-center justify-center shadow-lg group-hover:bg-red-800 transition-colors">
+                {NPCIcon[npc.type] || <Ghost size={20} className="text-red-400" />}
+                <Swords size={10} className="absolute -bottom-1 -right-1 text-yellow-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              {/* HP 条 */}
+              <div className="w-8 h-1 bg-zinc-700 rounded-full mt-0.5 overflow-hidden">
+                <div
+                  className="h-full bg-red-500 transition-all duration-300"
+                  style={{ width: `${(npc.health / npc.maxHealth) * 100}%` }}
+                />
+              </div>
+              {/* 名称标签 */}
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[8px] text-red-400 font-bold whitespace-nowrap bg-black/80 px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                {npc.name}
+              </div>
+            </div>
+          );
+        })}
 
         {!activeCard && !pendingTile && (
             <div className="absolute z-20 w-32 h-32 pointer-events-none" style={{ left: activePlayer.position.x * TILE_SIZE, top: activePlayer.position.y * TILE_SIZE }}>

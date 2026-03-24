@@ -60,6 +60,9 @@ interface GameState {
 
   activeRoll: ActiveRoll | null;
   activeCombat: CombatState | null;
+  
+  // Phase X: NPC 系统
+  npcs: Record<string, GameNPC>;
 
   eventOutcome: EventOutcome | null;
 
@@ -245,6 +248,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastRollResult: null,
   activeRoll: null,
   activeCombat: null,
+  npcs: {},
   eventOutcome: null,
   omenCount: 0,
   isHauntActive: false,
@@ -688,6 +692,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = state.players[playerId];
     if (!player || player.isDead) return;
 
+    // Bug Fix: 在网络模式下，死亡处理应由后端完成，不应前端直接修改状态
+    // 前端只负责显示后端广播的状态变化
+    if (network.isInNetworkMode()) {
+      console.warn('handlePlayerDeath 在网络模式下被调用，但死亡处理应由后端执行');
+      // 不直接修改状态，等待后端 state_sync
+      return;
+    }
+
     get().addPersonalLog(playerId, '遭受了致命伤害，不幸阵亡。', 'alert');
 
     const playerPos = `${player.position.x},${player.position.y}`;
@@ -755,22 +767,30 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   debugForceHaunt: () => {
     const state = get();
-    set({
-      isHauntActive: true,
-      phase: GamePhase.HauntReveal,
-      omenCount: Math.max(state.omenCount, 6),
-      activeCard: null,
-      activeRoll: null,
-      activeCombat: null,
-      pendingTile: null,
-      isInteractionModalOpen: false,
-    });
-    state.addLog("系统协议强制覆盖：作祟序列启动。", "alert");
-    state.showFeedback("强制开启作祟模式", "warning");
+    
+    // Bug Fix: 发送请求到后端，而不是直接修改状态
+    if (!network.isInNetworkMode()) {
+      state.showFeedback("网络未连接，无法强制触发作祟", "error");
+      return;
+    }
+    
+    network.sendForceHaunt();
+    state.showFeedback("正在强制触发作祟...", "warning");
   },
 
   executeScript: (actions: ScriptAction[]) => {
       const state = get();
+      
+      // Bug Fix: 在网络模式下，脚本应由后端执行，前端不应直接修改状态
+      // 如果是本地模式，才执行脚本
+      if (network.isInNetworkMode()) {
+        console.warn('executeScript 在网络模式下被调用，脚本应由后端执行，忽略前端执行');
+        // 发送日志提示，但不执行脚本
+        // 后端会执行效果并通过 state_sync 广播结果
+        state.showFeedback('等待服务器处理...', 'info');
+        return;
+      }
+      
       // 深拷贝 players，避免修改原始状态
       const newPlayers = JSON.parse(JSON.stringify(state.players)) as typeof state.players;
       const currentPlayerId = state.activePlayerId;
@@ -1120,42 +1140,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   startHaunt: () => {
     const state = get();
     
-    // Determine the scenario using the matrix
-    const omenId = state.lastTriggeredOmen || '';
-    const tileDefId = state.lastTriggeredTile || '';
-    const scenarioId = getScenarioId(omenId, tileDefId);
+    // Bug Fix: 发送请求到后端，而不是直接修改状态
+    // 后端 processHauntRoll 会计算骰子并触发作祟
+    if (!network.isInNetworkMode()) {
+      state.showFeedback("网络未连接，无法执行作祟检定", "error");
+      return;
+    }
     
-    const selectedScenario = SCENARIOS_DB[scenarioId] || SCENARIOS_DB['haunt_00'];
+    // 发送 perform_haunt_roll 请求
+    network.sendPerformHauntRoll();
     
-    // Determine Traitor with refined logic
-    const traitorId = resolveTraitor(selectedScenario, state.activePlayerId, state.players);
-
-    // Update player teams and heal traitor
-    const updatedPlayers = { ...state.players };
-    Object.keys(updatedPlayers).forEach(id => {
-      if (id === traitorId) {
-        updatedPlayers[id].team = 'TRAITOR';
-        updatedPlayers[id] = healTraitor(updatedPlayers[id]);
-        get().addPersonalLog(id, '你已被邪恶力量腐蚀，成为了叛徒。', 'alert');
-      } else {
-        updatedPlayers[id].team = 'HERO';
-        get().addPersonalLog(id, '作祟爆发。你必须作为英雄生存下去。', 'alert');
-      }
-    });
-
-    set({ 
-      phase: GamePhase.Haunt,
-      currentScenario: selectedScenario,
-      traitorId: traitorId,
-      players: updatedPlayers
-    });
-
-    state.addLog(`剧本已揭晓：${selectedScenario.name}`, "alert");
-    state.addLog(selectedScenario.introText, "narrative");
-    
-    const traitor = updatedPlayers[traitorId];
-    state.addLog(`叛徒已经产生：${traitor.character.name}。英雄们，团结起来！`, "alert");
-    state.addLog(`${traitor.character.name} 感到一股恶兆之力充满了全身，伤口已经愈合。`, 'narrative');
+    state.showFeedback("正在执行作祟检定...", "info");
   },
 
   setHoveredTileId: (id) => set({ hoveredTileId: id }),

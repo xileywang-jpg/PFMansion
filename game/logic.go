@@ -246,6 +246,9 @@ func (g *GameManager) processHauntRoll(room *Room) error {
 		sum += v
 	}
 
+	// Bug Fix: 设置 LastRollResult 以便前端同步显示
+	state.FullState.LastRollResult = &sum
+
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 		ID:        generateLogID(),
 		Timestamp: time.Now().UnixMilli(),
@@ -515,4 +518,407 @@ func (g *GameManager) ApplyStatusEffect(roomID, playerID string, effect StatusEf
 
 	player.StatusEffects = append(player.StatusEffects, effect)
 	return nil
+}
+
+// ==================== 作祟系统（公开接口）====================
+
+// TriggerHauntRoll 执行作祟检定（公开接口）
+// 当玩家在 HAUNT_ROLL 阶段投骰子时调用
+func (g *GameManager) TriggerHauntRoll(roomID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	// 验证阶段
+	if state.FullState.Phase != GamePhaseHauntRoll {
+		return errors.New("当前不是作祟检定阶段")
+	}
+
+	return g.processHauntRoll(room)
+}
+
+// ForceTriggerHaunt 强制触发作祟（调试用）
+// 绕过作祟检定，直接进入作祟阶段
+func (g *GameManager) ForceTriggerHaunt(roomID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	// 直接设置阶段为 HauntReveal 并触发作祟
+	state.FullState.Phase = GamePhaseHauntReveal
+	return g.triggerHaunt(room)
+}
+
+// GetHauntState 获取作祟状态（用于前端判断）
+func (g *GameManager) GetHauntState(roomID string) (bool, string, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return false, "", errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return false, "", errors.New("游戏未开始")
+	}
+
+	return state.FullState.IsHauntActive, string(state.FullState.Phase), nil
+}
+
+// ==================== NPC 系统 ====================
+
+// generateNPCID 生成唯一 NPC 实例 ID
+func generateNPCID() string {
+	return fmt.Sprintf("npc_%d", time.Now().UnixNano())
+}
+
+// SpawnNPC 生成 NPC 实例
+func (g *GameManager) SpawnNPC(roomID, defID string, x, y int) (*GameNPC, error) {
+	// 获取 NPC 模板
+	def := GetNPCDef(defID)
+	if def == nil {
+		return nil, errors.New("未知的 NPC 类型: " + defID)
+	}
+
+	// 创建 NPC 实例
+	npc := &GameNPC{
+		InstanceID:    generateNPCID(),
+		DefID:         def.ID,
+		Name:          def.Name,
+		Type:          def.Type,
+		Position:      Position{X: x, Y: y},
+		Health:        def.Health,
+		MaxHealth:     def.Health,
+		IsDead:        false,
+		StatusEffects: []StatusEffect{},
+	}
+
+	return npc, nil
+}
+
+// SpawnNPCEffect 生成 NPC（通过效果触发）
+// 返回生成的 NPC 实例
+func (g *GameManager) SpawnNPCEffect(roomID, playerID, npcDefID string) (*GameNPC, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return nil, errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return nil, errors.New("游戏未开始")
+	}
+
+	// 获取玩家位置
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return nil, errors.New("玩家不存在")
+	}
+
+	// 生成 NPC
+	npc, err := g.SpawnNPC(roomID, npcDefID, player.Position.X, player.Position.Y)
+	if err != nil {
+		return nil, err
+	}
+
+	// 初始化 NPCs map 如果为空
+	if state.FullState.NPCs == nil {
+		state.FullState.NPCs = make(map[string]*GameNPC)
+	}
+
+	// 添加到游戏状态
+	state.FullState.NPCs[npc.InstanceID] = npc
+
+	// 记录日志
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("%s 遭遇了 %s！", player.Character.Name, npc.Name),
+		Type:      "alert",
+	})
+
+	return npc, nil
+}
+
+// AttackNPC 玩家攻击 NPC
+// 规则：双方同时投骰，点数低的一方受到差值伤害，平局则无人受伤
+func (g *GameManager) AttackNPC(roomID, playerID, npcInstanceID string) (map[string]interface{}, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return nil, errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return nil, errors.New("游戏未开始")
+	}
+
+	// 获取 NPC
+	npc, ok := state.FullState.NPCs[npcInstanceID]
+	if !ok || npc.IsDead {
+		return nil, errors.New("NPC 不存在或已死亡")
+	}
+
+	// 获取玩家
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return nil, errors.New("玩家不存在")
+	}
+
+	// 双方各投 1 骰子
+	playerRoll := g.RollDice(1)[0]  // 玩家
+	npcRoll := g.RollDice(1)[0]     // NPC
+
+	result := map[string]interface{}{
+		"playerRoll": playerRoll,
+		"npcRoll":   npcRoll,
+		"npcInstanceId": npcInstanceID,
+	}
+
+	// 结算伤害：点数低的一方受伤
+	if playerRoll == npcRoll {
+		// 平局，无人受伤
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("%s 与 %s 交锋，平局！", player.Character.Name, npc.Name),
+			Type:      "info",
+		})
+		result["draw"] = true
+	} else if playerRoll < npcRoll {
+		// 玩家点数低，玩家受伤
+		damage := npcRoll - playerRoll
+		// 玩家受到的是精神/恐惧伤害（NPC的诡异力量）
+		attr := player.Character.Attributes["sanity"]
+		attr.Current -= damage
+		if attr.Current < attr.Floor {
+			attr.Current = attr.Floor
+		}
+		player.Character.Attributes["sanity"] = attr
+
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("%s 与 %s 交锋失败！受到 %d 点理智伤害！",
+				player.Character.Name, npc.Name, damage),
+			Type:      "alert",
+		})
+		result["loser"] = playerID
+		result["damage"] = damage
+		result["attribute"] = "sanity"
+	} else {
+		// NPC 点数低，NPC 受伤
+		damage := playerRoll - npcRoll
+		npc.Health -= damage
+
+		npcStatus := fmt.Sprintf("%s 剩余 %d/%d HP", npc.Name, npc.Health, npc.MaxHealth)
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("%s 击败了 %s！造成 %d 点伤害！%s",
+				player.Character.Name, npc.Name, damage, npcStatus),
+			Type:      "info",
+		})
+
+		result["loser"] = npcInstanceID
+		result["damage"] = damage
+		result["npcHealth"] = npc.Health
+		result["npcMaxHealth"] = npc.MaxHealth
+
+		// 检查 NPC 是否死亡
+		if npc.Health <= 0 {
+			npc.IsDead = true
+			delete(state.FullState.NPCs, npcInstanceID)
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 击败了 %s！", player.Character.Name, npc.Name),
+				Type:      "success",
+			})
+			result["defeated"] = true
+		}
+	}
+
+	return result, nil
+}
+
+// NPCAttackPlayer NPC 攻击玩家
+// NPCAttackPlayer NPC 攻击玩家
+// 规则：双方同时投骰，点数低的一方受到差值伤害，平局则无人受伤
+func (g *GameManager) NPCAttackPlayer(roomID, npcInstanceID, playerID string) (map[string]interface{}, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return nil, errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return nil, errors.New("游戏未开始")
+	}
+
+	// 获取 NPC
+	npc, ok := state.FullState.NPCs[npcInstanceID]
+	if !ok || npc.IsDead {
+		return nil, errors.New("NPC 不存在或已死亡")
+	}
+
+	// 获取玩家
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return nil, errors.New("玩家不存在")
+	}
+
+	// 获取 NPC 属性
+	npcDef := GetNPCDef(npc.DefID)
+	if npcDef == nil || !npcDef.CanAttack {
+		return nil, errors.New("该 NPC 无法攻击")
+	}
+
+	// 双方各投 1 骰子
+	npcRoll := g.RollDice(1)[0]   // NPC
+	playerRoll := g.RollDice(1)[0] // 玩家
+
+	result := map[string]interface{}{
+		"npcInstanceId": npcInstanceID,
+		"npcName":      npc.Name,
+		"npcRoll":      npcRoll,
+		"playerRoll":   playerRoll,
+	}
+
+	attrName := npcDef.AttackAttr
+	if attrName == "" {
+		attrName = "might"
+	}
+
+	// 结算伤害：点数低的一方受伤
+	if npcRoll == playerRoll {
+		// 平局，无人受伤
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("%s 与 %s 交锋，平局！", npc.Name, player.Character.Name),
+			Type:      "info",
+		})
+		result["draw"] = true
+	} else if npcRoll < playerRoll {
+		// NPC 点数低，NPC 受伤
+		damage := playerRoll - npcRoll
+		npc.Health -= damage
+
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("%s 攻击失败！被 %s 反击，受到 %d 点伤害！",
+				npc.Name, player.Character.Name, damage),
+			Type:      "alert",
+		})
+
+		result["loser"] = npcInstanceID
+		result["damage"] = damage
+
+		// 检查 NPC 是否死亡
+		if npc.Health <= 0 {
+			npc.IsDead = true
+			delete(state.FullState.NPCs, npcInstanceID)
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 击败了 %s！", player.Character.Name, npc.Name),
+				Type:      "success",
+			})
+			result["npcDefeated"] = true
+		}
+	} else {
+		// 玩家点数低，玩家受伤
+		damage := npcRoll - playerRoll
+		attr := player.Character.Attributes[attrName]
+		attr.Current -= damage
+		if attr.Current < attr.Floor {
+			attr.Current = attr.Floor
+		}
+		player.Character.Attributes[attrName] = attr
+
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("%s 被 %s 击败！受到 %d 点%s伤害！",
+				player.Character.Name, npc.Name, damage, attrName),
+			Type:      "alert",
+		})
+
+		result["loser"] = playerID
+		result["damage"] = damage
+		result["attribute"] = attrName
+
+		// 检查玩家是否死亡
+		if attr.Current <= attr.Floor && attrName == "might" {
+			player.IsDead = true
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 被 %s 杀死了...", player.Character.Name, npc.Name),
+				Type:      "alert",
+			})
+			result["playerDied"] = true
+		}
+	}
+
+	return result, nil
+}
+
+// GetNPCAtPosition 获取指定位置的 NPC
+func (g *GameManager) GetNPCAtPosition(roomID string, x, y int) (*GameNPC, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return nil, errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return nil, errors.New("游戏未开始")
+	}
+
+	if state.FullState.NPCs == nil {
+		return nil, nil
+	}
+
+	for _, npc := range state.FullState.NPCs {
+		if npc.Position.X == x && npc.Position.Y == y && !npc.IsDead {
+			return npc, nil
+		}
+	}
+
+	return nil, nil
 }

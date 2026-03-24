@@ -55,7 +55,7 @@ type Choice struct {
 
 // Effect 效果定义（完整版）
 type Effect struct {
-	Type      string      `json:"type"` // MODIFY_STAT, DAMAGE, HEAL, DRAW_CARD, MOVE_PLAYER, LOG, IF, GIVE_ITEM, GIVE_SKILL, ROLL, ADD_STATUS, ADD_BUFF, REMOVE_BUFF
+	Type      string      `json:"type"` // MODIFY_STAT, DAMAGE, HEAL, DRAW_CARD, MOVE_PLAYER, LOG, IF, GIVE_ITEM, GIVE_SKILL, ROLL, ADD_STATUS, ADD_BUFF, REMOVE_BUFF, SPAWN_NPC, ATTACK_NPC
 	Stat      string      `json:"stat,omitempty"`
 	Amount    int         `json:"amount,omitempty"`
 	Target    string      `json:"target,omitempty"` // SELF, SELECTED_PARTNER
@@ -70,6 +70,10 @@ type Effect struct {
 	Else      []Effect    `json:"else,omitempty"`
 	Attribute string      `json:"attribute,omitempty"`
 	Difficulty int        `json:"difficulty,omitempty"`
+	// SPAWN_NPC 专用
+	NPCDefID  string      `json:"npcDefId,omitempty"` // NPC 模板ID
+	// ATTACK_NPC 专用
+	NPCInstanceID string `json:"npcInstanceId,omitempty"` // 攻击的 NPC 实例ID
 }
 
 // Condition 条件

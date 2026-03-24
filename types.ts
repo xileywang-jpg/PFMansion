@@ -434,6 +434,40 @@ export interface ScriptAction {
   destination?: string; // TELEPORT
 }
 
+// ==================== NPC 系统 ====================
+
+export interface GameNPC {
+  instanceId: string;
+  defId: string;
+  name: string;
+  type: 'GHOST' | 'BEAST' | 'SPIRIT' | 'ZOMBIE';
+  position: Position;
+  health: number;
+  maxHealth: number;
+  isDead: boolean;
+  statusEffects?: StatusEffect[];
+}
+
+export interface NPCAttackResult {
+  npcInstanceId: string;
+  attackRoll: number;
+  defense: number;
+  damage: number;
+  npcHealth: number;
+  npcMaxHealth: number;
+  defeated?: boolean;
+}
+
+export interface NPCAttackPlayerResult {
+  npcInstanceId: string;
+  npcName: string;
+  attackRoll: number;
+  playerDefense: number;
+  damage: number;
+  attribute: string;
+  playerDied?: boolean;
+}
+
 export interface LogEntry {
   id: string;
   timestamp: number;

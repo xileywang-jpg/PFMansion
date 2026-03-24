@@ -51,6 +51,9 @@ export function initNetworkLayer() {
   wsClient.on('game_started', handleGameStarted);
   wsClient.on('state_sync', handleStateSync);
   wsClient.on('dice_result', handleDiceResult);
+  // NPC 战斗消息处理
+  wsClient.on('npc_attack_result', handleNPCAttackResult);
+  wsClient.on('npc_attacked_player', handleNPCAttackedPlayer);
   // 阶段1新增消息处理
   wsClient.on('card_drawn', handleCardDrawn);
   wsClient.on('combat_resolved', handleCombatResolved);
@@ -164,6 +167,40 @@ function handleStateSync(msg: ServerMessage) {
     console.log('📊 状态版本:', msg.version, '时间戳:', msg.timestamp);
   }
   
+  // ========== Bug Fix: 合并 players 而非直接替换 ==========
+  // 原因：前端玩家有 personalLogs，后端同步时不应丢失
+  const oldPlayers = store.players || {};
+  const newPlayers = state.players || {};
+  
+  // 合并每个玩家的数据，保留本地日志
+  Object.keys(newPlayers).forEach(pid => {
+    if (newPlayers[pid] && oldPlayers[pid]) {
+      // 如果后端有 personalLogs 且前端也有，合并它们
+      const oldLogIds = new Set((newPlayers[pid].personalLogs || []).map((l: any) => l.id));
+      newPlayers[pid] = {
+        ...newPlayers[pid],
+        personalLogs: [
+          ...(newPlayers[pid].personalLogs || []),
+          ...((oldPlayers[pid] as any)?.personalLogs || []).filter((l: any) => !oldLogIds.has(l.id))
+        ]
+      };
+    }
+  });
+  
+  // ========== Bug Fix: 保留 lastRollResult 如果后端没发送新值 ==========
+  // 原因：后端现在会设置 LastRollResult，但如果 state_sync 先于 dice_result 到达，
+  // 我们应该保留本地的 lastRollResult
+  const lastRollResult = state.lastRollResult !== undefined ? state.lastRollResult : store.lastRollResult;
+  
+  // ========== Bug Fix: 合并 logs ==========
+  const currentLogs = store.logs || [];
+  const newLogs = state.logs || [];
+  const existingLogIds = new Set(newLogs.map((l: any) => l.id));
+  const mergedLogs = [
+    ...newLogs,
+    ...currentLogs.filter((l: any) => !existingLogIds.has(l.id))
+  ];
+  
   // 完整的状态映射
   store.setState({
     // 游戏阶段
@@ -171,8 +208,8 @@ function handleStateSync(msg: ServerMessage) {
     turnPhase: state.turnPhase || 'MOVING',
     turnIndex: state.turnIndex || 1,
     
-    // 玩家
-    players: state.players || {},
+    // 玩家 - 使用合并后的 players
+    players: newPlayers,
     playerIds: state.playerIds || [],
     activePlayerId: state.activePlayerId || '',
     
@@ -189,7 +226,8 @@ function handleStateSync(msg: ServerMessage) {
     // 卡牌
     activeCard: state.activeCard || null,
     decks: state.decks || { EVENT: [], ITEM: [], OMEN: [] },
-    lastRollResult: state.lastRollResult ?? null,
+    // Bug Fix: 使用可能保留的 lastRollResult
+    lastRollResult: lastRollResult,
     
     // 战斗
     activeCombat: state.activeCombat ? {
@@ -200,6 +238,9 @@ function handleStateSync(msg: ServerMessage) {
       attackerRoll: state.activeCombat.attackerRoll,
       defenderRoll: state.activeCombat.defenderRoll,
     } : null,
+    
+    // Phase X: NPC 系统
+    npcs: state.npcs || {},
     
     // Phase 1: 待处理动作
     pendingAction: state.pendingAction ? {
@@ -215,8 +256,8 @@ function handleStateSync(msg: ServerMessage) {
     lastTriggeredOmen: state.lastTriggeredOmen || null,
     lastTriggeredTile: state.lastTriggeredTile || null,
     
-    // 日志
-    logs: state.logs || [],
+    // 日志 - Bug Fix: 使用合并后的日志
+    logs: mergedLogs,
     
     // Phase 2: 目标系统
     heroObjectives: state.heroObjectives || {},
@@ -256,14 +297,76 @@ function handleDiceResult(msg: ServerMessage) {
   const sum = msg.sum as number;
   const results = msg.results as number[];
   
+  // Bug Fix: 正确使用后端返回的 actionResult.success
+  // 对于 ATTRIBUTE_CHECK，后端返回的 success 表示检定是否成功
+  // 对于 GENERAL/COMBAT 等，success 未定义，使用骰子结果判断
+  let isSuccess: boolean;
+  let feedbackType: 'turn' | 'info' | 'alert' | 'success';
+  
+  if (result?.success !== undefined) {
+    // 后端返回了明确的成功/失败判定（属性检定）
+    isSuccess = result.success;
+    feedbackType = isSuccess ? 'turn' : 'info';
+  } else {
+    // 没有后端判定，使用骰子结果（总和 >= 1 为成功，0 为失败/空白）
+    isSuccess = sum > 0;
+    feedbackType = isSuccess ? 'turn' : 'info';
+  }
+  
   store.setState({ 
     lastRollResult: sum,
     activeRoll: null // 清除 activeRoll 表示投掷完成
   });
   
-  // 显示反馈
-  const successText = result?.success ? '成功！' : '失败...';
-  store.showFeedback(`骰子: ${results.join(', ')} = ${sum} (${successText})`, result?.success ? 'turn' : 'info');
+  // 显示反馈 - 使用后端判定的成功/失败文本
+  const successText = isSuccess ? '成功！' : '失败...';
+  store.showFeedback(`🎲 ${results.join(', ')} = ${sum} (${successText})`, feedbackType);
+}
+
+// NPC 攻击结果处理（玩家攻击 NPC）
+// 新规则：点数低的一方受伤
+function handleNPCAttackResult(msg: ServerMessage) {
+  console.log('⚔️ NPC 攻击结果:', msg);
+  
+  const store = useGameStore.getState();
+  const result = (msg as any).result;
+  
+  if (result) {
+    const playerRoll = result.playerRoll;
+    const npcRoll = result.npcRoll;
+    
+    if (result.draw) {
+      store.showFeedback(`⚔️ 平局！(${playerRoll} vs ${npcRoll}) 双方无伤`, 'info');
+    } else if (result.defeated) {
+      store.showFeedback(`🎉 击败了怪物！怪物骰出 ${npcRoll}，你骰出 ${playerRoll}！`, 'success');
+    } else if (result.loser === result.npcInstanceId) {
+      store.showFeedback(`⚔️ 怪物受伤！骰出 ${npcRoll}，你骰出 ${playerRoll}！造成 ${result.damage} 点伤害！怪物剩余 ${result.npcHealth}/${result.npcMaxHealth} HP`, 'info');
+    } else {
+      store.showFeedback(`💀 你受伤了！骰出 ${playerRoll}，怪物骰出 ${npcRoll}！受到 ${result.damage} 点理智伤害！`, 'alert');
+    }
+  }
+}
+
+// NPC 攻击玩家结果处理
+function handleNPCAttackedPlayer(msg: ServerMessage) {
+  console.log('💀 NPC 攻击玩家:', msg);
+  
+  const store = useGameStore.getState();
+  const result = (msg as any).result;
+  
+  if (result) {
+    if (result.draw) {
+      store.showFeedback(`⚔️ 平局！(${result.npcRoll} vs ${result.playerRoll}) 双方无伤`, 'info');
+    } else if (result.npcDefeated) {
+      store.showFeedback(`🎉 击败了怪物！它骰出 ${result.npcRoll}，你骰出 ${result.playerRoll}！`, 'success');
+    } else if (result.loser === result.npcInstanceId) {
+      store.showFeedback(`⚔️ 怪物受伤！骰出 ${result.npcRoll}，你骰出 ${result.playerRoll}！造成 ${result.damage} 点伤害！`, 'info');
+    } else if (result.playerDied) {
+      store.showFeedback(`💀 你被击败了！骰出 ${result.playerRoll}，怪物骰出 ${result.npcRoll}！受到 ${result.damage} 点${result.attribute}伤害！`, 'death');
+    } else {
+      store.showFeedback(`💀 你受伤了！骰出 ${result.playerRoll}，怪物骰出 ${result.npcRoll}！受到 ${result.damage} 点${result.attribute}伤害！`, 'alert');
+    }
+  }
 }
 
 // 抽卡结果处理
@@ -287,10 +390,18 @@ function handleCombatResolved(msg: ServerMessage) {
   const store = useGameStore.getState();
   const result = msg.result as any;
   if (result) {
-    store.showFeedback(
-      result.attackerWon ? '攻击成功！' : '防御成功！', 
-      result.attackerWon ? 'turn' : 'info'
-    );
+    if (result.draw) {
+      store.showFeedback('⚔️ 战斗平局！双方无伤', 'info');
+    } else if (result.loser) {
+      const loser = store.players[result.loser];
+      const loserName = loser?.character?.name || '未知';
+      store.showFeedback(
+        `⚔️ ${loserName} 受伤！受到 ${result.damage} 点${result.attribute || '力量'}伤害`, 
+        'alert'
+      );
+    } else {
+      store.showFeedback('⚔️ 战斗结算完成', 'info');
+    }
   }
 }
 
@@ -700,6 +811,40 @@ export function sendTriggerBuff(trigger: 'ATTACK' | 'END_TURN' | 'ENTER_ROOM') {
   });
 }
 
+// ==================== 作祟系统 ====================
+
+// 执行作祟检定
+export function sendPerformHauntRoll() {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId: roomId,
+    action: {
+      actionType: 'perform_haunt_roll',
+    }
+  });
+}
+
+// 强制触发作祟（调试用）
+export function sendForceHaunt() {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId: roomId,
+    action: {
+      actionType: 'force_haunt',
+    }
+  });
+}
+
 // ==================== Phase 2: 物品与互动操作 ====================
 
 // 捡起物品
@@ -767,6 +912,25 @@ export function sendInteractWithWall(direction: string) {
     action: {
       actionType: 'interact_wall',
       direction
+    }
+  });
+}
+
+// ==================== Phase X: NPC 战斗系统 ====================
+
+// 攻击 NPC
+export function sendAttackNPC(npcInstanceId: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId: roomId,
+    action: {
+      actionType: 'attack_npc',
+      npcInstanceId
     }
   });
 }

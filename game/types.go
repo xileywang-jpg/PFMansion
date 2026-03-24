@@ -206,6 +206,86 @@ type PlayerObjective struct {
 	Completed   bool   `json:"completed"`
 }
 
+// ==================== NPC 系统 (Phase X: 怪物/爪牙) ====================
+
+// NPCType NPC 怪物类型
+type NPCType string
+
+const (
+	NPCType_Ghost  NPCType = "GHOST"  // 幽灵
+	NPCType_Beast  NPCType = "BEAST"  // 野兽
+	NPCType_Spirit NPCType = "SPIRIT" // 怨灵
+	NPCType_Zombie NPCType = "ZOMBIE" // 僵尸
+)
+
+// NPCDef NPC 定义（模板）
+type NPCDef struct {
+	ID          string   `json:"id"`           // 模板ID，如 "npc_ghost"
+	Name        string   `json:"name"`         // 显示名称
+	Type        NPCType  `json:"type"`         // 怪物类型
+	Description string   `json:"description"`   // 描述
+	Icon        string   `json:"icon"`         // 图标
+	// 属性（仅用于显示/ flavor，实际战斗用骰子拼点）
+	Might      int `json:"might"`      // 力量
+	Speed      int `json:"speed"`      // 速度
+	Sanity     int `json:"sanity"`     // 理智
+	Knowledge  int `json:"knowledge"`  // 知识
+	// 战斗属性
+	Health     int `json:"health"`     // 生命值（被击败需要的伤害量）
+	// 行为
+	CanAttack  bool   `json:"canAttack"`   // 是否可以攻击玩家
+	AttackAttr string `json:"attackAttr"` // 攻击使用的属性 (might/speed/sanity/knowledge)
+}
+
+// GameNPC 实例化的 NPC（在地图上存在的）
+type GameNPC struct {
+	InstanceID string   `json:"instanceId"` // 实例ID
+	DefID      string   `json:"defId"`     // 模板ID
+	Name       string   `json:"name"`      // 显示名称
+	Type       NPCType  `json:"type"`      // 怪物类型
+	Position   Position `json:"position"`  // 当前位置
+	Health     int      `json:"health"`    // 当前生命值
+	MaxHealth  int      `json:"maxHealth"` // 最大生命值
+	IsDead     bool     `json:"isDead"`    // 是否已死亡
+	StatusEffects []StatusEffect `json:"statusEffects"` // 状态效果
+}
+
+// NPCDatabase 全局 NPC 模板数据库
+var NPCDatabase = map[string]*NPCDef{
+	"npc_ghost": {
+		ID: "npc_ghost", Name: "幽灵", Type: NPCType_Ghost,
+		Description: "一只游荡的幽灵，会吸取玩家的理智",
+		Icon: "ghost", Might: 1, Speed: 4, Sanity: 2, Knowledge: 1,
+		Health: 2, CanAttack: true, AttackAttr: "sanity",
+	},
+	"npc_beast": {
+		ID: "npc_beast", Name: "野兽", Type: NPCType_Beast,
+		Description: "嗜血的野兽，力量惊人",
+		Icon: "paw-print", Might: 5, Speed: 3, Sanity: 1, Knowledge: 0,
+		Health: 4, CanAttack: true, AttackAttr: "might",
+	},
+	"npc_spirit": {
+		ID: "npc_spirit", Name: "怨灵", Type: NPCType_Spirit,
+		Description: "含冤而死的怨灵，行动诡秘",
+		Icon: "skull", Might: 2, Speed: 5, Sanity: 3, Knowledge: 2,
+		Health: 2, CanAttack: true, AttackAttr: "knowledge",
+	},
+	"npc_zombie": {
+		ID: "npc_zombie", Name: "僵尸", Type: NPCType_Zombie,
+		Description: "缓慢但坚韧的不死生物",
+		Icon: "heart", Might: 3, Speed: 1, Sanity: 0, Knowledge: 0,
+		Health: 5, CanAttack: true, AttackAttr: "might",
+	},
+}
+
+// GetNPCDef 获取 NPC 模板
+func GetNPCDef(defID string) *NPCDef {
+	if npc, ok := NPCDatabase[defID]; ok {
+		return npc
+	}
+	return nil
+}
+
 // LogEntry 日志条目
 type LogEntry struct {
 	ID        string `json:"id"`
@@ -259,6 +339,9 @@ type GameStateFull struct {
 	// 战斗
 	LastRollResult *int           `json:"lastRollResult,omitempty"`
 	ActiveCombat   *CombatState  `json:"activeCombat,omitempty"`
+
+	// Phase X: NPC/怪物系统
+	NPCs     map[string]*GameNPC `json:"npcs"`  // NPC 实例 map，key 是 InstanceID
 
 	// 卡牌系统
 	Decks     map[string][]Card `json:"decks"`

@@ -67,6 +67,7 @@ func (g *GameManager) StartCombat(roomID, attackerID, defenderID, attribute stri
 }
 
 // ResolveCombat 战斗结算 - 后端统一生成骰子结果
+// 规则：双方同时投骰，点数低的一方受到差值伤害，平局则无人受伤
 func (g *GameManager) ResolveCombat(roomID, playerID string) (map[string]interface{}, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -96,12 +97,49 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (map[string]interfa
 	result := map[string]interface{}{
 		"attackerRoll": attackRoll,
 		"defenderRoll": defenseRoll,
-		"attackerWon":  attackRoll > defenseRoll,
 	}
 
-	// 结算伤害
-	if attackRoll > defenseRoll {
-		// 攻击成功
+	// 结算伤害：点数低的一方受伤，差值为伤害
+	if attackRoll == defenseRoll {
+		// 平局，无人受伤
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("%s 与 %s 交锋，平局收场！", attacker.Character.Name, defender.Character.Name),
+			Type:      "info",
+		})
+		result["draw"] = true
+	} else if attackRoll < defenseRoll {
+		// 攻击方点数低，攻击方受伤
+		damage := defenseRoll - attackRoll
+		if damageAttr, ok := attacker.Character.Attributes[combat.Attribute]; ok {
+			damageAttr.Current -= damage
+			if damageAttr.Current < damageAttr.Floor {
+				damageAttr.Current = damageAttr.Floor
+			}
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 与 %s 交锋失败，受到 %d 点%s伤害！", attacker.Character.Name, defender.Character.Name, damage, combat.Attribute),
+				Type:      "alert",
+			})
+			result["loser"] = combat.AttackerID
+			result["damage"] = damage
+			result["attribute"] = combat.Attribute
+
+			// 检查死亡
+			if damageAttr.Current <= damageAttr.Floor {
+				state.FullState.Players[combat.AttackerID].IsDead = true
+				state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+					ID:        generateLogID(),
+					Timestamp: time.Now().UnixMilli(),
+					Text:      fmt.Sprintf("%s 在战斗中陨落了！", attacker.Character.Name),
+					Type:      "alert",
+				})
+			}
+		}
+	} else {
+		// 防御方点数低，防御方受伤
 		damage := attackRoll - defenseRoll
 		if damageAttr, ok := defender.Character.Attributes[combat.Attribute]; ok {
 			damageAttr.Current -= damage
@@ -111,9 +149,12 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (map[string]interfa
 			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 				ID:        generateLogID(),
 				Timestamp: time.Now().UnixMilli(),
-				Text:      fmt.Sprintf("%s 对 %s 造成 %d 点%s伤害！", attacker.Character.Name, defender.Character.Name, damage, combat.Attribute),
+				Text:      fmt.Sprintf("%s 与 %s 交锋失败，受到 %d 点%s伤害！", defender.Character.Name, attacker.Character.Name, damage, combat.Attribute),
 				Type:      "alert",
 			})
+			result["loser"] = combat.DefenderID
+			result["damage"] = damage
+			result["attribute"] = combat.Attribute
 
 			// 检查死亡
 			if damageAttr.Current <= damageAttr.Floor {
@@ -126,14 +167,6 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (map[string]interfa
 				})
 			}
 		}
-	} else {
-		// 防御成功
-		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-			ID:        generateLogID(),
-			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("%s 成功防御了 %s 的攻击！", defender.Character.Name, attacker.Character.Name),
-			Type:      "info",
-		})
 	}
 
 	// 清除战斗状态

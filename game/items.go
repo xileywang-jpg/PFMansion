@@ -474,6 +474,31 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 				}
 			}
 		}
+
+	case "SPAWN_NPC":
+		// 生成 NPC 怪物
+		npcDefID := effect.NPCDefID
+		if npcDefID == "" {
+			npcDefID = "npc_ghost" // 默认幽灵
+		}
+		_, err := g.SpawnNPCEffect(roomID, playerID, npcDefID)
+		if err != nil {
+			g.addLog(roomID, fmt.Sprintf("生成 NPC 失败: %s", err.Error()), "alert")
+		}
+
+	case "ATTACK_NPC":
+		// 攻击 NPC（玩家主动攻击）
+		npcInstanceID := effect.NPCInstanceID
+		if npcInstanceID != "" {
+			result, err := g.AttackNPC(roomID, playerID, npcInstanceID)
+			if err != nil {
+				g.addLog(roomID, fmt.Sprintf("攻击 NPC 失败: %s", err.Error()), "alert")
+			} else {
+				if result["defeated"] == true {
+					g.addLog(roomID, fmt.Sprintf("%s 击败了怪物！", player.Character.Name), "success")
+				}
+			}
+		}
 	}
 }
 

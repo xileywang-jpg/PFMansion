@@ -31,6 +31,25 @@ func (g *GameManager) RollDiceSum(numDice int) int {
 	return sum
 }
 
+// SetLastRollResult 设置最近一次骰子结果（用于前端同步显示）
+func (g *GameManager) SetLastRollResult(roomID string, result int) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	state.FullState.LastRollResult = &result
+	return nil
+}
+
 // SetPendingAction 设置待处理动作（状态控制）
 func (g *GameManager) SetPendingAction(roomID string, action *PendingAction) error {
 	g.mu.Lock()

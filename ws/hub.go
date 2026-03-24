@@ -493,6 +493,13 @@ func (h *Hub) handleGameAction(msg *Message) {
 		err = h.gameManager.ProcessMove(roomID, msg.client.playerID, dir)
 	case "end_turn":
 		err = h.gameManager.EndTurn(roomID, msg.client.playerID)
+	// ===== 作祟系统 =====
+	case "perform_haunt_roll":
+		// 执行作祟检定
+		err = h.gameManager.TriggerHauntRoll(roomID)
+	case "force_haunt":
+		// 强制触发作祟（调试用）
+		err = h.gameManager.ForceTriggerHaunt(roomID)
 	case "roll_dice":
 		// 🔒 安全修复：验证是否是当前玩家，且有待处理的投骰子动作
 		roomID := msg.client.roomID
@@ -542,6 +549,9 @@ func (h *Hub) handleGameAction(msg *Message) {
 		for _, v := range results {
 			sum += v
 		}
+
+		// Bug Fix: 设置 LastRollResult 以便 state_sync 时前端能同步骰子结果
+		h.gameManager.SetLastRollResult(roomID, sum)
 
 		// 根据待处理动作类型处理结果
 		var actionResult map[string]interface{}
@@ -600,7 +610,15 @@ func (h *Hub) handleGameAction(msg *Message) {
 		// 放置新房间
 		dir, _ := req.Action["direction"].(string)
 		err = h.gameManager.PlaceTile(roomID, msg.client.playerID, dir)
+		// Bug Fix: 确保 PlaceTile 后总是发送状态更新（包括 PendingAction）
+		// 如果有错误，sendGameState 仍然被调用以同步状态
+		h.sendGameState(roomID)
+		// 返回，避免 fallthrough 到其他 case
+		if err != nil {
+			return
+		}
 	case "modify_stat":
+		// 修改属性
 		attr, _ := req.Action["attribute"].(string)
 		amount, _ := req.Action["amount"].(float64)
 		err = h.gameManager.ModifyStat(roomID, msg.client.playerID, attr, int(amount))
@@ -705,6 +723,42 @@ func (h *Hub) handleGameAction(msg *Message) {
 			err = errors.New("未指定方向")
 		} else {
 			err = h.gameManager.InteractWithWall(roomID, msg.client.playerID, dir)
+		}
+	// ===== Phase X: NPC 战斗系统 =====
+	case "attack_npc":
+		npcInstanceID, _ := req.Action["npcInstanceId"].(string)
+		if npcInstanceID == "" {
+			err = errors.New("未指定 NPC ID")
+		} else {
+			result, attackErr := h.gameManager.AttackNPC(roomID, msg.client.playerID, npcInstanceID)
+			if attackErr != nil {
+				err = attackErr
+			} else {
+				// 广播攻击结果
+				h.broadcastToRoom(roomID, map[string]interface{}{
+					"type":     "npc_attack_result",
+					"result":   result,
+					"playerId":  msg.client.playerID,
+				})
+				// 状态会在下面 sendGameState 同步
+			}
+		}
+	case "npc_attack_player":
+		npcInstanceID, _ := req.Action["npcInstanceId"].(string)
+		if npcInstanceID == "" {
+			err = errors.New("未指定 NPC ID")
+		} else {
+			result, attackErr := h.gameManager.NPCAttackPlayer(roomID, npcInstanceID, msg.client.playerID)
+			if attackErr != nil {
+				err = attackErr
+			} else {
+				// 广播 NPC 攻击结果
+				h.broadcastToRoom(roomID, map[string]interface{}{
+					"type":     "npc_attacked_player",
+					"result":   result,
+					"playerId":  msg.client.playerID,
+				})
+			}
 		}
 	default:
 		// 未知操作

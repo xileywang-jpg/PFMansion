@@ -147,6 +147,41 @@ var OriginalTileDeck = []TileDef{
 		CardSymbol:  "ITEM",
 		EventTrigger: "event_vault_chest",
 	},
+	// ========== Phase X: NPC 测试房间 ==========
+	{
+		ID:          "tile_npc_test",
+		Name:        "幽暗密室",
+		Description: "黑暗中似乎有什么在蠢蠢欲动",
+		Type:        "room",
+		Edges:       map[Direction]string{DirectionNorth: "OPEN", DirectionSouth: "WALL", DirectionEast: "WALL", DirectionWest: "WALL"},
+		CardSymbol:  "EVENT",
+		// 进入时必定生成一个 NPC 怪物（随机类型）
+		OnEnterEffects: []Effect{
+			{Type: "SPAWN_NPC", NPCDefID: "npc_ghost", Message: "你遭遇了幽灵！"},
+		},
+	},
+	{
+		ID:          "tile_beast_den",
+		Name:        "野兽巢穴",
+		Description: "嗜血野兽的领地",
+		Type:        "room",
+		Edges:       map[Direction]string{DirectionNorth: "WALL", DirectionSouth: "OPEN", DirectionEast: "WALL", DirectionWest: "WALL"},
+		CardSymbol:  "EVENT",
+		OnEnterEffects: []Effect{
+			{Type: "SPAWN_NPC", NPCDefID: "npc_beast", Message: "野兽从阴影中扑出！"},
+		},
+	},
+	{
+		ID:          "tile_zombie_crypt",
+		Name:        "僵尸墓穴",
+		Description: "不死生物的安息之地",
+		Type:        "room",
+		Edges:       map[Direction]string{DirectionNorth: "WALL", DirectionSouth: "OPEN", DirectionEast: "WALL", DirectionWest: "WALL"},
+		CardSymbol:  "OMEN",
+		OnEnterEffects: []Effect{
+			{Type: "SPAWN_NPC", NPCDefID: "npc_zombie", Message: "僵尸从坟墓中爬出！"},
+		},
+	},
 }
 
 // VolantisTileDeck 翁法罗斯主题房间牌堆 (带被动效果)
