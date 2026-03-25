@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { handleTileInteraction, canInteractWithTile, evaluateCondition } from '../utils/logicEngine';
+import { canInteractWithTile, evaluateCondition } from '../utils/logicEngine';
 import { TileInteraction, AttributeName, ActiveRoll } from '../types';
 import { GameContext, resolveTargets } from '../utils/logicEngine';
 import { generateId } from '../utils/idGenerator';
 import TeleportModal from './TeleportModal';
 import TradeModal from './TradeModal';
 import DivinationModal from './DivinationModal';
-import { rollDice } from '../utils/dice';
+import * as network from '../ws/network';
 
 interface InteractionModalProps {
   isOpen: boolean;
@@ -125,12 +125,17 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({
               addLog(`✓ ${interaction.successMessage}`, 'success');
             } else if (!isSuccess && interaction.failureMessage) {
               addLog(`✕ ${interaction.failureMessage}`, 'alert');
-              // 失败时造成伤害
-              const newState = useGameStore.getState();
-              const newPlayer = newState.players[activePlayerId];
-              const mightAttr = newPlayer.character.attributes.might;
-              mightAttr.current = Math.max(mightAttr.floor, mightAttr.current - 2);
-              addLog(`你受到 2 点伤害！`, 'alert');
+              // Bug Fix: 网络模式下，伤害应由后端处理，不在前端直接修改
+              if (!network.isInNetworkMode()) {
+                // 仅在单机模式下前端处理伤害
+                const newState = useGameStore.getState();
+                const newPlayer = newState.players[activePlayerId];
+                const mightAttr = newPlayer.character.attributes.might;
+                mightAttr.current = Math.max(mightAttr.floor, mightAttr.current - 2);
+                addLog(`你受到 2 点伤害！`, 'alert');
+              } else {
+                addLog(`等待服务器处理伤害...`, 'info');
+              }
             }
             // 关闭互动模态框
             useGameStore.getState().setState({ isInteractionModalOpen: false });

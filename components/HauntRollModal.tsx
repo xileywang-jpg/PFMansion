@@ -7,11 +7,11 @@ import { motion } from 'framer-motion';
 
 const HauntRollModal: React.FC = () => {
   const { phase, omenCount, performHauntRoll, lastRollResult, activeRoll } = useGameStore();
-  
-  // 只有在作祟检定阶段且没有结算结果时显示（或者正在掷骰子）
+
+  // 只有在作祟检定阶段且没有 activeRoll 时显示
+  // 如果有 activeRoll，说明 DiceRoller 正在处理，交给 DiceRoller 显示
   if (phase !== GamePhase.HauntRoll) return null;
-  
-  const isRolling = !!activeRoll && activeRoll.attributeName === '作祟检定';
+  if (activeRoll !== null) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md">
@@ -27,7 +27,7 @@ const HauntRollModal: React.FC = () => {
              <div className="w-px bg-zinc-800 h-full" />
              <div className="flex flex-col items-center">
                 <span className="text-xs uppercase tracking-widest text-zinc-600 font-bold mb-2">你的投掷结果</span>
-                {isRolling ? <span className="text-4xl font-bold text-zinc-400 animate-pulse">...</span> : lastRollResult !== null ? (
+                {lastRollResult !== null ? (
                     <span className={`text-4xl font-bold ${lastRollResult < omenCount ? 'text-red-500' : 'text-emerald-500'}`}>{lastRollResult}</span>
                 ) : <span className="text-4xl font-bold text-zinc-800">?</span>}
              </div>
@@ -36,16 +36,16 @@ const HauntRollModal: React.FC = () => {
               <h3 className="text-xs font-bold text-zinc-500 mb-2">规则说明</h3>
               <p className="text-sm text-zinc-400">投掷 6 颗骰子。如果结果 <span className="text-white font-bold">小于 {omenCount}</span>，则作祟正式爆发。</p>
           </div>
-          
+
           {/* 只有没有投掷结果时才显示按钮 */}
           {lastRollResult === null && (
-              <button onClick={performHauntRoll} disabled={isRolling} className="w-full py-4 rounded font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all bg-zinc-100 hover:bg-white text-black">
-                {isRolling ? '投掷中...' : <><Dice6 size={18} /> 挑战命运</>}
+              <button onClick={performHauntRoll} className="w-full py-4 rounded font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all bg-zinc-100 hover:bg-white text-black">
+                <Dice6 size={18} /> 挑战命运
               </button>
           )}
-          
+
           {/* 如果有了结果但相位没切换（容错显示），增加一个关闭按钮 */}
-          {lastRollResult !== null && !isRolling && (
+          {lastRollResult !== null && (
               <div className="text-zinc-500 text-xs animate-pulse">
                   正在处理检定结果...
               </div>

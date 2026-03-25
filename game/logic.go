@@ -695,6 +695,9 @@ func (g *GameManager) AttackNPC(roomID, playerID, npcInstanceID string) (map[str
 	playerRoll := g.RollDice(1)[0]  // 玩家
 	npcRoll := g.RollDice(1)[0]     // NPC
 
+	// Bug Fix: 同步战斗骰子结果到 LastRollResult
+	g.SetLastRollResult(roomID, playerRoll+npcRoll)
+
 	result := map[string]interface{}{
 		"playerRoll": playerRoll,
 		"npcRoll":   npcRoll,
@@ -806,6 +809,9 @@ func (g *GameManager) NPCAttackPlayer(roomID, npcInstanceID, playerID string) (m
 	// 双方各投 1 骰子
 	npcRoll := g.RollDice(1)[0]   // NPC
 	playerRoll := g.RollDice(1)[0] // 玩家
+
+	// Bug Fix: 同步战斗骰子结果到 LastRollResult
+	g.SetLastRollResult(roomID, playerRoll+npcRoll)
 
 	result := map[string]interface{}{
 		"npcInstanceId": npcInstanceID,

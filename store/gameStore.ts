@@ -22,7 +22,7 @@ import { SCENARIOS_DB } from '../data/scenarios';
 import { SKILL_TREES } from '../data/source/skillTrees';
 import { getScenarioId } from '../data/hauntMatrix';
 import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
-import { evaluateCondition, executeEffects, GameContext, resolveTargets, handleTileTrigger, canInteractWithTile } from '../utils/logicEngine';
+import { evaluateCondition, executeEffects, GameContext, resolveTargets, canInteractWithTile } from '../utils/logicEngine';
 import { addStatusEffect, decrementStatusEffects, applyStatusEffectOnTurnStart, getStatusEffectModifiers } from '../utils/statusEffects';
 import { generateId } from '../utils/idGenerator';
 import * as network from '../ws/network';
@@ -57,6 +57,7 @@ interface GameState {
     OMEN: Item[];
   };
   lastRollResult: number | null;
+  lastCheckSuccess: boolean | null; // 后端返回的检定成功/失败判定
 
   activeRoll: ActiveRoll | null;
   activeCombat: CombatState | null;
@@ -859,9 +860,19 @@ export const useGameStore = create<GameState>((set, get) => ({
                   }
                   break;
               }
+              case 'remove_item': {
+                  if (action.itemId) {
+                      const itemIndex = player.items.findIndex(item => item.id === action.itemId);
+                      if (itemIndex >= 0) {
+                          const removedItem = player.items.splice(itemIndex, 1)[0];
+                          state.addLog(`失去了 ${removedItem.name}`, 'alert');
+                          get().addPersonalLog(targetId, `失去了物品: ${removedItem.name}。`, 'alert');
+                      }
+                  }
+                  break;
+              }
               case 'move_player': {
                   if (action.location === 'basement') state.addLog("你掉到了地下室！", 'alert');
-                  // Todo: actual implementation of teleport to basement tile
                   break;
               }
               case 'narrative_log': {
@@ -1094,42 +1105,42 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (event) set({ activeCard: event });
   },
 
-  triggerStatRoll: () => {}, 
-  resolveDiceRoll: () => {},
-  applyCardOutcome: () => {},
-  acknowledgeEventOutcome: () => {
-     set({ 
-        activeCard: null, 
-        activeRoll: null, 
-        lastRollResult: null, 
-        eventOutcome: null, 
-        turnPhase: 'DONE' 
+    acknowledgeEventOutcome: () => {
+     set({
+        activeCard: null,
+        activeRoll: null,
+        lastRollResult: null,
+        lastCheckSuccess: null,
+        eventOutcome: null
+        // Bug Fix: 移除 turnPhase: 'DONE'，网络模式下应由后端 state_sync 控制
      });
   },
   incrementOmenCount: () => set(s => ({ omenCount: s.omenCount + 1 })),
 
   performHauntRoll: () => {
       const state = get();
-      set({ 
+      set({
         activeRoll: {
           id: 'haunt_roll',
           attributeName: '作祟检定',
           numberOfDice: 6,
           targetValue: state.omenCount,
           onComplete: (total) => {
-              if (total < state.omenCount) {
-                  set({ 
-                    isHauntActive: true, 
-                    phase: GamePhase.HauntReveal, 
-                    activeRoll: null, 
-                    lastRollResult: total 
+              // Bug Fix: 使用 get() 获取最新的 omenCount，而不是闭包中捕获的旧 state
+              const currentOmenCount = get().omenCount;
+              if (total < currentOmenCount) {
+                  set({
+                    isHauntActive: true,
+                    phase: GamePhase.HauntReveal,
+                    activeRoll: null,
+                    lastRollResult: total
                   });
               } else {
-                  set({ 
+                  set({
                     phase: GamePhase.Exploration,
-                    activeRoll: null, 
-                    lastRollResult: total, 
-                    turnPhase: 'DONE' 
+                    activeRoll: null,
+                    lastRollResult: total,
+                    turnPhase: 'DONE'
                   });
               }
           }

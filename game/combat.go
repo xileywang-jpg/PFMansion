@@ -91,6 +91,9 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (map[string]interfa
 	attackRoll := g.RollDice(1)[0]
 	defenseRoll := g.RollDice(1)[0]
 
+	// Bug Fix: 同步战斗骰子结果到 LastRollResult，供前端 state_sync 使用
+	g.SetLastRollResult(roomID, attackRoll+defenseRoll)
+
 	attacker, _ := state.FullState.Players[combat.AttackerID]
 	defender, _ := state.FullState.Players[combat.DefenderID]
 

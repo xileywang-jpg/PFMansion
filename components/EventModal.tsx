@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Item } from '../types';
 
 const CardResolutionModal: React.FC = () => {
-  const { activeCard, players, activePlayerId, lastRollResult, activeRoll, eventOutcome, acknowledgeEventOutcome, resolveEventChoice } = useGameStore();
+  const { activeCard, players, activePlayerId, lastRollResult, lastCheckSuccess, activeRoll, eventOutcome, acknowledgeEventOutcome, resolveEventChoice } = useGameStore();
   const { initiateEventRoll, resolveItemPickup } = useEventSystem();
   const [choiceMade, setChoiceMade] = useState(false);
   const player = players[activePlayerId];
@@ -105,8 +105,8 @@ const CardResolutionModal: React.FC = () => {
                                 {activeRoll ? <div className="text-xs uppercase font-bold tracking-widest text-zinc-500 animate-pulse">投掷中...</div> : lastRollResult !== null ? (
                                     <>
                                         <div className="text-5xl font-serif-display font-bold text-white mb-2">{lastRollResult}</div>
-                                        <div className={`text-xs uppercase font-bold ${lastRollResult >= (threshold || 0) ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {lastRollResult >= (threshold || 0) ? '成功' : '失败'}
+                                        <div className={`text-xs uppercase font-bold ${lastCheckSuccess ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {lastCheckSuccess ? '成功' : '失败'}
                                         </div>
                                         <div className="text-[10px] text-zinc-600 mt-1">目标值: {threshold}+</div>
                                     </>

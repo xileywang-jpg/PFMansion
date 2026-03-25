@@ -79,11 +79,6 @@ export function isInNetworkMode(): boolean {
   return connected;
 }
 
-// 设置网络模式（保留兼容性，但不再使用）
-export function setNetworkMode(enabled: boolean) {
-  console.log('⚠️ setNetworkMode 已废弃，请使用后端处理');
-}
-
 // ==================== 消息处理 ====================
 
 function handleRoomCreated(msg: ServerMessage) {
@@ -313,9 +308,12 @@ function handleDiceResult(msg: ServerMessage) {
     feedbackType = isSuccess ? 'turn' : 'info';
   }
   
-  store.setState({ 
+  // Bug Fix: 不在这里清除 activeRoll，让 DiceRoller 组件在 onComplete 调用时自己清除
+  // 这样可以确保 DiceRoller 的 handleDiceResult 先完成动画和显示逻辑
+  // 同时保存后端返回的成功/失败判定
+  store.setState({
     lastRollResult: sum,
-    activeRoll: null // 清除 activeRoll 表示投掷完成
+    lastCheckSuccess: result?.success !== undefined ? result.success : (sum > 0)
   });
   
   // 显示反馈 - 使用后端判定的成功/失败文本

@@ -7,14 +7,20 @@ import { Player, StatusEffect, StatusEffectType } from '../types';
 
 /**
  * 添加状态效果
+ * @returns true 如果成功添加/刷新效果，false 如果玩家已死亡或其他原因失败
  */
 export const addStatusEffect = (
   player: Player,
   effect: StatusEffect
 ): boolean => {
+  // 不能给已死亡的玩家添加状态效果
+  if (player.isDead) {
+    return false;
+  }
+
   // 检查是否已有同类效果
   const existingIndex = player.statusEffects.findIndex(e => e.type === effect.type);
-  
+
   if (existingIndex >= 0) {
     // 刷新持续时间
     player.statusEffects[existingIndex].duration = Math.max(
@@ -25,7 +31,7 @@ export const addStatusEffect = (
     // 添加新效果
     player.statusEffects.push({ ...effect });
   }
-  
+
   return true;
 };
 
