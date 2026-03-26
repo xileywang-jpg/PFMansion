@@ -184,8 +184,19 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 				g.addLog(roomID, "厄运积累到极限！作祟即将爆发！", "alert")
 			}
 		case "ITEM":
-			// 物品卡不增加作祟计数，只记录日志
+			// 物品卡 - 将物品添加到地面的掉落物品列表
 			g.addLog(roomID, "发现了物品！", "info")
+			// 获取物品定义并添加到地面
+			item := GetItem(tileDef.ID)
+			if item != nil {
+				// 将物品添加到当前地块的掉落物品列表
+				tile, ok := state.FullState.Map[fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)]
+				if ok {
+					tile.DroppedItems = append(tile.DroppedItems, *item)
+					// 将物品设置为激活的卡（前端会显示拾取按钮）
+					state.FullState.ActiveCard = item
+				}
+			}
 		case "EVENT":
 			// 事件卡不增加作祟计数，只记录日志
 			g.addLog(roomID, "触发了事件！", "info")
@@ -295,8 +306,32 @@ func (g *GameManager) ProcessMove(roomID, playerID, direction string) error {
 	return nil
 }
 
+// rotateEdges 将边缘按旋转角度旋转（每步90°）
+func rotateEdges(edges map[Direction]string, rotation int) map[Direction]string {
+	r := ((rotation % 360) + 360) % 360
+	if r == 0 {
+		return edges
+	}
+	steps := r / 90
+	result := make(map[Direction]string)
+	for dir, edge := range edges {
+		result[dir] = edge
+	}
+	for i := 0; i < steps; i++ {
+		temp := make(map[Direction]string)
+		for d, e := range result {
+			temp[d] = e
+		}
+		result[DirectionEast] = temp[DirectionNorth]
+		result[DirectionSouth] = temp[DirectionEast]
+		result[DirectionWest] = temp[DirectionSouth]
+		result[DirectionNorth] = temp[DirectionWest]
+	}
+	return result
+}
+
 // PlaceTile 放置新房间
-func (g *GameManager) PlaceTile(roomID, playerID, direction string) error {
+func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -338,9 +373,9 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string) error {
 
 	// 检查方向
 	dir := Direction(direction)
-	edge, ok := currentTile.Edges[dir]
-	if !ok || edge == "WALL" {
-		return errors.New("该方向不能放置房间")
+	currentEdge := currentTile.Edges[dir]
+	if currentEdge != "OPEN" {
+		return errors.New("该方向没有开放的门口")
 	}
 
 	// 计算新位置
@@ -367,14 +402,23 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string) error {
 	tileDef := state.FullState.TileDeck[0]
 	state.FullState.TileDeck = state.FullState.TileDeck[1:]
 
+	// 应用旋转后的边缘
+	rotatedEdges := rotateEdges(tileDef.Edges, rotation)
+
+	// 对面方向的边缘必须也是 OPEN 才能放置（两面都对上才是门）
+	oppositeDir := getOppositeDirection(dir)
+	if rotatedEdges[oppositeDir] != "OPEN" {
+		return errors.New("该方向无法放置：房间边缘不相通")
+	}
+
 	// 创建房间实例
 	newTile := &TileInstance{
 		InstanceID:        generateTileID(),
 		DefID:             tileDef.ID,
 		X:                 newX,
 		Y:                 newY,
-		Rotation:          0,
-		Edges:             tileDef.Edges,
+		Rotation:          rotation,
+		Edges:             rotatedEdges,
 		HasEventTriggered: false,
 		Visibility:        "VISIBLE",
 		DroppedItems:      []Card{},
@@ -468,7 +512,7 @@ func (g *GameManager) ModifyStat(roomID, playerID, attribute string, amount int)
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 		ID:        generateLogID(),
 		Timestamp: time.Now().UnixMilli(),
-		Text:      fmt.Sprintf("%s 的 %s %s%d (当前: %d)", player.Character.Name, attribute, formatSign(amount), amount, attr.Current),
+		Text:      fmt.Sprintf("%s 的 %s %s (当前: %d)", player.Character.Name, attribute, formatSign(amount), attr.Current),
 		Type:      "info",
 	})
 

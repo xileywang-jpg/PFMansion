@@ -607,12 +607,15 @@ export function sendPlaceTile(direction: string) {
     console.error('房间未创建');
     return;
   }
+  // 从 gameStore 读取当前选择的旋转角度
+  const { pendingTileRotation } = useGameStore.getState();
   wsClient.send({
     type: 'game_action',
     roomId: roomId,
     action: {
       actionType: 'place_tile',
-      direction
+      direction,
+      rotation: pendingTileRotation
     }
   });
 }

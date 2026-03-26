@@ -19,8 +19,12 @@ const DiceRoller: React.FC = () => {
 
   // 处理后端返回的骰子结果
   const handleDiceResult = useCallback((msg: any) => {
+    console.log('[DiceRoller] 收到 dice_result 消息:', msg);
     // 只有在正在投掷且已发送请求时才处理结果
-    if (!isRolling || !hasSentRequest) return;
+    if (!isRolling || !hasSentRequest) {
+      console.log('[DiceRoller] 跳过处理: isRolling=', isRolling, 'hasSentRequest=', hasSentRequest);
+      return;
+    }
 
     const results = msg.results;
     if (!results || !Array.isArray(results)) return;
@@ -31,10 +35,14 @@ const DiceRoller: React.FC = () => {
       animationIntervalRef.current = null;
     }
 
-    // 将数字结果转换为对应的骰子面
-    const diceFaces = results.map((v: number) => DIE_FACES[v]);
+    // 清除超时定时器，防止 5 秒后错误地关闭界面
+    console.log('[DiceRoller] 清除超时定时器');
+    network.setDiceRollTimeoutId(null);
+
+    // 后端返回的 results 直接就是骰子面值 [0,1,2]，无需再映射
     const total = msg.sum || results.reduce((a: number, b: number) => a + b, 0);
-    setCurrentValues(diceFaces);
+    console.log('[DiceRoller] 显示结果: values=', results, 'total=', total);
+    setCurrentValues(results);
     setFinalTotal(total);
     setIsRolling(false);
     setShowResult(true);
@@ -79,6 +87,7 @@ const DiceRoller: React.FC = () => {
 
   const handleRoll = () => {
     if (isRolling || hasSentRequest) return;
+    console.log('[DiceRoller] handleRoll 开始, numberOfDice=', activeRoll.numberOfDice);
     
     setIsRolling(true);
     setHasSentRequest(true);
@@ -114,6 +123,7 @@ const DiceRoller: React.FC = () => {
     // 设置超时：如果后端 5 秒没响应，停止动画并清理状态
     // 使用共享的超时管理，以便 dice_result 收到时可以清除
     const timeoutId = window.setTimeout(() => {
+      console.warn('[DiceRoller] ⏰ 超时回调执行！');
       if (animationIntervalRef.current !== null) {
         clearInterval(animationIntervalRef.current);
         animationIntervalRef.current = null;
@@ -125,6 +135,7 @@ const DiceRoller: React.FC = () => {
       cancelActiveRoll();
       network.setDiceRollTimeoutId(null);
     }, 5000);
+    console.log('[DiceRoller] 已设置超时定时器, timeoutId=', timeoutId);
     network.setDiceRollTimeoutId(timeoutId);
   };
 

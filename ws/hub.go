@@ -609,7 +609,8 @@ func (h *Hub) handleGameAction(msg *Message) {
 	case "place_tile":
 		// 放置新房间
 		dir, _ := req.Action["direction"].(string)
-		err = h.gameManager.PlaceTile(roomID, msg.client.playerID, dir)
+		rotation, _ := req.Action["rotation"].(float64)
+		err = h.gameManager.PlaceTile(roomID, msg.client.playerID, dir, int(rotation))
 		// Bug Fix: 确保 PlaceTile 后总是发送状态更新（包括 PendingAction）
 		// 如果有错误，sendGameState 仍然被调用以同步状态
 		h.sendGameState(roomID)

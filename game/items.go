@@ -207,8 +207,8 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			player.Character.Attributes[attrName] = attr
 			// 记录日志
 			if amount != 0 {
-				logMsg := fmt.Sprintf("%s 的 %s %s%d (当前: %d)", 
-					player.Character.Name, attrName, formatSign(amount), amount, attr.Current)
+				logMsg := fmt.Sprintf("%s 的 %s %s (当前: %d)", 
+					player.Character.Name, attrName, formatSign(amount), attr.Current)
 				g.addLog(roomID, logMsg, "info")
 			}
 			// 检查死亡
@@ -751,8 +751,8 @@ func (g *GameManager) ApplyConditionalBuffs(roomID, playerID, trigger string) {
 					}
 					// 将修改后的属性存回 map
 					player.Character.Attributes[attrName] = attr
-					g.addLog(roomID, fmt.Sprintf("%s 的 %s %s%d (条件触发)", 
-						player.Character.Name, attrName, formatSign(amount), amount), "info")
+					g.addLog(roomID, fmt.Sprintf("%s 的 %s %s (条件触发)", 
+						player.Character.Name, attrName, formatSign(amount)), "info")
 				}
 			}
 

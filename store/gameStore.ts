@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { 
   Player, TileInstance, TileDef, GamePhase, Direction, 
   CardDef, CardSymbol, LogEntry, AttributeName, TurnPhase, ScriptAction, Item, ActiveRoll, DirectionalEdges,
-  Scenario, EventOutcome
+  Scenario, EventOutcome, GameNPC
 } from '../types';
 import { ActionDefinition } from '../types/Logic';
 import { GameDataBundle } from '../src/services/gameData';
@@ -99,7 +99,7 @@ interface GameState {
   // 预知/互动待执行效果
   pendingInteractionEffects: any[] | null;
 
-  activeFeedback: { message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' } | null;
+  activeFeedback: { message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' | 'alert' | 'success' } | null;
 
   // 游戏静态数据（从后端 API 获取）
   gameData: GameDataBundle | null;
@@ -144,7 +144,7 @@ interface GameState {
 
   setHoveredTileId: (id: string | null) => void;
   
-  showFeedback: (message: string, type?: 'error' | 'info' | 'warning' | 'turn' | 'death') => void;
+  showFeedback: (message: string, type?: 'error' | 'info' | 'warning' | 'turn' | 'death' | 'alert' | 'success') => void;
 
   executeScript: (actions: ScriptAction[]) => void;
   handlePlayerDeath: (playerId: string) => void;
@@ -247,7 +247,20 @@ export const useGameStore = create<GameState>((set, get) => ({
   activeCard: null,
   decks: { EVENT: [], ITEM: [], OMEN: [] },
   lastRollResult: null,
+  lastCheckSuccess: null,
   activeRoll: null,
+
+  triggerStatRoll: () => {
+    // 占位：属性检定由后端驱动
+  },
+
+  resolveDiceRoll: (_total: number) => {
+    // 占位：骰子结果由 DiceRoller 处理
+  },
+
+  applyCardOutcome: () => {
+    // 占位：卡牌结果应用由后端 state_sync 驱动
+  },
   activeCombat: null,
   npcs: {},
   eventOutcome: null,
@@ -280,7 +293,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   dataLoaded: false,
   setGameData: (data: GameDataBundle) => set({ gameData: data, dataLoaded: true }),
 
-  showFeedback: (message: string, type = 'error') => {
+  showFeedback: (message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' | 'alert' | 'success' = 'error') => {
     set({ activeFeedback: { message, type } });
     const duration = (type === 'turn' || type === 'death') ? 2500 : 2000;
     setTimeout(() => {

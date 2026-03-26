@@ -392,7 +392,7 @@ export interface ItemGrantedAction {
 // --- Scripting & Event Engine ---
 
 export type ConditionType = 'stat_check' | 'has_item' | 'tile_check' | 'dice_roll';
-export type ActionType = 'modify_stat' | 'move_player' | 'add_item' | 'draw_card' | 'trigger_haunt' | 'narrative_log' | 'heal' 
+export type ActionType = 'modify_stat' | 'move_player' | 'add_item' | 'remove_item' | 'draw_card' | 'trigger_haunt' | 'narrative_log' | 'heal' 
   | 'trade_items' | 'teleport_to_revealed' | 'reveal_all_tiles' | 'reveal_next_event' | 'reveal_trail' 
   | 'reroll_dice' | 'add_status_effect' | 'divination'
   // 前端本地脚本执行使用的额外类型
@@ -435,6 +435,8 @@ export interface ScriptAction {
 }
 
 // ==================== NPC 系统 ====================
+
+export type Position = { x: number; y: number };
 
 export interface GameNPC {
   instanceId: string;

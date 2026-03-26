@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore';
 import { EventCard, ActiveRoll, Item, GamePhase } from '../types';
 import { generateId } from '../utils/idGenerator';
 import { applyPassiveEffects } from '../utils/passiveEffectParser';
+import { sendPickupItem } from '../ws/network';
 
 export const useEventSystem = () => {
   const { 
@@ -129,6 +130,10 @@ export const useEventSystem = () => {
             turnPhase: 'DONE'
         });
     }
+
+    // Bug Fix: 发送网络请求通知后端物品拾取
+    // 乐观更新已完成，后端同步确认
+    sendPickupItem(item.id);
   }, [players, activePlayerId, map, addLog, addPersonalLog, incrementOmenCount, setState]);
 
   const initiateEventRoll = useCallback((event: EventCard) => {

@@ -12,6 +12,11 @@ pkill -f "mansion-server" 2>/dev/null
 
 sleep 1
 
+# 编译后端 Go 代码（确保最新代码生效）
+echo "🔨 编译后端 Go 代码..."
+cd /root/.openclaw/workspace/PFMansion
+go build -o mansion-server .
+
 # 启动鉴权服务 (5000)
 echo "🎭 启动鉴权服务 (5000)..."
 cd /root/.openclaw/workspace/PFMansion/auth-service

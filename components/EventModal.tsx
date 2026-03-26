@@ -13,7 +13,7 @@ const CardResolutionModal: React.FC = () => {
   const player = players[activePlayerId];
   if (!activeCard) return null;
 
-  const isItem = 'usage' in activeCard || ['OMEN', 'WEAPON', 'PASSIVE', 'CONSUMABLE'].includes(activeCard.type);
+  const isItem = 'usage' in activeCard || ['ITEM', 'OMEN', 'WEAPON', 'PASSIVE', 'CONSUMABLE'].includes(activeCard.type);
   const cardTitle = 'name' in activeCard ? activeCard.name : activeCard.title || '未知卡牌';
   const cardType = activeCard.type;
   const isEvent = activeCard.type === 'EVENT';
