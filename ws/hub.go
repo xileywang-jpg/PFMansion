@@ -611,13 +611,19 @@ func (h *Hub) handleGameAction(msg *Message) {
 		dir, _ := req.Action["direction"].(string)
 		rotation, _ := req.Action["rotation"].(float64)
 		err = h.gameManager.PlaceTile(roomID, msg.client.playerID, dir, int(rotation))
-		// Bug Fix: 确保 PlaceTile 后总是发送状态更新（包括 PendingAction）
-		// 如果有错误，sendGameState 仍然被调用以同步状态
-		h.sendGameState(roomID)
-		// 返回，避免 fallthrough 到其他 case
+		// 如果有错误，立即返回错误，不发送状态同步（避免清除前端的 pendingTile）
 		if err != nil {
+			resp := map[string]interface{}{
+				"type":    "error",
+				"message": err.Error(),
+			}
+			data, _ := json.Marshal(resp)
+			msg.client.send <- data
 			return
 		}
+		// 放置成功后发送状态更新
+		h.sendGameState(roomID)
+		return
 	case "modify_stat":
 		// 修改属性
 		attr, _ := req.Action["attribute"].(string)

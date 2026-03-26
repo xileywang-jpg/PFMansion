@@ -1089,7 +1089,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!pendingTile || !pendingTargetPosition || !pendingMoveDirection) return false;
     if (map[`${pendingTargetPosition.x},${pendingTargetPosition.y}`]) return false;
     const rotatedEdges = getRotatedEdges(pendingTile.edges, pendingTileRotation);
-    return rotatedEdges[getOpposite(pendingMoveDirection)] !== 'WALL';
+    // 必须精确匹配 'OPEN'，与后端保持一致
+    return rotatedEdges[getOpposite(pendingMoveDirection)] === 'OPEN';
   },
 
   cancelTilePlacement: () => {

@@ -398,7 +398,7 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 		return errors.New("该位置已有房间")
 	}
 
-	// 抽取房间
+	// 抽取房间（先抽取，验证失败再放回）
 	tileDef := state.FullState.TileDeck[0]
 	state.FullState.TileDeck = state.FullState.TileDeck[1:]
 
@@ -408,6 +408,8 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 	// 对面方向的边缘必须也是 OPEN 才能放置（两面都对上才是门）
 	oppositeDir := getOppositeDirection(dir)
 	if rotatedEdges[oppositeDir] != "OPEN" {
+		// 验证失败，将房间放回牌堆顶部
+		state.FullState.TileDeck = append([]TileDef{tileDef}, state.FullState.TileDeck...)
 		return errors.New("该方向无法放置：房间边缘不相通")
 	}
 

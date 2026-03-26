@@ -64,6 +64,36 @@ func (g *GameManager) DrawCard(roomID, playerID, cardType string) (map[string]in
 	card := deck[0]
 	state.FullState.Decks[deckName] = deck[1:]
 
+	// 获取玩家名称用于日志
+	playerName := "玩家"
+	if player, ok := state.FullState.Players[playerID]; ok {
+		playerName = player.Character.Name
+	}
+
+	// 记录抽卡日志
+	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("%s 抽到了 %s", playerName, card.Name),
+		Type:      "info",
+	})
+
+	// 设置激活的卡牌（前端会显示卡牌弹窗）
+	state.FullState.ActiveCard = &card
+
+	// 将物品卡/厄运卡添加到玩家物品栏
+	if card.Type == "ITEM" || card.Type == "OMEN" {
+		if player, ok := state.FullState.Players[playerID]; ok {
+			player.Items = append(player.Items, card)
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 获得了物品: %s", playerName, card.Name),
+				Type:      "success",
+			})
+		}
+	}
+
 	return map[string]interface{}{
 		"card": card,
 		"deck": deckName,
