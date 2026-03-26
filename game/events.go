@@ -66,7 +66,8 @@ func (g *GameManager) DrawCard(roomID, playerID, cardType string) (map[string]in
 
 	// 获取玩家名称用于日志
 	playerName := "玩家"
-	if player, ok := state.FullState.Players[playerID]; ok {
+	player, playerExists := state.FullState.Players[playerID]
+	if playerExists {
 		playerName = player.Character.Name
 	}
 
@@ -81,15 +82,16 @@ func (g *GameManager) DrawCard(roomID, playerID, cardType string) (map[string]in
 	// 设置激活的卡牌（前端会显示卡牌弹窗）
 	state.FullState.ActiveCard = &card
 
-	// 将物品卡/厄运卡添加到玩家物品栏
-	if card.Type == "ITEM" || card.Type == "OMEN" {
-		if player, ok := state.FullState.Players[playerID]; ok {
-			player.Items = append(player.Items, card)
+	// 将物品卡/厄运卡添加到当前地块的掉落物品列表，这样玩家可以"捡起"
+	if (card.Type == "ITEM" || card.Type == "OMEN") && playerExists {
+		posKey := fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)
+		if tile, ok := state.FullState.Map[posKey]; ok {
+			tile.DroppedItems = append(tile.DroppedItems, card)
 			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 				ID:        generateLogID(),
 				Timestamp: time.Now().UnixMilli(),
-				Text:      fmt.Sprintf("%s 获得了物品: %s", playerName, card.Name),
-				Type:      "success",
+				Text:      fmt.Sprintf("%s 发现了 %s", playerName, card.Name),
+				Type:      "info",
 			})
 		}
 	}

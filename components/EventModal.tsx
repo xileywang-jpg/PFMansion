@@ -1,16 +1,25 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useEventSystem } from '../hooks/useEventSystem';
 import { Dice5, Skull, Gem, CheckCircle, XCircle, MousePointerClick } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Item } from '../types';
+import * as network from '../ws/network';
 
 const CardResolutionModal: React.FC = () => {
   const { activeCard, players, activePlayerId, lastRollResult, lastCheckSuccess, activeRoll, eventOutcome, acknowledgeEventOutcome, resolveEventChoice } = useGameStore();
   const { initiateEventRoll, resolveItemPickup } = useEventSystem();
   const [choiceMade, setChoiceMade] = useState(false);
   const player = players[activePlayerId];
+  
+  // Bug Fix: 当显示 outcome 时重置 choiceMade，这样"继续探索"按钮可以点击
+  useEffect(() => {
+    if (eventOutcome) {
+      setChoiceMade(false);
+    }
+  }, [eventOutcome]);
+  
   if (!activeCard) return null;
 
   const isItem = 'usage' in activeCard || ['ITEM', 'OMEN', 'WEAPON', 'PASSIVE', 'CONSUMABLE'].includes(activeCard.type);
@@ -70,9 +79,28 @@ const CardResolutionModal: React.FC = () => {
                         </div>
                     </div>
                     <div className="p-6 bg-zinc-950/50 border-t border-zinc-800/50">
-                        <button onClick={acknowledgeEventOutcome} className="w-full bg-zinc-100 hover:bg-white text-black px-6 py-4 rounded font-bold uppercase tracking-wider text-xs transition-colors">
-                            继续探索
-                        </button>
+                        {isAttributeCheck ? (
+                            // 对于属性检定，点击后应用效果并关闭
+                            <button 
+                                onClick={() => {
+                                    // lastCheckSuccess: true = 成功(choiceIndex=0), false = 失败(choiceIndex=1)
+                                    const choiceIndex = lastCheckSuccess ? 0 : 1;
+                                    network.sendResolveEvent(choiceIndex);
+                                    acknowledgeEventOutcome();
+                                }} 
+                                className={`w-full px-6 py-4 rounded font-bold uppercase tracking-wider text-xs transition-colors ${
+                                    isSuccess 
+                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
+                                        : 'bg-red-600 hover:bg-red-500 text-white'
+                                }`}
+                            >
+                                {isSuccess ? '接受成功效果' : '接受失败后果'}
+                            </button>
+                        ) : (
+                            <button onClick={acknowledgeEventOutcome} className="w-full bg-zinc-100 hover:bg-white text-black px-6 py-4 rounded font-bold uppercase tracking-wider text-xs transition-colors">
+                                继续探索
+                            </button>
+                        )}
                     </div>
                 </motion.div>
             </motion.div>
