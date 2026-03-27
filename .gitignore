@@ -23,13 +23,16 @@ dist-ssr
 *.sln
 *.sw?
 
-# Go build
+# Go build output
 mansion-server
+mansion-server-*
 *.exe
 
-# Profiling
-*.cpuprofile
-*.heap-snapshot
+# Server logs
+*.log
 
 # Backup files
 *.bak
+
+# Auth service
+auth-service/node_modules/
