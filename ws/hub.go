@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"mansion-protocol/game"
 	"mansion-protocol/logger"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -29,12 +30,12 @@ var upgrader = websocket.Upgrader{
 
 // 客户端连接
 type Client struct {
-	hub      *Hub
-	conn     *websocket.Conn
-	send     chan []byte
+	hub       *Hub
+	conn      *websocket.Conn
+	send      chan []byte
 	sessionID string
-	roomID   string
-	playerID string
+	roomID    string
+	playerID  string
 }
 
 func (c *Client) readPump() {
@@ -117,27 +118,27 @@ type Message struct {
 // Hub 维护所有客户端和房间
 type Hub struct {
 	gameManager *game.GameManager
-	
-	clients   map[*Client]bool
-	rooms     map[string]map[*Client]bool // roomID -> clients
-	
+
+	clients map[*Client]bool
+	rooms   map[string]map[*Client]bool // roomID -> clients
+
 	register   chan *Client
 	unregister chan *Client
 	message    chan *Message
 	broadcast  chan []byte
-	
+
 	mu sync.RWMutex
 }
 
 func NewHub(gs *game.GameManager) *Hub {
 	return &Hub{
 		gameManager: gs,
-		clients:    make(map[*Client]bool),
-		rooms:      make(map[string]map[*Client]bool),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		message:    make(chan *Message, 256),
-		broadcast:  make(chan []byte, 256),
+		clients:     make(map[*Client]bool),
+		rooms:       make(map[string]map[*Client]bool),
+		register:    make(chan *Client),
+		unregister:  make(chan *Client),
+		message:     make(chan *Message, 256),
+		broadcast:   make(chan []byte, 256),
 	}
 }
 
@@ -155,7 +156,7 @@ func (h *Hub) Run() {
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
-				
+
 				// 从房间中移除
 				if client.roomID != "" {
 					if roomClients, ok := h.rooms[client.roomID]; ok {
@@ -191,7 +192,7 @@ func (h *Hub) handleMessage(msg *Message) {
 	var base struct {
 		Type string `json:"type"`
 	}
-	
+
 	if err := json.Unmarshal(msg.data, &base); err != nil {
 		logger.Warn("解析消息失败", map[string]interface{}{"error": err.Error()})
 		return
@@ -243,12 +244,12 @@ func (h *Hub) handlePing(msg *Message) {
 
 func (h *Hub) handleCreateRoom(msg *Message) {
 	var req struct {
-		Type      string `json:"type"`
-		RoomName  string `json:"roomName"`
+		Type       string `json:"type"`
+		RoomName   string `json:"roomName"`
 		PlayerName string `json:"playerName"`
-		Theme     string `json:"theme"`
+		Theme      string `json:"theme"`
 	}
-	
+
 	if err := json.Unmarshal(msg.data, &req); err != nil {
 		logger.Warn("创建房间: 解析请求失败", map[string]interface{}{"error": err.Error()})
 		return
@@ -261,22 +262,22 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 	}
 
 	logger.Info("创建房间", map[string]interface{}{
-		"roomName": req.RoomName,
+		"roomName":   req.RoomName,
 		"playerName": req.PlayerName,
-		"theme": theme,
-		"sessionId": msg.sessionID,
+		"theme":      theme,
+		"sessionId":  msg.sessionID,
 	})
 
 	room := h.gameManager.CreateRoom(req.RoomName, req.PlayerName, theme, msg.sessionID)
-	
+
 	msg.client.roomID = room.ID
-	
+
 	// 获取刚创建的玩家ID
 	for _, p := range room.Players {
 		msg.client.playerID = p.ID
 		break
 	}
-	
+
 	// 将客户端加入房间
 	h.mu.Lock()
 	if h.rooms[room.ID] == nil {
@@ -286,7 +287,7 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 	h.mu.Unlock()
 
 	logger.Info("房间创建成功", map[string]interface{}{
-		"roomId": room.ID,
+		"roomId":   room.ID,
 		"playerId": msg.client.playerID,
 	})
 
@@ -305,28 +306,28 @@ func (h *Hub) handleCreateRoom(msg *Message) {
 
 func (h *Hub) handleJoinRoom(msg *Message) {
 	var req struct {
-		Type      string `json:"type"`
-		RoomId    string `json:"roomId"`
+		Type       string `json:"type"`
+		RoomId     string `json:"roomId"`
 		PlayerName string `json:"playerName"`
 	}
-	
+
 	if err := json.Unmarshal(msg.data, &req); err != nil {
 		logger.Warn("加入房间: 解析请求失败", map[string]interface{}{"error": err.Error()})
 		return
 	}
 
 	logger.Info("玩家尝试加入房间", map[string]interface{}{
-		"roomId": req.RoomId,
+		"roomId":     req.RoomId,
 		"playerName": req.PlayerName,
-		"sessionId": msg.sessionID,
+		"sessionId":  msg.sessionID,
 	})
 
 	room, err := h.gameManager.JoinRoom(req.RoomId, req.PlayerName, msg.sessionID)
 	if err != nil {
 		logger.Warn("加入房间失败", map[string]interface{}{
-			"roomId": req.RoomId,
+			"roomId":     req.RoomId,
 			"playerName": req.PlayerName,
-			"error": err.Error(),
+			"error":      err.Error(),
 		})
 		resp := map[string]interface{}{
 			"type":    "error",
@@ -355,9 +356,9 @@ func (h *Hub) handleJoinRoom(msg *Message) {
 	h.mu.Unlock()
 
 	logger.Info("玩家加入房间成功", map[string]interface{}{
-		"roomId": room.ID,
-		"playerId": msg.client.playerID,
-		"playerName": req.PlayerName,
+		"roomId":      room.ID,
+		"playerId":    msg.client.playerID,
+		"playerName":  req.PlayerName,
 		"playerCount": len(room.Players),
 	})
 
@@ -375,18 +376,18 @@ func (h *Hub) handleJoinRoom(msg *Message) {
 	// 通知房间内其他玩家
 	h.broadcastToRoom(room.ID, map[string]interface{}{
 		"type":       "player_joined",
-		"playerId":  msg.client.playerID,
+		"playerId":   msg.client.playerID,
 		"playerName": req.PlayerName,
-		"players":   room.Players,
+		"players":    room.Players,
 	})
 }
 
 func (h *Hub) handleLeaveRoom(msg *Message) {
 	roomID, playerID := h.gameManager.LeaveRoom(msg.sessionID)
-	
+
 	if roomID != "" {
 		msg.client.roomID = ""
-		
+
 		h.mu.Lock()
 		if clients, ok := h.rooms[roomID]; ok {
 			delete(clients, msg.client)
@@ -413,10 +414,10 @@ func (h *Hub) handleListRooms(msg *Message) {
 
 func (h *Hub) handleSetReady(msg *Message) {
 	var req struct {
-		Type   string `json:"type"`
-		Ready  bool   `json:"ready"`
+		Type  string `json:"type"`
+		Ready bool   `json:"ready"`
 	}
-	
+
 	if err := json.Unmarshal(msg.data, &req); err != nil {
 		return
 	}
@@ -433,7 +434,7 @@ func (h *Hub) handleSetReady(msg *Message) {
 
 func (h *Hub) handleStartGame(msg *Message) {
 	logger.Info("开始游戏", map[string]interface{}{
-		"roomId": msg.client.roomID,
+		"roomId":   msg.client.roomID,
 		"playerId": msg.client.playerID,
 	})
 
@@ -441,7 +442,7 @@ func (h *Hub) handleStartGame(msg *Message) {
 	if err != nil {
 		logger.Error("开始游戏失败", map[string]interface{}{
 			"roomId": msg.client.roomID,
-			"error": err.Error(),
+			"error":  err.Error(),
 		})
 		resp := map[string]interface{}{
 			"type":    "error",
@@ -470,10 +471,10 @@ func (h *Hub) handleStartGame(msg *Message) {
 func (h *Hub) handleGameAction(msg *Message) {
 	var req struct {
 		Type   string                 `json:"type"`
-		RoomId string                `json:"roomId,omitempty"`
+		RoomId string                 `json:"roomId,omitempty"`
 		Action map[string]interface{} `json:"action"`
 	}
-	
+
 	if err := json.Unmarshal(msg.data, &req); err != nil {
 		return
 	}
@@ -493,6 +494,8 @@ func (h *Hub) handleGameAction(msg *Message) {
 		err = h.gameManager.ProcessMove(roomID, msg.client.playerID, dir)
 	case "end_turn":
 		err = h.gameManager.EndTurn(roomID, msg.client.playerID)
+	case "cancel_tile_placement":
+		err = h.gameManager.CancelTilePlacement(roomID, msg.client.playerID)
 	// ===== 作祟系统 =====
 	case "perform_haunt_roll":
 		// 执行作祟检定
@@ -530,9 +533,9 @@ func (h *Hub) handleGameAction(msg *Message) {
 		// 容忍 pending 为 nil 的情况（防止超时重试或多发请求导致错误）
 		if pending == nil {
 			resp := map[string]interface{}{
-				"type":  "dice_result",
+				"type":      "dice_result",
 				"checkType": "STALE",
-				"message": "骰子结果已过期，请刷新状态",
+				"message":   "骰子结果已过期，请刷新状态",
 			}
 			data, _ := json.Marshal(resp)
 			msg.client.send <- data
@@ -644,10 +647,10 @@ func (h *Hub) handleGameAction(msg *Message) {
 		}
 		// 广播抽卡结果
 		h.broadcastToRoom(roomID, map[string]interface{}{
-			"type":      "card_drawn",
-			"card":      result["card"],
-			"deck":      result["deck"],
-			"playerId":  msg.client.playerID,
+			"type":     "card_drawn",
+			"card":     result["card"],
+			"deck":     result["deck"],
+			"playerId": msg.client.playerID,
 		})
 		// 发送状态更新
 		h.sendGameState(roomID)
@@ -668,9 +671,9 @@ func (h *Hub) handleGameAction(msg *Message) {
 		result, err := h.gameManager.ResolveCombat(roomID, msg.client.playerID)
 		if err == nil {
 			h.broadcastToRoom(roomID, map[string]interface{}{
-				"type":         "combat_resolved",
-				"result":       result,
-				"playerId":     msg.client.playerID,
+				"type":     "combat_resolved",
+				"result":   result,
+				"playerId": msg.client.playerID,
 			})
 			h.sendGameState(roomID)
 			return
@@ -745,7 +748,7 @@ func (h *Hub) handleGameAction(msg *Message) {
 				h.broadcastToRoom(roomID, map[string]interface{}{
 					"type":     "npc_attack_result",
 					"result":   result,
-					"playerId":  msg.client.playerID,
+					"playerId": msg.client.playerID,
 				})
 				// 状态会在下面 sendGameState 同步
 			}
@@ -763,7 +766,7 @@ func (h *Hub) handleGameAction(msg *Message) {
 				h.broadcastToRoom(roomID, map[string]interface{}{
 					"type":     "npc_attacked_player",
 					"result":   result,
-					"playerId":  msg.client.playerID,
+					"playerId": msg.client.playerID,
 				})
 			}
 		}
@@ -791,7 +794,7 @@ func (h *Hub) handleGetState(msg *Message) {
 		Type   string `json:"type"`
 		RoomId string `json:"roomId,omitempty"`
 	}
-	
+
 	if err := json.Unmarshal(msg.data, &req); err != nil {
 		return
 	}
@@ -800,13 +803,13 @@ func (h *Hub) handleGetState(msg *Message) {
 	if roomID == "" {
 		roomID = msg.client.roomID
 	}
-	
+
 	h.sendGameState(roomID)
 }
 
 func (h *Hub) sendGameState(roomID string) {
 	logger.Info("发送游戏状态", map[string]interface{}{"roomId": roomID})
-	
+
 	state, err := h.gameManager.GetGameState(roomID)
 	if err != nil {
 		logger.Error("获取游戏状态失败", map[string]interface{}{"roomId": roomID, "error": err.Error()})
@@ -815,7 +818,7 @@ func (h *Hub) sendGameState(roomID string) {
 
 	// 使用完整的同步状态格式
 	syncState := state.ToSyncState()
-	
+
 	resp := map[string]interface{}{
 		"type":      "state_sync",
 		"version":   syncState.Version,
@@ -835,14 +838,14 @@ func (h *Hub) sendGameStateToClient(client *Client, roomID string) {
 
 	// 使用完整的同步状态格式
 	syncState := state.ToSyncState()
-	
+
 	resp := map[string]interface{}{
 		"type":      "state_sync",
 		"version":   syncState.Version,
 		"timestamp": syncState.Timestamp,
 		"state":     syncState,
 	}
-	
+
 	data, _ := json.Marshal(resp)
 	select {
 	case client.send <- data:
@@ -894,9 +897,9 @@ func (h *Hub) broadcastToRoom(roomID string, message interface{}) {
 // handleReconnect 处理重连请求 (简化版: 通过 roomId + playerId 重连)
 func (h *Hub) handleReconnect(msg *Message) {
 	var req struct {
-		Type      string `json:"type"`
-		RoomId    string `json:"roomId"`
-		PlayerId  string `json:"playerId"`
+		Type     string `json:"type"`
+		RoomId   string `json:"roomId"`
+		PlayerId string `json:"playerId"`
 	}
 
 	if err := json.Unmarshal(msg.data, &req); err != nil {
@@ -905,8 +908,8 @@ func (h *Hub) handleReconnect(msg *Message) {
 	}
 
 	logger.Info("收到重连请求", map[string]interface{}{
-		"roomId": req.RoomId,
-		"playerId": req.PlayerId,
+		"roomId":    req.RoomId,
+		"playerId":  req.PlayerId,
 		"sessionId": msg.sessionID,
 	})
 
@@ -959,17 +962,17 @@ func (h *Hub) handleReconnect(msg *Message) {
 	h.mu.Unlock()
 
 	logger.Info("重连成功", map[string]interface{}{
-		"roomId": req.RoomId,
-		"playerId": req.PlayerId,
+		"roomId":     req.RoomId,
+		"playerId":   req.PlayerId,
 		"playerName": playerName,
 	})
 
 	// 发送重连成功和当前状态
 	respData := map[string]interface{}{
-		"type":     "reconnect_success",
-		"roomId":   req.RoomId,
-		"playerId": req.PlayerId,
-		"state":    room,
+		"type":       "reconnect_success",
+		"roomId":     req.RoomId,
+		"playerId":   req.PlayerId,
+		"state":      room,
 		"playerName": playerName,
 	}
 	data, _ := json.Marshal(respData)
@@ -1014,7 +1017,7 @@ func (h *Hub) handleGetHistory(msg *Message) {
 func (h *Hub) handleSyncRequest(msg *Message) {
 	var req struct {
 		Type     string `json:"type"`
-		RoomId  string `json:"roomId"`
+		RoomId   string `json:"roomId"`
 		PlayerId string `json:"playerId"`
 	}
 
@@ -1038,11 +1041,11 @@ func (h *Hub) handleSyncRequest(msg *Message) {
 	history := h.gameManager.GetActionHistory(req.RoomId, 30)
 
 	resp := map[string]interface{}{
-		"type":         "sync_response",
-		"roomId":       req.RoomId,
-		"state":        state,
-		"history":      history,
-		"timestamp":    time.Now().UnixMilli(),
+		"type":      "sync_response",
+		"roomId":    req.RoomId,
+		"state":     state,
+		"history":   history,
+		"timestamp": time.Now().UnixMilli(),
 	}
 	data, _ := json.Marshal(resp)
 	msg.client.send <- data
@@ -1080,16 +1083,16 @@ func (h *Hub) SendToClient(sessionID string, message interface{}) {
 func HandleWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-	logger.Error("WebSocket 升级失败", map[string]interface{}{"error": err.Error()})
+		logger.Error("WebSocket 升级失败", map[string]interface{}{"error": err.Error()})
 		return
 	}
 
 	sessionID := r.RemoteAddr // 简单使用 RemoteAddr 作为 session ID
 
 	client := &Client{
-		hub:      hub,
-		conn:     conn,
-		send:     make(chan []byte, 256),
+		hub:       hub,
+		conn:      conn,
+		send:      make(chan []byte, 256),
 		sessionID: sessionID,
 	}
 

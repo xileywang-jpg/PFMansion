@@ -1096,6 +1096,20 @@ export const useGameStore = create<GameState>((set, get) => ({
   cancelTilePlacement: () => {
     const state = get();
     if (!state.pendingTile) return;
+
+    if (network.isInNetworkMode()) {
+      // 乐观更新：立即清除放置状态避免 UI 残留，后端 state_sync 会确认
+      set({
+        pendingTile: null,
+        pendingTargetPosition: null,
+        pendingMoveDirection: null,
+        pendingTileRotation: 0,
+      });
+      network.sendCancelTilePlacement();
+      return;
+    }
+
+    // 本地模式降级：归还牌和步数
     set({
       tileDeck: [state.pendingTile, ...state.tileDeck],
       pendingTile: null,

@@ -261,8 +261,10 @@ function handleStateSync(msg: ServerMessage) {
     gameWinner: state.gameWinner || null,
 
     // Phase 3: 房间放置状态同步
+    // Bug Fix: 后端 PendingTileRotation 始终为 0（omitempty），若直接覆盖会重置用户旋转。
+    // 当 pendingTile 仍存在时，保留前端当前旋转值；tile 清除时才归零。
     pendingTile: state.pendingTile || null,
-    pendingTileRotation: state.pendingTileRotation ?? 0,
+    pendingTileRotation: (state.pendingTile || null) ? store.pendingTileRotation : 0,
     pendingTargetPosition: state.pendingTargetPos ? { x: state.pendingTargetPos.x, y: state.pendingTargetPos.y } : null,
     pendingMoveDirection: state.pendingMoveDirection || null,
   });
@@ -616,6 +618,22 @@ export function sendPlaceTile(direction: string) {
       actionType: 'place_tile',
       direction,
       rotation: pendingTileRotation
+    }
+  });
+}
+
+// 取消房间放置
+export function sendCancelTilePlacement() {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId: roomId,
+    action: {
+      actionType: 'cancel_tile_placement'
     }
   });
 }

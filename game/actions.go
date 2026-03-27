@@ -135,7 +135,7 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 		if event != nil {
 			// 设置为激活的事件卡
 			state.FullState.ActiveCard = event
-			
+
 			// 根据交互类型处理
 			if event.Interaction != nil {
 				switch event.Interaction.Type {
@@ -150,7 +150,7 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 							"eventID":    event.ID,
 						},
 					}
-					g.addLog(roomID, fmt.Sprintf("%s 触发了事件: %s - 需要进行 %s 检定", 
+					g.addLog(roomID, fmt.Sprintf("%s 触发了事件: %s - 需要进行 %s 检定",
 						player.Character.Name, event.Name, event.Interaction.Attribute), "alert")
 					return nil // 等待玩家投骰子
 
@@ -163,7 +163,7 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 							"eventID": event.ID,
 						},
 					}
-					g.addLog(roomID, fmt.Sprintf("%s 触发了事件: %s - 请做出选择", 
+					g.addLog(roomID, fmt.Sprintf("%s 触发了事件: %s - 请做出选择",
 						player.Character.Name, event.Name), "alert")
 					return nil // 等待玩家选择
 				}
@@ -171,38 +171,74 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 		}
 	}
 
-	// 2. 检查 CardSymbol - 根据类型触发不同的抽牌效果
+	// 2. 检查 CardSymbol - 根据类型从对应牌堆抽牌
 	if tileDef.CardSymbol != "" && tileDef.CardSymbol != "NONE" {
+		posKey := fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)
 		switch tileDef.CardSymbol {
-		case "OMEN":
-			// OMEN 卡会增加作祟计数
-			state.FullState.OmenCount++
-			g.addLog(roomID, fmt.Sprintf("发现了预兆！大厦变得更加躁动不安... (预兆数: %d)", state.FullState.OmenCount), "alert")
-			// 检查是否触发作祟
-			if state.FullState.OmenCount >= 6 && !state.FullState.IsHauntActive {
-				state.FullState.Phase = GamePhaseHauntRoll
-				g.addLog(roomID, "厄运积累到极限！作祟即将爆发！", "alert")
-			}
 		case "ITEM":
-			// 物品卡 - 将物品添加到地面的掉落物品列表
-			g.addLog(roomID, "发现了物品！", "info")
-			// 获取物品定义并添加到地面
-			item := GetItem(tileDef.ID)
-			if item != nil {
-				// 将物品添加到当前地块的掉落物品列表
-				tile, ok := state.FullState.Map[fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)]
-				if ok {
-					tile.DroppedItems = append(tile.DroppedItems, *item)
-					// 将物品设置为激活的卡（前端会显示拾取按钮）
-					state.FullState.ActiveCard = item
+			// 从物品牌堆抽取顶部卡牌，放到当前地块供玩家拾取
+			itemDeck := state.FullState.Decks["ITEM"]
+			if len(itemDeck) > 0 {
+				card := itemDeck[0]
+				state.FullState.Decks["ITEM"] = itemDeck[1:]
+				if tile, ok := state.FullState.Map[posKey]; ok {
+					tile.DroppedItems = append(tile.DroppedItems, card)
 				}
+				state.FullState.ActiveCard = &card
+				g.addLog(roomID, fmt.Sprintf("%s 发现了物品：%s！", player.Character.Name, card.Name), "success")
+			} else {
+				g.addLog(roomID, "物品牌堆已空！", "alert")
+			}
+		case "OMEN":
+			// 从厄运牌堆抽取顶部卡牌，放到当前地块供玩家拾取
+			// OmenCount 在玩家实际捡起厄运卡时才更新
+			omenDeck := state.FullState.Decks["OMEN"]
+			if len(omenDeck) > 0 {
+				card := omenDeck[0]
+				state.FullState.Decks["OMEN"] = omenDeck[1:]
+				if tile, ok := state.FullState.Map[posKey]; ok {
+					tile.DroppedItems = append(tile.DroppedItems, card)
+				}
+				state.FullState.ActiveCard = &card
+				g.addLog(roomID, fmt.Sprintf("%s 发现了预兆：%s！大厦变得更加躁动不安...", player.Character.Name, card.Name), "alert")
+			} else {
+				g.addLog(roomID, "厄运牌堆已空！", "alert")
 			}
 		case "EVENT":
-			// 事件卡不增加作祟计数，只记录日志
-			g.addLog(roomID, "触发了事件！", "info")
+			// 从事件牌堆抽取顶部卡牌并触发
+			eventDeck := state.FullState.Decks["EVENT"]
+			if len(eventDeck) > 0 {
+				card := eventDeck[0]
+				state.FullState.Decks["EVENT"] = eventDeck[1:]
+				state.FullState.ActiveCard = &card
+				g.addLog(roomID, fmt.Sprintf("%s 触发了事件：%s！", player.Character.Name, card.Name), "alert")
+				// 根据交互类型设置待处理动作
+				if card.Interaction != nil {
+					switch card.Interaction.Type {
+					case "ATTRIBUTE_CHECK":
+						state.FullState.PendingAction = &PendingAction{
+							Type:   "ATTRIBUTE_CHECK",
+							Target: playerID,
+							Data: map[string]interface{}{
+								"attribute":  card.Interaction.Attribute,
+								"difficulty": card.Interaction.Difficulty,
+								"eventID":    card.ID,
+							},
+						}
+					case "CHOICE":
+						state.FullState.PendingAction = &PendingAction{
+							Type:   "CHOICE",
+							Target: playerID,
+							Data: map[string]interface{}{
+								"eventID": card.ID,
+							},
+						}
+					}
+				}
+			} else {
+				g.addLog(roomID, "事件牌堆已空！", "alert")
+			}
 		}
-		// 注意：实际的抽卡由前端在放置房间后调用 drawCard 来处理
-		// 后端只在玩家确认捡起物品时应用效果
 	}
 
 	// 3. 执行房间被动效果 (通用化)
@@ -299,8 +335,17 @@ func (g *GameManager) ProcessMove(roomID, playerID, direction string) error {
 			g.TriggerRoomEvent(roomID, playerID, existingTile.DefID)
 		}
 	} else {
-		// 需要放置新房间
-		return errors.New("需要放置新房间")
+		// 需要放置新房间：弹出牌堆顶部，设置 pending 状态
+		if len(state.FullState.TileDeck) == 0 {
+			return errors.New("房间牌堆已空")
+		}
+		tileDef := state.FullState.TileDeck[0]
+		state.FullState.TileDeck = state.FullState.TileDeck[1:]
+		state.FullState.PendingTile = &tileDef
+		state.FullState.PendingMoveDirection = string(dir)
+		state.FullState.PendingTargetPos = &Pos{X: newX, Y: newY}
+		state.FullState.MovesRemaining--
+		g.addLog(roomID, fmt.Sprintf("%s 探索发现了新区域，请放置房间", player.Character.Name), "info")
 	}
 
 	return nil
@@ -350,14 +395,9 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 		return errors.New("还没轮到你")
 	}
 
-	// 验证体力
-	if state.FullState.MovesRemaining <= 0 {
-		return errors.New("体力已耗尽")
-	}
-
-	// 检查牌堆
-	if len(state.FullState.TileDeck) == 0 {
-		return errors.New("房间牌堆已空")
+	// 验证待放置的房间已就绪（体力和牌堆已在 ProcessMove 中消耗和准备）
+	if state.FullState.PendingTile == nil {
+		return errors.New("没有待放置的房间，请先移动到新区域")
 	}
 
 	player, ok := state.FullState.Players[playerID]
@@ -398,9 +438,8 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 		return errors.New("该位置已有房间")
 	}
 
-	// 抽取房间（先抽取，验证失败再放回）
-	tileDef := state.FullState.TileDeck[0]
-	state.FullState.TileDeck = state.FullState.TileDeck[1:]
+	// 使用待放置的房间（已在 ProcessMove 中从牌堆取出）
+	tileDef := *state.FullState.PendingTile
 
 	// 应用旋转后的边缘
 	rotatedEdges := rotateEdges(tileDef.Edges, rotation)
@@ -408,8 +447,7 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 	// 对面方向的边缘必须也是 OPEN 才能放置（两面都对上才是门）
 	oppositeDir := getOppositeDirection(dir)
 	if rotatedEdges[oppositeDir] != "OPEN" {
-		// 验证失败，将房间放回牌堆顶部
-		state.FullState.TileDeck = append([]TileDef{tileDef}, state.FullState.TileDeck...)
+		// 验证失败，保留 PendingTile（用户可以换个旋转角度再试）
 		return errors.New("该方向无法放置：房间边缘不相通")
 	}
 
@@ -426,11 +464,15 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 		DroppedItems:      []Card{},
 	}
 
-	// 放置房间并移动玩家
+	// 放置房间并移动玩家（MovesRemaining 已在 ProcessMove 中消耗）
 	state.FullState.Map[targetKey] = newTile
 	player.Position.X = newX
 	player.Position.Y = newY
-	state.FullState.MovesRemaining--
+
+	// 清除 pending 放置状态
+	state.FullState.PendingTile = nil
+	state.FullState.PendingMoveDirection = ""
+	state.FullState.PendingTargetPos = nil
 
 	// 添加日志
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
@@ -443,6 +485,40 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 	// 触发房间事件（包含 EventTrigger 和 CardSymbol）
 	newTile.HasEventTriggered = true
 	g.TriggerRoomEvent(roomID, playerID, tileDef.ID)
+
+	return nil
+}
+
+// CancelTilePlacement 取消房间放置，将待放置的房间归还牌堆
+func (g *GameManager) CancelTilePlacement(roomID, playerID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	if state.FullState.ActivePlayerID != playerID {
+		return errors.New("还没轮到你")
+	}
+
+	if state.FullState.PendingTile == nil {
+		return errors.New("没有待放置的房间")
+	}
+
+	// 将 PendingTile 放回牌堆顶部，归还消耗的步数
+	state.FullState.TileDeck = append([]TileDef{*state.FullState.PendingTile}, state.FullState.TileDeck...)
+	state.FullState.PendingTile = nil
+	state.FullState.PendingMoveDirection = ""
+	state.FullState.PendingTargetPos = nil
+	state.FullState.MovesRemaining++
+	g.addLog(roomID, fmt.Sprintf("%s 决定不进入新区域", state.FullState.Players[playerID].Character.Name), "info")
 
 	return nil
 }
@@ -614,6 +690,26 @@ func (g *GameManager) PickupItem(roomID, playerID, itemID string) error {
 		Text:      fmt.Sprintf("%s 捡起了 %s", player.Character.Name, item.Name),
 		Type:      "success",
 	})
+
+	// 若是厄运卡，拾取时才递增预兆计数并检查作祟触发
+	if item.Type == "OMEN" {
+		state.FullState.OmenCount++
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("预兆计数：%d。大厦变得更加躁动不安...", state.FullState.OmenCount),
+			Type:      "alert",
+		})
+		if state.FullState.OmenCount >= 6 && !state.FullState.IsHauntActive {
+			state.FullState.Phase = GamePhaseHauntRoll
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      "厄运积累到极限！作祟即将爆发！",
+				Type:      "alert",
+			})
+		}
+	}
 
 	return nil
 }
@@ -819,7 +915,7 @@ func (g *GameManager) InteractWithWall(roomID, playerID, direction string) error
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 			ID:        generateLogID(),
 			Timestamp: time.Now().UnixMilli(),
-			Text:       fmt.Sprintf("%s 强行破坏墙壁，力量 -1", player.Character.Name),
+			Text:      fmt.Sprintf("%s 强行破坏墙壁，力量 -1", player.Character.Name),
 			Type:      "alert",
 		})
 	}
