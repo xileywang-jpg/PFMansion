@@ -191,10 +191,12 @@ export type TurnPhase =
 │ 处理流程：                                                   │
 │                                                              │
 │ Case: ATTRIBUTE_CHECK (属性检定)                             │
-│   1. 设置 PendingAction = { type: 'ATTRIBUTE_CHECK' }         │
-│   2. 玩家投骰子 (roll_dice)                                  │
-│   3. 后端返回 dice_result (sum, success)                     │
-│   4. 根据成功/失败执行对应效果                                │
+│   1. 后端设置 PendingAction = { type: 'ATTRIBUTE_CHECK' }        │
+│   2. 前端 DiceRoller 显示投骰界面                           │
+│   3. 玩家点击 → 前端发送 roll_dice 请求                   │
+│   4. 后端生成骰子结果，返回 dice_result                   │
+│   5. 前端显示结果动画                                       │
+│   6. 后端执行成功/失败对应效果                          │
 │   5. 清除 PendingAction                                      │
 │                                                              │
 │ Case: CHOICE (选择)                                          │

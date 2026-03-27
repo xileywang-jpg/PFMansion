@@ -33,7 +33,7 @@ interface CombatState {
   attribute: AttributeName;
   attackerRoll?: number;
   defenderRoll?: number;
-  phase: 'ATTACKING' | 'DEFENDING' | 'RESOLUTION';
+  phase: 'ATTACKING' | 'RESOLUTION';
 }
 
 interface GameState {
