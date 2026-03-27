@@ -9,8 +9,9 @@ import (
 
 // PassiveEffect 被动效果
 type PassiveEffect struct {
-	Type string `json:"type"` // buff, debuff, special, skill
-	Text string `json:"text"`
+	Type     string `json:"type"` // buff, debuff, special, skill, combat_buff, combat_modifier
+	Text     string `json:"text"`
+	Modifier int    `json:"modifier,omitempty"` // 战斗修改值 (正数增加，负数减少)
 }
 
 // Card 事件卡牌（完整定义）

@@ -112,7 +112,7 @@ func (g *GameManager) StartCombat(roomID, attackerID, defenderID, attribute stri
 }
 
 // ResolveCombat 战斗结算 - 山屋惊魂规则
-// 规则：双方各投与属性值相等数量的骰子，比较骰子之和，输家受到差值伤害
+// 规则：双方各将与属性值相等数量的骰子，比较骰子之和，输家受到差值伤害
 func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -152,23 +152,52 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 	attackerRolls := g.RollDice(attackerDiceCount)
 	defenderRolls := g.RollDice(defenderDiceCount)
 
-	// 计算骰子之和
+	// ===== 战斗前钩子：允许技能/效果修改骰子点数 =====
+	// 这个接口在正式结算前被调用，允许技能、物品、状态效果等修改骰子
+	modifiedAttackerRolls, modifiedDefenderRolls := g.ModifyCombatRolls(
+		roomID,
+		combat.AttackerID,
+		combat.DefenderID,
+		attackerRolls,
+		defenderRolls,
+		combat.Attribute,
+	)
+
+	// 计算骰子之和（使用可能被修改过的骰子）
 	attackerSum := 0
-	for _, v := range attackerRolls {
+	for _, v := range modifiedAttackerRolls {
 		attackerSum += v
 	}
 	defenderSum := 0
-	for _, v := range defenderRolls {
+	for _, v := range modifiedDefenderRolls {
 		defenderSum += v
 	}
 
-	// 记录骰子结果
-	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-		ID:        generateLogID(),
-		Timestamp: time.Now().UnixMilli(),
-		Text:      fmt.Sprintf("骰子结果: %s = %v(%d), %s = %v(%d)", attacker.Character.Name, attackerRolls, attackerSum, defender.Character.Name, defenderRolls, defenderSum),
-		Type:      "info",
-	})
+	// 记录骰子结果（区分原始和修改后的）
+	if !slicesEqual(attackerRolls, modifiedAttackerRolls) || !slicesEqual(defenderRolls, modifiedDefenderRolls) {
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("骰子被效果修改: %s = %v → %v(%d), %s = %v → %v(%d)",
+				attacker.Character.Name, attackerRolls, modifiedAttackerRolls, attackerSum,
+				defender.Character.Name, defenderRolls, modifiedDefenderRolls, defenderSum),
+			Type:      "info",
+		})
+	} else {
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("骰子结果: %s = %v(%d), %s = %v(%d)", attacker.Character.Name, modifiedAttackerRolls, attackerSum, defender.Character.Name, modifiedDefenderRolls, defenderSum),
+			Type:      "info",
+		})
+	}
+
+	// 同步战斗骰子结果到 LastRollResult
+	g.SetLastRollResult(roomID, attackerSum+defenderSum)
+
+	// 更新战斗状态的骰子记录（使用修改后的结果）
+	combat.AttackerRolls = modifiedAttackerRolls
+	combat.DefenderRolls = modifiedDefenderRolls
 
 	// 同步战斗骰子结果到 LastRollResult
 	g.SetLastRollResult(roomID, attackerSum+defenderSum)
@@ -284,4 +313,164 @@ func (g *GameManager) GetCombatState(roomID string) (*CombatState, error) {
 	}
 
 	return state.FullState.ActiveCombat, nil
+}
+
+// ===== 战斗前钩子：骰子修改接口 =====
+// 这个函数在战斗结算前被调用，允许技能/效果修改骰子点数
+// 游戏设计师可以通过注册效果来修改骰子行为
+
+// ModifyCombatRolls 战斗前骰子修改钩子
+// 参数:
+//   - roomID: 房间ID
+//   - attackerID: 攻击方玩家ID
+//   - defenderID: 防御方玩家ID
+//   - attackerRolls: 攻击方原始骰子点数
+//   - defenderRolls: 防御方原始骰子点数
+//   - attribute: 战斗属性 (might/speed)
+// 返回: (修改后的攻击方骰子, 修改后的防御方骰子)
+func (g *GameManager) ModifyCombatRolls(
+	roomID, attackerID, defenderID string,
+	attackerRolls, defenderRolls []int,
+	attribute string,
+) ([]int, []int) {
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return attackerRolls, defenderRolls
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return attackerRolls, defenderRolls
+	}
+
+	// 深拷贝以避免修改原始数据
+	modifiedAttackerRolls := make([]int, len(attackerRolls))
+	copy(modifiedAttackerRolls, attackerRolls)
+	modifiedDefenderRolls := make([]int, len(defenderRolls))
+	copy(modifiedDefenderRolls, defenderRolls)
+
+	attacker, hasAttacker := state.FullState.Players[attackerID]
+	defender, hasDefender := state.FullState.Players[defenderID]
+
+	// ===== 应用攻击方效果 =====
+	if hasAttacker {
+		modifiedDefenderRolls = g.applyCombatModifiersToRolls(attacker, modifiedDefenderRolls, attribute, "defender")
+	}
+
+	// ===== 应用防御方效果 =====
+	if hasDefender {
+		modifiedAttackerRolls = g.applyCombatModifiersToRolls(defender, modifiedAttackerRolls, attribute, "attacker")
+	}
+
+	// ===== 应用攻击方对自身骰子的效果 =====
+	if hasAttacker {
+		modifiedAttackerRolls = g.applySelfCombatModifiers(attacker, modifiedAttackerRolls, attribute)
+	}
+
+	// ===== 应用防御方对自身骰子的效果 =====
+	if hasDefender {
+		modifiedDefenderRolls = g.applySelfCombatModifiers(defender, modifiedDefenderRolls, attribute)
+	}
+
+	return modifiedAttackerRolls, modifiedDefenderRolls
+}
+
+// applyCombatModifiersToRolls 应用对对手骰子的修改效果
+// 例如：某些物品效果可以降低对手的骰子点数
+func (g *GameManager) applyCombatModifiersToRolls(
+	player *GamePlayer,
+	rolls []int, attribute string, target string,
+) []int {
+	modifiedRolls := make([]int, len(rolls))
+	copy(modifiedRolls, rolls)
+
+	// 检查玩家持有的物品被动效果 (combat_modifier 类型)
+	for _, item := range player.Items {
+		if len(item.PassiveEffects) > 0 {
+			for _, effect := range item.PassiveEffects {
+				if effect.Type == "combat_modifier" && effect.Modifier != 0 {
+					// 对对手骰子的修改
+					for i := range modifiedRolls {
+						modifiedRolls[i] += effect.Modifier
+						// 确保骰子点数在有效范围内 [0, 2]
+						if modifiedRolls[i] < 0 {
+							modifiedRolls[i] = 0
+						}
+						if modifiedRolls[i] > 2 {
+							modifiedRolls[i] = 2
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return modifiedRolls
+}
+
+// applySelfCombatModifiers 应用对自身骰子的修改效果
+// 例如：祝福状态可以增加自己的骰子点数
+func (g *GameManager) applySelfCombatModifiers(
+	player *GamePlayer,
+	rolls []int, attribute string,
+) []int {
+	modifiedRolls := make([]int, len(rolls))
+	copy(modifiedRolls, rolls)
+
+	// 检查状态效果
+	for _, statusEffect := range player.StatusEffects {
+		switch statusEffect.Type {
+		case "BLESSED":
+			// 祝福：所有骰子 +1
+			for i := range modifiedRolls {
+				modifiedRolls[i] += 1
+				if modifiedRolls[i] > 2 {
+					modifiedRolls[i] = 2
+				}
+			}
+		case "CURSED":
+			// 诅咒：所有骰子 -1
+			for i := range modifiedRolls {
+				modifiedRolls[i] -= 1
+				if modifiedRolls[i] < 0 {
+					modifiedRolls[i] = 0
+				}
+			}
+		}
+	}
+
+	// 检查物品被动效果 - 自身战斗加成
+	for _, item := range player.Items {
+		if len(item.PassiveEffects) > 0 {
+			for _, effect := range item.PassiveEffects {
+				if effect.Type == "combat_buff" && effect.Modifier != 0 {
+					// 战斗加成效果
+					for i := range modifiedRolls {
+						modifiedRolls[i] += effect.Modifier
+						if modifiedRolls[i] > 2 {
+							modifiedRolls[i] = 2
+						}
+						if modifiedRolls[i] < 0 {
+							modifiedRolls[i] = 0
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return modifiedRolls
+}
+
+// slicesEqual 判断两个整数切片是否相等
+func slicesEqual(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
