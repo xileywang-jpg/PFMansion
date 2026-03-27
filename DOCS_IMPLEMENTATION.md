@@ -172,7 +172,6 @@ export type TurnPhase =
 │ 可执行操作：                                                 │
 │ - movePlayer(direction) - 移动到相邻房间                      │
 │ - placeTile(direction, rotation) - 放置新房间                │
-│ - pickupItem(itemId) - 拾取地面物品                          │
 │ - interactWithWall(direction) - 与墙壁互动                   │
 │                                                              │
 │ 移动消耗体力，每移动/放置一次 MovesRemaining--                 │
@@ -204,16 +203,17 @@ export type TurnPhase =
 │   3. 执行选项效果                                            │
 │   4. 清除 PendingAction                                      │
 │                                                              │
-│ Case: ITEM (物品)                                            │
-│   1. 从 ITEM 牌堆抽取一张                                    │
-│   2. 放到地面 DroppedItems                                   │
-│   3. 玩家可选择 pickupItem                                   │
+│ Case: ITEM (物品) - 自动获得                                 │
+│   1. 从 ITEM 牌堆抽取一张                                   │
+│   2. 物品直接给予玩家（无需拾取）                            │
+│   3. 除非效果特殊说明，否则默认自动获得                       │
 │                                                              │
-│ Case: OMEN (预兆)                                            │
-│   1. 从 OMEN 牌堆抽取一张                                    │
-│   2. 放到地面 DroppedItems                                   │
-│   3. 玩家拾取时 OmenCount++                                  │
-│   4. 如果 OmenCount >= 6 → 进入 HAUNT_ROLL                   │
+│ Case: OMEN (预兆) - 揭示时检定                               │
+│   1. 从 OMEN 牌堆抽取一张                                   │
+│   2. OmenCount++                                            │
+│   3. 立即进行作祟检定（6骰子）                               │
+│   4. 检定成功: 玩家获得预兆卡，继续回合                       │
+│   5. 检定失败: 叛徒获得预兆卡，进入 HAUNT_REVEAL             │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
