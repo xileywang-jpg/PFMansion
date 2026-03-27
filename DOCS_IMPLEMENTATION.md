@@ -1009,3 +1009,21 @@ type PendingAction struct {
   - 输家受到 (胜者和 - 输家和) 点伤害
   - 平局则无人受伤
 ```
+
+### 战斗前骰子修改钩子
+```
+战斗系统在骰子结算前预留了钩子接口，允许技能/效果修改骰子点数
+
+修改流程:
+  投骰子 → ModifyCombatRolls (钩子) → 结算
+
+支持的效果类型:
+  - combat_modifier: 修改对手骰子 (通过物品被动效果)
+  - combat_buff: 修改自身骰子 (通过物品被动效果)
+  - BLESSED: 祝福状态，自身骰子+1
+  - CURSED: 诅咒状态，自身骰子-1
+
+效果格式示例:
+  { type: "combat_modifier", modifier: -1 }  // 降低对手1点
+  { type: "combat_buff", modifier: 1 }       // 增加自身1点
+```
