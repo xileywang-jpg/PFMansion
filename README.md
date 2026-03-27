@@ -56,6 +56,7 @@ PFMansion/
 
 | 文档 | 说明 |
 |------|------|
+| [实现文档](DOCS_IMPLEMENTATION.md) | 游戏阶段模型、流程、操作序列 |
 | [架构设计](DOCS_ARCHITECTURE.md) | 技术架构 |
 | [部署指南](DOCS_DEPLOYMENT.md) | 部署与配置 |
 | [测试指南](DOCS_TESTING.md) | 测试用例 |
