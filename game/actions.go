@@ -190,17 +190,46 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 				g.addLog(roomID, "物品牌堆已空！", "alert")
 			}
 		case "OMEN":
-			// 从厄运牌堆抽取顶部卡牌，放到当前地块供玩家拾取
-			// OmenCount 在玩家实际捡起厄运卡时才更新
+			// 从厄运牌堆抽取顶部预兆卡
+			// 山屋惊魂规则：每次揭示预兆时立即进行作祟检定
 			omenDeck := state.FullState.Decks["OMEN"]
 			if len(omenDeck) > 0 {
 				card := omenDeck[0]
 				state.FullState.Decks["OMEN"] = omenDeck[1:]
-				if tile, ok := state.FullState.Map[posKey]; ok {
-					tile.DroppedItems = append(tile.DroppedItems, card)
-				}
 				state.FullState.ActiveCard = &card
-				g.addLog(roomID, fmt.Sprintf("%s 发现了预兆：%s！大厦变得更加躁动不安...", player.Character.Name, card.Name), "alert")
+
+				// 增加预兆计数
+				state.FullState.OmenCount++
+				state.FullState.LastTriggeredOmen = card.ID
+
+				g.addLog(roomID, fmt.Sprintf("%s 发现了预兆：%s！", player.Character.Name, card.Name), "alert")
+				g.addLog(roomID, fmt.Sprintf("预兆计数：%d。进行作祟检定...", state.FullState.OmenCount), "alert")
+
+				// ===== 山屋惊魂核心机制：立即进行作祟检定 =====
+				// 6 骰子检定：sum < OmenCount 则触发作祟
+				results := g.RollDice(6)
+				sum := 0
+				for _, v := range results {
+					sum += v
+				}
+				state.FullState.LastRollResult = &sum
+
+				g.addLog(roomID, fmt.Sprintf("作祟检定: %v = %d vs %d", results, sum, state.FullState.OmenCount), "alert")
+
+				if sum < state.FullState.OmenCount {
+					// 作祟爆发！进入作祟揭晓阶段
+					g.addLog(roomID, "作祟爆发！大厦的阴暗面显露无疑...", "alert")
+					state.FullState.Phase = GamePhaseHauntReveal
+					// 触发作祟（分配叛徒、确定剧本）
+					return g.triggerHauntRoom(room, &card)
+				} else {
+					// 暂时安全，玩家获得预兆卡
+					g.addLog(roomID, fmt.Sprintf("作祟检定通过（%d >= %d），暂时安全。", sum, state.FullState.OmenCount), "info")
+					// 预兆卡直接给予玩家
+					player.Items = append(player.Items, card)
+					g.addLog(roomID, fmt.Sprintf("%s 获得了预兆：%s", player.Character.Name, card.Name), "success")
+					// 检定通过，不需要切换阶段或切换玩家，继续当前回合
+				}
 			} else {
 				g.addLog(roomID, "厄运牌堆已空！", "alert")
 			}
@@ -691,24 +720,12 @@ func (g *GameManager) PickupItem(roomID, playerID, itemID string) error {
 		Type:      "success",
 	})
 
-	// 若是厄运卡，拾取时才递增预兆计数并检查作祟触发
+	// 若是厄运卡，说明是从地面拾取（旧版流程遗留）
+	// 新版流程中，预兆卡在 TriggerRoomEvent 中已直接给玩家，不会放到地面
+	// 此处仅作为防御性处理
 	if item.Type == "OMEN" {
-		state.FullState.OmenCount++
-		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-			ID:        generateLogID(),
-			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("预兆计数：%d。大厦变得更加躁动不安...", state.FullState.OmenCount),
-			Type:      "alert",
-		})
-		if state.FullState.OmenCount >= 6 && !state.FullState.IsHauntActive {
-			state.FullState.Phase = GamePhaseHauntRoll
-			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-				ID:        generateLogID(),
-				Timestamp: time.Now().UnixMilli(),
-				Text:      "厄运积累到极限！作祟即将爆发！",
-				Type:      "alert",
-			})
-		}
+		// 预兆已被玩家获得（OmenCount 在揭示时已增加）
+		g.addLog(roomID, fmt.Sprintf("%s 获得了预兆：%s", player.Character.Name, item.Name), "success")
 	}
 
 	return nil

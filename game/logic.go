@@ -274,8 +274,19 @@ func (g *GameManager) processHauntRoll(room *Room) error {
 	}
 }
 
-// triggerHaunt 触发作祟
+// triggerHaunt 触发作祟（内部使用，不处理预兆卡）
 func (g *GameManager) triggerHaunt(room *Room) error {
+	return g.triggerHauntWithOmen(room, nil)
+}
+
+// triggerHauntRoom 触发作祟（由预兆揭示触发，包含预兆卡）
+func (g *GameManager) triggerHauntRoom(room *Room, omenCard *Card) error {
+	return g.triggerHauntWithOmen(room, omenCard)
+}
+
+// triggerHauntWithOmen 触发作祟（通用版本）
+// omenCard: 如果不为 nil，表示由预兆揭示触发，叛徒将获得该预兆卡
+func (g *GameManager) triggerHauntWithOmen(room *Room, omenCard *Card) error {
 	state := room.GameState
 	if state == nil || state.FullState == nil {
 		return errors.New("游戏未开始")
@@ -286,15 +297,23 @@ func (g *GameManager) triggerHaunt(room *Room) error {
 	if theme == "" {
 		theme = "original"
 	}
-	
+
 	// 根据主题获取剧本矩阵
 	themeHauntMatrix := GetHauntMatrix(theme)
 
-	// 确定剧本
-	tileID := state.FullState.LastTriggeredTile
-	scenarioID := themeHauntMatrix[tileID]
+	// 确定剧本（优先使用预兆卡ID，否则使用触发房间）
+	var scenarioID string
+	if omenCard != nil {
+		// 使用预兆卡ID确定剧本（如果矩阵中有对应条目）
+		scenarioID = themeHauntMatrix[omenCard.ID]
+	}
 	if scenarioID == "" {
-		scenarioID = themeHauntMatrix["default"]
+		// 回退到使用触发房间的 tile ID
+		tileID := state.FullState.LastTriggeredTile
+		scenarioID = themeHauntMatrix[tileID]
+		if scenarioID == "" {
+			scenarioID = themeHauntMatrix["default"]
+		}
 	}
 
 	scenario := Scenarios[scenarioID]
@@ -317,18 +336,20 @@ func (g *GameManager) triggerHaunt(room *Room) error {
 					Max:     attrVal.Max,
 				}
 			}
+			// 如果是由预兆触发的作祟，叛徒获得预兆卡
+			if omenCard != nil {
+				player.Items = append(player.Items, *omenCard)
+			}
 		} else {
 			player.Team = "HERO"
 		}
 	}
-	
+
 	// Phase 3: 初始化目标系统
 	state.FullState.TraitorID = traitorID
 	state.FullState.TurnsSinceHaunt = 0
 	state.FullState.GameWinner = ""
 	g.initializeObjectivesInternal(state.FullState)
-
-	state.FullState.TraitorID = traitorID
 
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 		ID:        generateLogID(),
@@ -350,6 +371,14 @@ func (g *GameManager) triggerHaunt(room *Room) error {
 		Text:      fmt.Sprintf("叛徒已经产生：%s。英雄们，团结起来！", traitor.Character.Name),
 		Type:      "alert",
 	})
+	if omenCard != nil {
+		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+			ID:        generateLogID(),
+			Timestamp: time.Now().UnixMilli(),
+			Text:      fmt.Sprintf("%s 获得了预兆：%s", traitor.Character.Name, omenCard.Name),
+			Type:      "alert",
+		})
+	}
 
 	// 进入作祟阶段
 	state.FullState.Phase = GamePhaseHaunt
