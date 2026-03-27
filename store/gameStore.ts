@@ -510,6 +510,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   initializeGame: () => {
+    // P0 修复: 网络模式下游戏由后端初始化，前端不应执行本地初始化
+    if (network.isInNetworkMode()) {
+      console.warn('[initializeGame] 网络模式下游戏由服务器初始化，忽略前端初始化');
+      return;
+    }
+
     // 根据主题动态获取起始Tile
     const startingTile = getStartingTileForGame();
     

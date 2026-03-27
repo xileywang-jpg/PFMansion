@@ -158,30 +158,34 @@ func (g *GameManager) nextTurnInternal(room *Room) error {
 			}
 
 			// ===== 回合开始处理：下一玩家状态效果 =====
-			if len(player.StatusEffects) > 0 {
-				removedEffects := g.ProcessStatusEffectsOnTurnStart(player)
-				if len(removedEffects) > 0 {
-					state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-						ID:        generateLogID(),
-						Timestamp: time.Now().UnixMilli(),
-						Text:      fmt.Sprintf("%s 的状态效果结束: %v", player.Character.Name, removedEffects),
-						Type:      "info",
-					})
+			// 处理回合开始时的状态效果
+			removedEffects := g.ProcessStatusEffectsOnTurnStart(player)
+			if len(removedEffects) > 0 {
+				state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+					ID:        generateLogID(),
+					Timestamp: time.Now().UnixMilli(),
+					Text:      fmt.Sprintf("%s 的状态效果结束: %v", player.Character.Name, removedEffects),
+					Type:      "info",
+				})
+			}
+
+			// 检查石化状态 - 无法行动，跳过该玩家
+			isPetrified := false
+			for _, effect := range player.StatusEffects {
+				if effect.Type == "PETRIFIED" {
+					isPetrified = true
+					break
 				}
-				
-				// 检查石化状态 - 无法行动
-				for _, effect := range player.StatusEffects {
-					if effect.Type == "PETRIFIED" {
-						state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-							ID:        generateLogID(),
-							Timestamp: time.Now().UnixMilli(),
-							Text:      fmt.Sprintf("%s 处于石化状态，无法行动！", player.Character.Name),
-							Type:      "alert",
-						})
-						// 石化状态：跳过该玩家，继续找下一个
-						continue
-					}
-				}
+			}
+			if isPetrified {
+				state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+					ID:        generateLogID(),
+					Timestamp: time.Now().UnixMilli(),
+					Text:      fmt.Sprintf("%s 处于石化状态，无法行动！", player.Character.Name),
+					Type:      "alert",
+				})
+				attempts++
+				continue // 跳过这个玩家，继续找下一个
 			}
 
 			// Phase 3: 作祟阶段增加回合计数

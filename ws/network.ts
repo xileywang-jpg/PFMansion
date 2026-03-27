@@ -187,14 +187,9 @@ function handleStateSync(msg: ServerMessage) {
   // 我们应该保留本地的 lastRollResult
   const lastRollResult = state.lastRollResult !== undefined ? state.lastRollResult : store.lastRollResult;
   
-  // ========== Bug Fix: 合并 logs ==========
-  const currentLogs = store.logs || [];
-  const newLogs = state.logs || [];
-  const existingLogIds = new Set(newLogs.map((l: any) => l.id));
-  const mergedLogs = [
-    ...newLogs,
-    ...currentLogs.filter((l: any) => !existingLogIds.has(l.id))
-  ];
+  // ========== Bug Fix: 直接使用后端日志，避免本地日志无限增长 ==========
+  // 后端发送完整日志列表，前端直接使用，不做本地合并
+  const mergedLogs = state.logs || [];
   
   // 完整的状态映射
   store.setState({

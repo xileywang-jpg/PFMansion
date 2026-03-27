@@ -199,13 +199,6 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 	combat.AttackerRolls = modifiedAttackerRolls
 	combat.DefenderRolls = modifiedDefenderRolls
 
-	// 同步战斗骰子结果到 LastRollResult
-	g.SetLastRollResult(roomID, attackerSum+defenderSum)
-
-	// 更新战斗状态的骰子记录
-	combat.AttackerRolls = attackerRolls
-	combat.DefenderRolls = defenderRolls
-
 	result := &CombatResult{
 		AttackerRolls: attackerRolls,
 		AttackerSum:   attackerSum,
@@ -239,6 +232,17 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 			if damageAttr.Current < damageAttr.Floor {
 				damageAttr.Current = damageAttr.Floor
 			}
+			// 同步 Index
+			for i, v := range damageAttr.Values {
+				if v == damageAttr.Current {
+					damageAttr.Index = i
+					break
+				}
+			}
+			// 写回 map（Go map 取出的 struct 是拷贝，需要显式写回）
+			attacker.Character.Attributes[combat.Attribute] = damageAttr
+			state.FullState.Players[combat.AttackerID] = attacker
+
 			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 				ID:        generateLogID(),
 				Timestamp: time.Now().UnixMilli(),
@@ -270,6 +274,17 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 			if damageAttr.Current < damageAttr.Floor {
 				damageAttr.Current = damageAttr.Floor
 			}
+			// 同步 Index
+			for i, v := range damageAttr.Values {
+				if v == damageAttr.Current {
+					damageAttr.Index = i
+					break
+				}
+			}
+			// 写回 map
+			defender.Character.Attributes[combat.Attribute] = damageAttr
+			state.FullState.Players[combat.DefenderID] = defender
+
 			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 				ID:        generateLogID(),
 				Timestamp: time.Now().UnixMilli(),
