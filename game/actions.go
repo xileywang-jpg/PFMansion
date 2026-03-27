@@ -173,19 +173,19 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 
 	// 2. 检查 CardSymbol - 根据类型从对应牌堆抽牌
 	if tileDef.CardSymbol != "" && tileDef.CardSymbol != "NONE" {
-		posKey := fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)
 		switch tileDef.CardSymbol {
 		case "ITEM":
-			// 从物品牌堆抽取顶部卡牌，放到当前地块供玩家拾取
+			// 从物品牌堆抽取顶部物品卡
+			// 默认自动给予玩家（除非效果特殊说明掉落）
 			itemDeck := state.FullState.Decks["ITEM"]
 			if len(itemDeck) > 0 {
 				card := itemDeck[0]
 				state.FullState.Decks["ITEM"] = itemDeck[1:]
-				if tile, ok := state.FullState.Map[posKey]; ok {
-					tile.DroppedItems = append(tile.DroppedItems, card)
-				}
 				state.FullState.ActiveCard = &card
+				// 物品默认自动给予玩家
+				player.Items = append(player.Items, card)
 				g.addLog(roomID, fmt.Sprintf("%s 发现了物品：%s！", player.Character.Name, card.Name), "success")
+				g.addLog(roomID, fmt.Sprintf("%s 获得了物品：%s", player.Character.Name, card.Name), "success")
 			} else {
 				g.addLog(roomID, "物品牌堆已空！", "alert")
 			}
