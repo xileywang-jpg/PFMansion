@@ -193,31 +193,41 @@ type GameAction =
 
 ### 5.2 主题数据格式
 
-#### 数据格式规范
-所有主题数据（characters, tiles, items, events, omens）统一使用**数组格式**：
-
-```typescript
-// ✅ 正确格式
-export const ITEMS_DATA = [
-  { id: "item_1", name: "物品1", ... },
-  { id: "item_2", name: "物品2", ... },
-];
-
-// ❌ 错误格式（会导致牌组为空）
-export const ITEMS_DATA = {
-  "item_1": { name: "物品1", ... },
-  "item_2": { name: "物品2", ... },
-};
+#### 数据文件结构
+```
+data/source/
+├── index.ts              # 统一入口
+├── original/            # 原版主题
+│   └── [category]/original.ts
+└── volantis/           # 翁法罗斯主题
+    └── [category]/original.ts
 ```
 
-#### 数据文件位置
-| 主题 | Characters | Tiles | Items | Events | Omens |
-|------|------------|-------|-------|--------|-------|
-| 原版 | ✅ 数组 | ✅ 数组 | ✅ 对象 | ✅ 对象 | ✅ 对象 |
-| 翁法罗斯 | ✅ 数组 | ✅ 数组 | ✅ 数组 | ✅ 数组 | ✅ 数组 |
+#### 数据格式规范
+
+| 类型 | 原版主题 | 翁法罗斯主题 |
+|------|----------|--------------|
+| Characters | 数组 | 数组 |
+| Tiles | 数组 | 数组 |
+| Items | **对象** (key-value) | **数组** |
+| Events | **对象** (key-value) | **数组** |
+| Omens | **对象** (key-value) | **数组** |
+
+```typescript
+// 原版 - 对象格式
+export const ITEMS_DATA = {
+  "item_revolver": { id: "item_revolver", name: "左轮手枪", ... }
+};
+
+// 翁法罗斯 - 数组格式
+export const ITEMS_DATA = [
+  { id: "vol_weapon_spear_athena", name: "雅典娜的长矛", ... }
+];
+```
 
 #### 修改记录
 - **2026-03-15**: 翁法罗斯主题的 items/events/omens 从对象转换为数组格式
+- **2026-03-27**: 文档更新，澄清原版使用对象格式
 
 ---
 
