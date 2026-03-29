@@ -128,15 +128,29 @@ class WebSocketClient implements WSClient {
   }
 
   send(message: object) {
+    // ===== DEBUG: 发送消息打日志 =====
+    const msgType = (message as any).type || 'unknown';
+    const actionType = (message as any).action?.actionType || (message as any).actionType || 'none';
+    logger.debug('>>> WS_SEND', {
+      msgType,
+      actionType,
+      roomId: this.roomId,
+      playerId: this.playerId,
+      payload: message
+    });
+    console.log(`📤 [WS SEND] type=${msgType} actionType=${actionType}`, message);
+    
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
         this.ws.send(JSON.stringify(message));
       } catch (e) {
         console.error('发送消息失败:', e);
+        logger.error('WS发送失败', { error: String(e) });
         this.handleMessage({ type: 'error', message: '发送消息失败，请重新连接' });
       }
     } else {
       console.warn('WebSocket 未连接，无法发送消息');
+      logger.warn('WS未连接无法发送', { msgType, actionType });
       // 提示用户重新连接
       this.handleMessage({ type: 'error', message: '未连接到服务器，请刷新页面' });
     }
@@ -181,7 +195,16 @@ class WebSocketClient implements WSClient {
   }
 
   private handleMessage(msg: ServerMessage) {
-    console.log('📨 收到消息:', msg.type, JSON.stringify(msg).substring(0, 200));
+    // ===== DEBUG: 接收消息打日志 =====
+    const msgStr = JSON.stringify(msg);
+    logger.debug('<<< WS_RECV', {
+      msgType: msg.type,
+      roomId: this.roomId,
+      playerId: this.playerId,
+      payload: msg,
+      payloadPreview: msgStr.substring(0, 300)
+    });
+    console.log('📨 [WS RECV]', msg.type, msgStr.substring(0, 200));
 
     // 预先处理一些消息
     switch (msg.type) {

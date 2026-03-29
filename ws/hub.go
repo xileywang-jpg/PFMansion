@@ -469,6 +469,13 @@ func (h *Hub) handleStartGame(msg *Message) {
 }
 
 func (h *Hub) handleGameAction(msg *Message) {
+	// ===== DEBUG: 收到游戏动作 =====
+	logger.Debug("收到game_action", map[string]interface{}{
+		"playerId": msg.client.playerID,
+		"roomID":   msg.client.roomID,
+		"data":     string(msg.data),
+	})
+
 	var req struct {
 		Type   string                 `json:"type"`
 		RoomId string                 `json:"roomId,omitempty"`
@@ -476,6 +483,7 @@ func (h *Hub) handleGameAction(msg *Message) {
 	}
 
 	if err := json.Unmarshal(msg.data, &req); err != nil {
+		logger.Warn("解析game_action失败", map[string]interface{}{"error": err.Error()})
 		return
 	}
 
@@ -486,15 +494,25 @@ func (h *Hub) handleGameAction(msg *Message) {
 	}
 
 	actionType, _ := req.Action["actionType"].(string)
+	logger.Debug("处理game_action", map[string]interface{}{
+		"actionType": actionType,
+		"roomID":     roomID,
+		"playerID":   msg.client.playerID,
+		"fullAction": req.Action,
+	})
+
 	var err error
 
 	switch actionType {
 	case "move":
 		dir, _ := req.Action["direction"].(string)
+		logger.Debug("执行ProcessMove", map[string]interface{}{"direction": dir})
 		err = h.gameManager.ProcessMove(roomID, msg.client.playerID, dir)
 	case "end_turn":
+		logger.Debug("执行EndTurn", nil)
 		err = h.gameManager.EndTurn(roomID, msg.client.playerID)
 	case "cancel_tile_placement":
+		logger.Debug("执行CancelTilePlacement", nil)
 		err = h.gameManager.CancelTilePlacement(roomID, msg.client.playerID)
 	// ===== 作祟系统 =====
 	case "perform_haunt_roll":
@@ -707,14 +725,31 @@ func (h *Hub) handleGameAction(msg *Message) {
 	// ===== Phase 2: 物品与互动操作 =====
 	case "pickup_item":
 		itemID, _ := req.Action["itemId"].(string)
+		logger.Debug("执行PickupItem", map[string]interface{}{
+			"itemId":   itemID,
+			"playerId": msg.client.playerID,
+			"roomId":   roomID,
+		})
 		if itemID == "" {
 			err = errors.New("未指定物品ID")
 		} else {
 			err = h.gameManager.PickupItem(roomID, msg.client.playerID, itemID)
 		}
+		if err != nil {
+			logger.Warn("PickupItem失败", map[string]interface{}{
+				"error":    err.Error(),
+				"itemId":   itemID,
+				"playerId": msg.client.playerID,
+			})
+		}
 	case "give_item":
 		targetID, _ := req.Action["targetId"].(string)
 		itemID, _ := req.Action["itemId"].(string)
+		logger.Debug("执行GiveItem", map[string]interface{}{
+			"itemId":   itemID,
+			"targetId": targetID,
+			"playerId": msg.client.playerID,
+		})
 		if targetID == "" || itemID == "" {
 			err = errors.New("未指定目标或物品")
 		} else {
@@ -722,6 +757,10 @@ func (h *Hub) handleGameAction(msg *Message) {
 		}
 	case "drop_item":
 		itemID, _ := req.Action["itemId"].(string)
+		logger.Debug("执行DropItem", map[string]interface{}{
+			"itemId":   itemID,
+			"playerId": msg.client.playerID,
+		})
 		if itemID == "" {
 			err = errors.New("未指定物品ID")
 		} else {
@@ -776,6 +815,11 @@ func (h *Hub) handleGameAction(msg *Message) {
 	}
 
 	if err != nil {
+		logger.Warn("game_action执行失败", map[string]interface{}{
+			"actionType": actionType,
+			"error":      err.Error(),
+			"playerId":   msg.client.playerID,
+		})
 		resp := map[string]interface{}{
 			"type":    "error",
 			"message": err.Error(),
@@ -786,6 +830,10 @@ func (h *Hub) handleGameAction(msg *Message) {
 	}
 
 	// 广播更新后的游戏状态
+	logger.Debug("action执行成功，准备发送state_sync", map[string]interface{}{
+		"actionType": actionType,
+		"roomId":     roomID,
+	})
 	h.sendGameState(roomID)
 }
 

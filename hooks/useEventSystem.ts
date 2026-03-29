@@ -5,6 +5,7 @@ import { EventCard, ActiveRoll, Item, GamePhase } from '../types';
 import { generateId } from '../utils/idGenerator';
 import { applyPassiveEffects } from '../utils/passiveEffectParser';
 import { sendPickupItem } from '../ws/network';
+import { logger } from '../ws/logger';
 
 export const useEventSystem = () => {
   const { 
@@ -79,6 +80,17 @@ export const useEventSystem = () => {
   }, [addLog, addPersonalLog, executeScript, players, activePlayerId, map, setState]);
 
   const resolveItemPickup = useCallback((item: Item) => {
+    // ===== DEBUG: 物品拾取打日志 =====
+    logger.debug('resolveItemPickup 调用', {
+      itemId: item.id,
+      itemName: item.name,
+      itemType: item.type,
+      passiveEffects: item.passiveEffects,
+      activePlayerId,
+      playerName: players[activePlayerId]?.character?.name
+    });
+    console.log(`🎒 [resolveItemPickup] item=${item.name}(${item.id}) type=${item.type} activePlayer=${activePlayerId}`);
+    
     const player = players[activePlayerId];
     // 深拷贝玩家数据，避免修改原对象
     const newPlayers = JSON.parse(JSON.stringify(players)) as typeof players;
@@ -133,7 +145,10 @@ export const useEventSystem = () => {
 
     // Bug Fix: 发送网络请求通知后端物品拾取
     // 乐观更新已完成，后端同步确认
+    logger.debug('准备发送 sendPickupItem', { itemId: item.id });
+    console.log(`📤 [sendPickupItem] 即将发送 itemId=${item.id}`);
     sendPickupItem(item.id);
+    logger.debug('sendPickupItem 已调用', { itemId: item.id });
   }, [players, activePlayerId, map, addLog, addPersonalLog, incrementOmenCount, setState]);
 
   const initiateEventRoll = useCallback((event: EventCard) => {

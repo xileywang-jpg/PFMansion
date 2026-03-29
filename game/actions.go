@@ -181,11 +181,12 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 			if len(itemDeck) > 0 {
 				card := itemDeck[0]
 				state.FullState.Decks["ITEM"] = itemDeck[1:]
-				state.FullState.ActiveCard = &card
 				// 物品默认自动给予玩家
 				player.Items = append(player.Items, card)
 				g.addLog(roomID, fmt.Sprintf("%s 发现了物品：%s！", player.Character.Name, card.Name), "success")
 				g.addLog(roomID, fmt.Sprintf("%s 获得了物品：%s", player.Character.Name, card.Name), "success")
+				// 自动给予的物品不需要 ActiveCard，前端直接显示获得提示
+				state.FullState.ActiveCard = nil
 			} else {
 				g.addLog(roomID, "物品牌堆已空！", "alert")
 			}
@@ -220,6 +221,8 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 					// 作祟爆发！进入作祟揭晓阶段
 					g.addLog(roomID, "作祟爆发！大厦的阴暗面显露无疑...", "alert")
 					state.FullState.Phase = GamePhaseHauntReveal
+					// 预兆卡在作祟揭晓后由叛徒获得，此处先清除 ActiveCard
+					state.FullState.ActiveCard = nil
 					// 触发作祟（分配叛徒、确定剧本）
 					return g.triggerHauntRoom(room, &card)
 				} else {
@@ -228,6 +231,8 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 					// 预兆卡直接给予玩家
 					player.Items = append(player.Items, card)
 					g.addLog(roomID, fmt.Sprintf("%s 获得了预兆：%s", player.Character.Name, card.Name), "success")
+					// 检定通过，自动给予的预兆不需要 ActiveCard
+					state.FullState.ActiveCard = nil
 					// 检定通过，不需要切换阶段或切换玩家，继续当前回合
 				}
 			} else {
@@ -263,6 +268,11 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 							},
 						}
 					}
+				} else {
+					// 如果事件没有交互类型，自动给予玩家并清除 ActiveCard
+					player.Items = append(player.Items, card)
+					g.addLog(roomID, fmt.Sprintf("%s 获得了事件奖励：%s", player.Character.Name, card.Name), "success")
+					state.FullState.ActiveCard = nil
 				}
 			} else {
 				g.addLog(roomID, "事件牌堆已空！", "alert")

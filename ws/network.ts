@@ -864,8 +864,13 @@ export function sendForceHaunt() {
 // 捡起物品
 export function sendPickupItem(itemId: string) {
   const roomId = wsClient.getRoomId();
+  // ===== DEBUG: 发送拾取物品动作 =====
+  logger.debug('sendPickupItem', { itemId, roomId, isConnected: wsClient.isConnected() });
+  console.log(`📤 [sendPickupItem] itemId=${itemId} roomId=${roomId} connected=${wsClient.isConnected()}`);
+  
   if (!roomId) {
     console.error('房间未创建');
+    logger.error('sendPickupItem失败', { reason: '房间未创建' });
     return;
   }
   wsClient.send({
@@ -876,6 +881,7 @@ export function sendPickupItem(itemId: string) {
       itemId
     }
   });
+  logger.debug('sendPickupItem 消息已发送', { itemId, roomId });
 }
 
 // 给予物品

@@ -128,6 +128,13 @@ export function applyPassiveEffects(
     for (const effect of parsedEffects) {
       if (effect.type === 'MODIFY_STAT' && effect.attribute && effect.amount !== undefined) {
         const attrKey = effect.attribute;
+        
+        // 防御性检查：确保 player.character.attributes 存在且包含目标属性
+        if (!player.character?.attributes?.[attrKey]) {
+          console.warn(`[applyPassiveEffects] 属性 ${attrKey} 不存在，跳过效果应用`);
+          continue;
+        }
+        
         const oldValue = player.character.attributes[attrKey].current;
         const newValue = Math.max(0, oldValue + effect.amount); // 不低于0
         
