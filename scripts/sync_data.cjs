@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const BASE = '/root/.openclaw/workspace/PFMansion';
+const BASE = path.resolve(__dirname, '..');
 
 // ─── Comment stripper (string-aware) ────────────────────────────────────────────
 function stripComments(content) {
@@ -160,10 +160,17 @@ console.log(`  Found ${feTileIds.size} frontend tiles`);
 
 const mergedTiles = new Map(feTiles.map(t => [t.id, t]));
 let addedTiles = 0;
+let updatedTiles = 0;
 for (const bt of beTiles) {
-    if (!mergedTiles.has(bt.id)) { mergedTiles.set(bt.id, bt); addedTiles++; }
+    if (mergedTiles.has(bt.id)) {
+        updatedTiles++;
+    } else {
+        addedTiles++;
+    }
+    mergedTiles.set(bt.id, bt);
 }
 console.log(`\nAdding ${addedTiles} missing tiles`);
+console.log(`Updating ${updatedTiles} existing tiles from backend authority`);
 writeTsArray(tilesPath, Array.from(mergedTiles.values()));
 console.log(`✅ Wrote ${mergedTiles.size} tiles to frontend`);
 
@@ -183,4 +190,4 @@ console.log(`✅ Wrote ${Object.keys(mergedEvents).length} events to frontend`);
 
 console.log('\n' + '='.repeat(50));
 console.log('✅ Sync complete!');
-console.log('Now rebuild: cd /root/.openclaw/workspace/PFMansion && npm run build');
+console.log(`Now rebuild: cd ${BASE} && npm run build`);

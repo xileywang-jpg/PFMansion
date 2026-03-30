@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import * as network from '../ws/network';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,22 +6,29 @@ import { Swords, Heart, X, User, AlertTriangle } from 'lucide-react';
 import { PLAYER_COLORS } from '../constants';
 
 const CombatResolution: React.FC = () => {
-  const { activeCombat, players, playerIds, showFeedback } = useGameStore();
-  const [result, setResult] = useState<{draw: boolean, loser?: string, damage?: number, defenderRoll?: number, attackerRoll?: number} | null>(null);
+  const { activeCombat, combatResult, players, playerIds, showFeedback, dismissCombatResult } = useGameStore();
 
-  if (!activeCombat || activeCombat.phase !== 'RESOLUTION') return null;
+  if (!activeCombat && !combatResult) return null;
 
-  const attacker = players[activeCombat.attackerId];
-  const defender = players[activeCombat.defenderId];
-  
-  const attackerRoll = activeCombat.attackerRoll ?? 0;
-  const defenderRoll = activeCombat.defenderRoll ?? 0;
+  const attackerId = combatResult?.attackerId || activeCombat?.attackerId;
+  const defenderId = combatResult?.defenderId || activeCombat?.defenderId;
+  if (!attackerId || !defenderId) return null;
 
-  // 新规则：点数低的一方受伤，差值为伤害
-  const damage = Math.abs(attackerRoll - defenderRoll);
-  const isDraw = attackerRoll === defenderRoll;
-  const loser = attackerRoll < defenderRoll ? attacker.id : defender.id;
-  const winner = attackerRoll > defenderRoll ? attacker.id : defender.id;
+  const attacker = players[attackerId];
+  const defender = players[defenderId];
+  if (!attacker || !defender) return null;
+
+  const isResolutionView = !!combatResult;
+  const attackerRolls = combatResult?.attackerRolls || activeCombat?.attackerRolls || [];
+  const defenderRolls = combatResult?.defenderRolls || activeCombat?.defenderRolls || [];
+  const attackerSum = combatResult?.attackerSum ?? attackerRolls.reduce((sum, value) => sum + value, 0);
+  const defenderSum = combatResult?.defenderSum ?? defenderRolls.reduce((sum, value) => sum + value, 0);
+  const damage = combatResult?.damage ?? 0;
+  const isDraw = combatResult?.draw ?? false;
+  const loser = combatResult?.loser;
+  const winner = combatResult && !combatResult.draw
+    ? (combatResult.loser === attacker.id ? defender.id : attacker.id)
+    : null;
 
   const attackerColor = PLAYER_COLORS[playerIds.indexOf(attacker.id) % PLAYER_COLORS.length];
   const defenderColor = PLAYER_COLORS[playerIds.indexOf(defender.id) % PLAYER_COLORS.length];
@@ -32,6 +39,18 @@ const CombatResolution: React.FC = () => {
         return;
     }
     network.sendResolveCombat();
+  };
+
+  const handleCloseResult = () => {
+    dismissCombatResult();
+  };
+
+  const renderRolls = (rolls: number[]) => {
+    if (rolls.length === 0) {
+      return <div className="text-xs text-zinc-600 uppercase tracking-[0.2em]">等待服务器掷骰</div>;
+    }
+
+    return <div className="text-xs text-zinc-500">{rolls.join(' + ')}</div>;
   };
 
   return (
@@ -74,9 +93,10 @@ const CombatResolution: React.FC = () => {
                 <div className="text-center">
                   <div className="text-xs uppercase font-bold text-zinc-500 tracking-widest mb-1">{winner === attacker.id ? '胜者' : '攻击者'}</div>
                   <div className="text-lg font-serif-display text-white">{attacker.character.name}</div>
+                  {renderRolls(attackerRolls)}
                 </div>
                 <div className={`text-5xl font-bold font-serif-display ${winner === attacker.id ? 'text-green-400' : 'text-white'}`}>
-                  {attackerRoll}
+                  {attackerSum}
                 </div>
               </div>
 
@@ -96,16 +116,25 @@ const CombatResolution: React.FC = () => {
                 <div className="text-center">
                   <div className="text-xs uppercase font-bold text-zinc-500 tracking-widest mb-1">{winner === defender.id ? '胜者' : '防御者'}</div>
                   <div className="text-lg font-serif-display text-white">{defender.character.name}</div>
+                  {renderRolls(defenderRolls)}
                 </div>
                 <div className={`text-5xl font-bold font-serif-display ${winner === defender.id ? 'text-green-400' : 'text-white'}`}>
-                  {defenderRoll}
+                  {defenderSum}
                 </div>
               </div>
             </div>
 
             {/* 战斗结果 */}
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-8 text-center mb-8">
-              {isDraw ? (
+              {!isResolutionView ? (
+                <>
+                  <div className="text-sm uppercase tracking-[0.2em] text-indigo-400 font-bold mb-2">等待结算</div>
+                  <div className="text-4xl font-serif-display text-white mb-4">服务器将进行权威战斗检定</div>
+                  <div className="text-xs text-zinc-500 max-w-xs mx-auto italic">
+                    点击下方按钮后，由后端统一掷骰、计算修正、应用伤害并广播最终结果。
+                  </div>
+                </>
+              ) : isDraw ? (
                 <>
                   <div className="text-sm uppercase tracking-[0.2em] text-yellow-400 font-bold mb-2">平局</div>
                   <div className="text-4xl font-serif-display text-yellow-400 mb-4">势均力敌</div>
@@ -123,23 +152,32 @@ const CombatResolution: React.FC = () => {
                     {loser === attacker.id ? attacker.character.name : defender.character.name} 受伤
                   </div>
                   <div className="text-xs text-zinc-500 max-w-xs mx-auto">
-                    点数低的一方受到差值伤害。{loser === attacker.id ? attacker.character.name : defender.character.name} 骰出较低的 {Math.min(attackerRoll, defenderRoll)}，受到了 {damage} 点伤害！
+                    服务器已完成结算。{loser === attacker.id ? attacker.character.name : defender.character.name} 骰出较低总和 {Math.min(attackerSum, defenderSum)}，受到 {damage} 点伤害。
                   </div>
                 </>
               )}
             </div>
 
             {/* 结算按钮 */}
-            <button 
-              onClick={handleResolveCombat}
-              className="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-lg shadow-red-900/20"
-            >
-              <Heart size={18} /> 确认结算
-            </button>
+            {isResolutionView ? (
+              <button 
+                onClick={handleCloseResult}
+                className="w-full bg-zinc-100 hover:bg-white text-black py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-lg"
+              >
+                <X size={18} /> 关闭结果
+              </button>
+            ) : (
+              <button 
+                onClick={handleResolveCombat}
+                className="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-lg shadow-red-900/20"
+              >
+                <Heart size={18} /> 请求服务器结算
+              </button>
+            )}
           </div>
 
           <div className="p-4 bg-zinc-950/80 border-t border-zinc-900 text-[10px] text-zinc-600 text-center font-mono">
-             战斗结果将立即应用并结束当前回合。
+             {isResolutionView ? '战斗结果已由后端应用到游戏状态。' : '正式战斗结果以后端 combat_resolved 广播为准。'}
           </div>
         </motion.div>
       </motion.div>

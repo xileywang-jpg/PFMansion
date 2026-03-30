@@ -1,5 +1,5 @@
-// 本地单机游戏组件
-// 包含原有的所有游戏 UI
+// 游戏主界面组件
+// 负责在已加入房间后展示对局 UI 并恢复会话
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -24,17 +24,11 @@ import { Bug, Skull, LogOut } from 'lucide-react';
 
 const GameScreen: React.FC = () => {
   const navigate = useNavigate();
-  const { debugForceHaunt, isHauntActive, omenCount, initializeGame, players } = useGameStore();
+  const { debugForceHaunt, isHauntActive, omenCount } = useGameStore();
   const isNetworkMode = network.isInNetworkMode();
 
-  // 初始化游戏 - 完全由网络模式控制
-  // 网络模式: 等服务器发送 game_started + state_sync 后才有游戏状态
-  // 单机模式: 由单独的入口页面控制，这里不做自动初始化
+  // 进入对局页后恢复房间会话，并在连接可用时请求最新状态。
   React.useEffect(() => {
-    // 不再自动初始化单机游戏
-    // 网络模式由 handleGameStarted 消息触发状态同步
-    // 单机模式通过独立的单机入口进入
-    
     // 检查是否有保存的房间信息（从 NetworkScreens 跳转过来时保存的）
     const savedRoomId = sessionStorage.getItem('roomId');
     const savedPlayerId = sessionStorage.getItem('playerId');

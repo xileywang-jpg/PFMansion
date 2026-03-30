@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowLeftRight, Crosshair, Syringe, Gem, Skull, User } from 'lucide-react';
 import { Item } from '../types';
+import * as network from '../ws/network';
 
 interface TradeModalProps {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface TradeModalProps {
 }
 
 export const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose }) => {
-  const { players, activePlayerId, addLog, executeScript, playerIds } = useGameStore();
+  const { players, activePlayerId, addLog, playerIds, showFeedback } = useGameStore();
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [selectedMyItemIdx, setSelectedMyItemIdx] = useState<number | null>(null);
   const [selectedPartnerItemIdx, setSelectedPartnerItemIdx] = useState<number | null>(null);
@@ -47,15 +48,13 @@ export const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose }) => {
       return;
     }
 
-    executeScript([{
-      type: 'trade_items',
-      playerId1: activePlayerId,
-      itemId1: myItem.id,
-      playerId2: selectedPartnerId,
-      itemId2: partnerItem.id
-    }]);
+    if (!network.isInNetworkMode()) {
+      showFeedback('网络未连接，无法执行交易', 'error');
+      return;
+    }
 
-    addLog(`与 ${partnerPlayer?.character.name} 交换了物品`, 'success');
+    network.sendTradeItems(selectedPartnerId, myItem.id, partnerItem.id);
+    addLog(`正在与 ${partnerPlayer?.character.name} 交换物品...`, 'info');
     onClose();
   };
 

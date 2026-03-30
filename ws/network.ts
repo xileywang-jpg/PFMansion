@@ -2,10 +2,9 @@
 import { wsClient, ServerMessage } from './client';
 import { useGameStore } from '../store/gameStore';
 import { logger, trackAction } from './logger';
+import { EventCard } from '../types';
 
-// 注意：移除单机模式概念，所有游戏请求都发送到后端
-// 如果后端不可用，会有前端降级处理
-// 页面刷新后，从 sessionStorage 恢复房间信息
+// 游戏请求统一发送到后端；页面刷新后从 sessionStorage 恢复房间信息。
 let currentRoomId: string | null = sessionStorage.getItem('roomId');
 let currentPlayerId: string | null = sessionStorage.getItem('playerId');
 
@@ -23,6 +22,135 @@ export function clearDiceRollTimeout() {
   }
 }
 
+function mapPendingAction(rawPendingAction: any) {
+  if (!rawPendingAction) {
+    return null;
+  }
+
+  return {
+    type: rawPendingAction.type,
+    target: rawPendingAction.target,
+    data: rawPendingAction.data,
+    cardId: rawPendingAction.cardId || undefined,
+    message: rawPendingAction.message || undefined,
+  };
+}
+
+function buildPendingActionActiveRoll(pendingAction: any, players: Record<string, any>, existingActiveRoll: any) {
+  const pendingCheckType = pendingAction?.type;
+  const isServerDrivenCheck =
+    (pendingCheckType === 'TILE_ATTRIBUTE_CHECK' || pendingCheckType === 'ATTRIBUTE_CHECK') &&
+    pendingAction.target === currentPlayerId;
+
+  if (!isServerDrivenCheck) {
+    const isSyncedPendingRoll =
+      existingActiveRoll?.id?.startsWith('tile:') || existingActiveRoll?.id?.startsWith('check:');
+    return isSyncedPendingRoll ? null : existingActiveRoll;
+  }
+
+  const attributeName = String(pendingAction?.data?.attribute || '属性');
+  const rawDifficulty = pendingAction?.data?.difficulty;
+  const targetValue = typeof rawDifficulty === 'number' ? rawDifficulty : undefined;
+  const diceCount = players[pendingAction.target]?.character?.attributes?.[attributeName]?.current || 1;
+  if (
+    existingActiveRoll &&
+    existingActiveRoll.attributeName === attributeName &&
+    existingActiveRoll.targetValue === targetValue &&
+    existingActiveRoll.numberOfDice === diceCount
+  ) {
+    return existingActiveRoll;
+  }
+
+  const rollId = `${pendingCheckType === 'TILE_ATTRIBUTE_CHECK' ? 'tile' : 'check'}:${pendingAction.target}:${attributeName}:${targetValue ?? 'na'}`;
+  return {
+    id: rollId,
+    attributeName,
+    numberOfDice: diceCount,
+    targetValue,
+    onComplete: () => {},
+  };
+}
+
+function normalizeActiveEventCard(rawCard: any): EventCard | null {
+  if (!rawCard || rawCard.type !== 'EVENT') {
+    return null;
+  }
+
+  return rawCard as EventCard;
+}
+
+function mergePlayersWithLocalLogs(incomingPlayers: Record<string, any>, existingPlayers: Record<string, any>) {
+  const mergedPlayers = { ...incomingPlayers };
+
+  Object.keys(mergedPlayers).forEach(playerId => {
+    if (!mergedPlayers[playerId] || !existingPlayers[playerId]) {
+      return;
+    }
+
+    const existingLogIds = new Set((mergedPlayers[playerId].personalLogs || []).map((entry: any) => entry.id));
+    mergedPlayers[playerId] = {
+      ...mergedPlayers[playerId],
+      personalLogs: [
+        ...(mergedPlayers[playerId].personalLogs || []),
+        ...(existingPlayers[playerId].personalLogs || []).filter((entry: any) => !existingLogIds.has(entry.id)),
+      ],
+    };
+  });
+
+  return mergedPlayers;
+}
+
+function buildSyncedStatePatch(state: any, store: ReturnType<typeof useGameStore.getState>, options?: { resetCombatResult?: boolean }) {
+  const mergedPlayers = mergePlayersWithLocalLogs(state.players || {}, store.players || {});
+  const lastRollResult = state.lastRollResult ?? null;
+  const activeCombat = state.activeCombat ? {
+    attackerId: state.activeCombat.attackerId,
+    defenderId: state.activeCombat.defenderId,
+    attribute: state.activeCombat.attribute,
+    phase: state.activeCombat.phase,
+    attackerRolls: state.activeCombat.attackerRolls || [],
+    defenderRolls: state.activeCombat.defenderRolls || [],
+  } : null;
+  const pendingAction = mapPendingAction(state.pendingAction);
+  const syncedActiveRoll = buildPendingActionActiveRoll(pendingAction, mergedPlayers, store.activeRoll);
+
+  return {
+    phase: state.phase || 'EXPLORATION',
+    turnPhase: state.turnPhase || 'MOVING',
+    turnIndex: state.turnIndex || 1,
+    players: mergedPlayers,
+    playerIds: state.playerIds || [],
+    activePlayerId: state.activePlayerId || '',
+    map: state.map || {},
+    tileDeck: state.tileDeck || [],
+    movesRemaining: state.movesRemaining ?? 3,
+    omenCount: state.omenCount ?? 0,
+    isHauntActive: state.isHauntActive ?? false,
+    traitorId: state.traitorId || null,
+    activeCard: normalizeActiveEventCard(state.activeCard),
+    decks: state.decks || { EVENT: [], ITEM: [], OMEN: [] },
+    lastRollResult,
+    lastCheckSuccess: lastRollResult === null ? null : store.lastCheckSuccess,
+    activeRoll: syncedActiveRoll,
+    activeCombat,
+    combatResult: options?.resetCombatResult ? null : (activeCombat ? null : store.combatResult),
+    npcs: state.npcs || {},
+    pendingAction,
+    currentScenario: state.currentScenario || null,
+    lastTriggeredOmen: state.lastTriggeredOmen || null,
+    lastTriggeredTile: state.lastTriggeredTile || null,
+    logs: state.logs || [],
+    heroObjectives: state.heroObjectives || {},
+    traitorObjectives: state.traitorObjectives || {},
+    turnsSinceHaunt: state.turnsSinceHaunt ?? 0,
+    gameWinner: state.gameWinner || null,
+    pendingTile: state.pendingTile || null,
+    pendingTileRotation: state.pendingTile ? store.pendingTileRotation : 0,
+    pendingTargetPosition: state.pendingTargetPos ? { x: state.pendingTargetPos.x, y: state.pendingTargetPos.y } : null,
+    pendingMoveDirection: state.pendingMoveDirection || null,
+  };
+}
+
 // 导出房间和玩家ID，供外部组件访问
 export function getCurrentRoomId(): string | null {
   return currentRoomId;
@@ -32,7 +160,7 @@ export function getCurrentPlayerId(): string | null {
   return currentPlayerId;
 }
 
-// 检查是否已连接到服务器（用于决定是否需要降级到前端处理）
+// 检查当前是否拥有可用的 WebSocket 连接与房间上下文。
 export function isConnectedToServer(): boolean {
   return wsClient.isConnected() && currentRoomId !== null;
 }
@@ -162,107 +290,7 @@ function handleStateSync(msg: ServerMessage) {
     console.log('📊 状态版本:', msg.version, '时间戳:', msg.timestamp);
   }
   
-  // ========== Bug Fix: 合并 players 而非直接替换 ==========
-  // 原因：前端玩家有 personalLogs，后端同步时不应丢失
-  const oldPlayers = store.players || {};
-  const newPlayers = state.players || {};
-  
-  // 合并每个玩家的数据，保留本地日志
-  Object.keys(newPlayers).forEach(pid => {
-    if (newPlayers[pid] && oldPlayers[pid]) {
-      // 如果后端有 personalLogs 且前端也有，合并它们
-      const oldLogIds = new Set((newPlayers[pid].personalLogs || []).map((l: any) => l.id));
-      newPlayers[pid] = {
-        ...newPlayers[pid],
-        personalLogs: [
-          ...(newPlayers[pid].personalLogs || []),
-          ...((oldPlayers[pid] as any)?.personalLogs || []).filter((l: any) => !oldLogIds.has(l.id))
-        ]
-      };
-    }
-  });
-  
-  // ========== Bug Fix: 保留 lastRollResult 如果后端没发送新值 ==========
-  // 原因：后端现在会设置 LastRollResult，但如果 state_sync 先于 dice_result 到达，
-  // 我们应该保留本地的 lastRollResult
-  const lastRollResult = state.lastRollResult !== undefined ? state.lastRollResult : store.lastRollResult;
-  
-  // ========== Bug Fix: 直接使用后端日志，避免本地日志无限增长 ==========
-  // 后端发送完整日志列表，前端直接使用，不做本地合并
-  const mergedLogs = state.logs || [];
-  
-  // 完整的状态映射
-  store.setState({
-    // 游戏阶段
-    phase: state.phase || 'EXPLORATION',
-    turnPhase: state.turnPhase || 'MOVING',
-    turnIndex: state.turnIndex || 1,
-    
-    // 玩家 - 使用合并后的 players
-    players: newPlayers,
-    playerIds: state.playerIds || [],
-    activePlayerId: state.activePlayerId || '',
-    
-    // 地图
-    map: state.map || {},
-    tileDeck: state.tileDeck || [],
-    
-    // 资源
-    movesRemaining: state.movesRemaining ?? 3,
-    omenCount: state.omenCount ?? 0,
-    isHauntActive: state.isHauntActive ?? false,
-    traitorId: state.traitorId || null,
-    
-    // 卡牌
-    activeCard: state.activeCard || null,
-    decks: state.decks || { EVENT: [], ITEM: [], OMEN: [] },
-    // Bug Fix: 使用可能保留的 lastRollResult
-    lastRollResult: lastRollResult,
-    
-    // 战斗
-    activeCombat: state.activeCombat ? {
-      attackerId: state.activeCombat.attackerId,
-      defenderId: state.activeCombat.defenderId,
-      attribute: state.activeCombat.attribute,
-      phase: state.activeCombat.phase,
-      attackerRoll: state.activeCombat.attackerRoll,
-      defenderRoll: state.activeCombat.defenderRoll,
-    } : null,
-    
-    // Phase X: NPC 系统
-    npcs: state.npcs || {},
-    
-    // Phase 1: 待处理动作
-    pendingAction: state.pendingAction ? {
-      type: state.pendingAction.type,
-      target: state.pendingAction.target,
-      data: state.pendingAction.data,
-      cardId: state.pendingAction.cardId || undefined,
-      message: state.pendingAction.message || undefined,
-    } : null,
-    
-    // 剧本
-    currentScenario: state.currentScenario || null,
-    lastTriggeredOmen: state.lastTriggeredOmen || null,
-    lastTriggeredTile: state.lastTriggeredTile || null,
-    
-    // 日志 - Bug Fix: 使用合并后的日志
-    logs: mergedLogs,
-    
-    // Phase 2: 目标系统
-    heroObjectives: state.heroObjectives || {},
-    traitorObjectives: state.traitorObjectives || {},
-    turnsSinceHaunt: state.turnsSinceHaunt ?? 0,
-    gameWinner: state.gameWinner || null,
-
-    // Phase 3: 房间放置状态同步
-    // Bug Fix: 后端 PendingTileRotation 始终为 0（omitempty），若直接覆盖会重置用户旋转。
-    // 当 pendingTile 仍存在时，保留前端当前旋转值；tile 清除时才归零。
-    pendingTile: state.pendingTile || null,
-    pendingTileRotation: (state.pendingTile || null) ? store.pendingTileRotation : 0,
-    pendingTargetPosition: state.pendingTargetPos ? { x: state.pendingTargetPos.x, y: state.pendingTargetPos.y } : null,
-    pendingMoveDirection: state.pendingMoveDirection || null,
-  });
+  store.setState(buildSyncedStatePatch(state, store));
   
   // 显示同步提示（仅首次同步）
   // store.showFeedback('游戏状态已同步', 'info');
@@ -276,6 +304,9 @@ function handleDiceResult(msg: ServerMessage) {
     console.warn('骰子请求已过期，忽略');
     // 清除可能存在的超时
     clearDiceRollTimeout();
+    const store = useGameStore.getState();
+    store.showFeedback('当前检定请求已过期，已刷新本地投掷界面。', 'warning');
+    store.cancelActiveRoll();
     return;
   }
 
@@ -371,10 +402,11 @@ function handleCardDrawn(msg: ServerMessage) {
   const store = useGameStore.getState();
   const { card, deck } = msg as any;
   
-  if (card) {
+  const activeCard = normalizeActiveEventCard(card);
+  if (activeCard) {
     // 设置 activeCard 以显示卡牌弹窗
-    store.setState({ activeCard: card });
-    store.showFeedback(`抽到: ${card.title || card.name || '卡牌'}`, 'info');
+    store.setState({ activeCard });
+    store.showFeedback(`抽到: ${activeCard.title || activeCard.name || '卡牌'}`, 'info');
   }
 }
 
@@ -385,6 +417,11 @@ function handleCombatResolved(msg: ServerMessage) {
   const store = useGameStore.getState();
   const result = msg.result as any;
   if (result) {
+    store.setState({
+      activeCombat: null,
+      combatResult: result,
+    });
+
     if (result.draw) {
       store.showFeedback('⚔️ 战斗平局！双方无伤', 'info');
     } else if (result.loser) {
@@ -460,23 +497,7 @@ function handleReconnectSuccess(msg: ServerMessage) {
   
   // 如果服务器返回了状态，直接使用
   if (msg.state) {
-    store.setState({
-      phase: msg.state.phase || 'EXPLORATION',
-      turnPhase: msg.state.turnPhase || 'MOVING',
-      turnIndex: msg.state.turnIndex || 1,
-      players: msg.state.players || {},
-      playerIds: msg.state.playerIds || [],
-      activePlayerId: msg.state.activePlayerId || '',
-      map: msg.state.map || {},
-      tileDeck: msg.state.tileDeck || [],
-      movesRemaining: msg.state.movesRemaining ?? 3,
-      omenCount: msg.state.omenCount ?? 0,
-      isHauntActive: msg.state.isHauntActive ?? false,
-      traitorId: msg.state.traitorId || null,
-      activeCard: msg.state.activeCard || null,
-      decks: msg.state.decks || { EVENT: [], ITEM: [], OMEN: [] },
-      logs: msg.state.logs || [],
-    });
+    store.setState(buildSyncedStatePatch(msg.state, store, { resetCombatResult: true }));
     store.showFeedback('已恢复游戏状态', 'info');
   } else {
     // 请求完整状态
@@ -902,6 +923,25 @@ export function sendGiveItem(toPlayerId: string, itemId: string) {
   });
 }
 
+// 交换物品
+export function sendTradeItems(targetId: string, itemId: string, targetItemId: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId,
+    action: {
+      actionType: 'trade_items',
+      targetId,
+      itemId,
+      targetItemId,
+    }
+  });
+}
+
 // 丢弃物品
 export function sendDropItem(itemId: string) {
   const roomId = wsClient.getRoomId();
@@ -932,6 +972,55 @@ export function sendInteractWithWall(direction: string) {
     action: {
       actionType: 'interact_wall',
       direction
+    }
+  });
+}
+
+export function sendTeleportToTile(x: number, y: number) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId,
+    action: {
+      actionType: 'teleport_to_tile',
+      x,
+      y,
+    }
+  });
+}
+
+export function sendDivination(action: 'toTop' | 'toBottom') {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId,
+    action: {
+      actionType: 'divination',
+      action,
+    }
+  });
+}
+
+export function sendExecuteTileInteraction(interactionType: string) {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return;
+  }
+  wsClient.send({
+    type: 'game_action',
+    roomId,
+    action: {
+      actionType: 'execute_tile_interaction',
+      interactionType,
     }
   });
 }

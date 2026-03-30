@@ -8,71 +8,6 @@ import (
 
 // ==================== 游戏核心逻辑 ====================
 
-// NextTurn 回合切换
-func (g *GameManager) NextTurn(roomID string) error {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	room, ok := g.Rooms[roomID]
-	if !ok {
-		return errors.New("房间不存在")
-	}
-
-	state := room.GameState
-	if state == nil || state.FullState == nil {
-		return errors.New("游戏未开始")
-	}
-
-	// 找到当前玩家索引
-	currentIndex := -1
-	for i, pid := range state.FullState.PlayerIDs {
-		if pid == state.FullState.ActivePlayerID {
-			currentIndex = i
-			break
-		}
-	}
-
-	if currentIndex == -1 {
-		return errors.New("当前玩家不存在")
-	}
-
-	// 切换到下一个活着的玩家
-	players := state.FullState.PlayerIDs
-	attempts := 0
-	for attempts < len(players) {
-		currentIndex = (currentIndex + 1) % len(players)
-		nextPlayerID := players[currentIndex]
-
-		if player, ok := state.FullState.Players[nextPlayerID]; ok && !player.IsDead {
-			state.FullState.ActivePlayerID = nextPlayerID
-			state.FullState.TurnIndex++
-			state.FullState.TurnPhase = "MOVING"
-			state.FullState.MovesRemaining = g.getEffectiveSpeed(nextPlayerID, state.FullState)
-
-			// 添加日志
-			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-				ID:        generateLogID(),
-				Timestamp: time.Now().UnixMilli(),
-				Text:      fmt.Sprintf("第 %d 回合：%s 开始行动", state.FullState.TurnIndex, player.Character.Name),
-				Type:      "info",
-			})
-			return nil
-		}
-		attempts++
-	}
-
-	// 所有玩家都死了
-	state.FullState.Phase = GamePhaseGameOver
-	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-		ID:        generateLogID(),
-		Timestamp: time.Now().UnixMilli(),
-		Text:      "大厦赢了。所有人都在黑暗中陨落了...",
-		Type:      "alert",
-	})
-
-	return nil
-}
-
 // getEffectiveSpeed 获取有效速度
 func (g *GameManager) getEffectiveSpeed(playerID string, state *GameStateFull) int {
 	player, ok := state.Players[playerID]
@@ -147,14 +82,17 @@ func (g *GameManager) nextTurnInternal(room *Room) error {
 			state.FullState.TurnIndex++
 			state.FullState.TurnPhase = "MOVING"
 			state.FullState.MovesRemaining = g.getEffectiveSpeed(nextPlayerID, state.FullState)
-			
+
 			// 清除待处理动作（跨玩家状态）
 			state.FullState.PendingAction = nil
+			g.clearLastRollResultUnlocked(state.FullState)
 
 			// ===== Phase 3: 作祟回合计数 =====
 			// 当叛徒开始其回合时，表示新一轮作祟回合开始
 			if state.FullState.IsHauntActive && nextPlayerID == state.FullState.TraitorID {
-				g.IncrementHauntTurns(room.ID)
+				if winner := g.incrementHauntTurnsUnlocked(state.FullState); winner != "" {
+					return nil
+				}
 			}
 
 			// ===== 回合开始处理：下一玩家状态效果 =====
@@ -188,24 +126,8 @@ func (g *GameManager) nextTurnInternal(room *Room) error {
 				continue // 跳过这个玩家，继续找下一个
 			}
 
-			// Phase 3: 作祟阶段增加回合计数
+			// Phase 3: 作祟阶段检查即时胜利
 			if state.FullState.IsHauntActive {
-				state.FullState.TurnsSinceHaunt++
-				
-				// 回合开始时显示剩余回合
-				if scenario := state.FullState.CurrentScenario; scenario != nil && scenario.TraitorObjective != nil {
-					remaining := scenario.TraitorObjective.Turns - state.FullState.TurnsSinceHaunt
-					if remaining > 0 && remaining <= 3 {
-						state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-							ID:        generateLogID(),
-							Timestamp: time.Now().UnixMilli(),
-							Text:      fmt.Sprintf("⚠️ 叛徒目标剩余 %d 回合！", remaining),
-							Type:      "alert",
-						})
-					}
-				}
-				
-				// 检查胜利条件
 				winner := g.checkVictoryInternal(state.FullState)
 				if winner != "" {
 					return nil
@@ -244,6 +166,7 @@ func (g *GameManager) processHauntRoll(room *Room) error {
 	}
 
 	// 6 骰子检定
+	g.clearLastRollResultUnlocked(state.FullState)
 	results := g.RollDice(6)
 	sum := 0
 	for _, v := range results {
@@ -251,7 +174,7 @@ func (g *GameManager) processHauntRoll(room *Room) error {
 	}
 
 	// Bug Fix: 设置 LastRollResult 以便前端同步显示
-	state.FullState.LastRollResult = &sum
+	g.setLastRollResultUnlocked(state.FullState, sum)
 
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 		ID:        generateLogID(),
@@ -303,7 +226,10 @@ func (g *GameManager) triggerHauntWithOmen(room *Room, omenCard *Card) error {
 	}
 
 	// 根据主题获取剧本矩阵
-	themeHauntMatrix := GetHauntMatrix(theme)
+	themeHauntMatrix := GetHauntMatrixByTheme(theme)
+	if len(themeHauntMatrix) == 0 {
+		return errors.New("作祟剧本矩阵不可用")
+	}
 
 	// 确定剧本（优先使用预兆卡ID，否则使用触发房间）
 	var scenarioID string
@@ -320,12 +246,15 @@ func (g *GameManager) triggerHauntWithOmen(room *Room, omenCard *Card) error {
 		}
 	}
 
-	scenario := Scenarios[scenarioID]
-	state.FullState.CurrentScenario = &scenario
+	scenario := GetScenarioByID(scenarioID)
+	if scenario == nil {
+		return fmt.Errorf("剧本不存在: %s", scenarioID)
+	}
+	state.FullState.CurrentScenario = scenario
 	state.FullState.IsHauntActive = true
 
 	// 确定叛徒
-	traitorID := g.determineTraitor(scenario, state.FullState)
+	traitorID := g.determineTraitor(*scenario, state.FullState)
 
 	// 更新玩家阵营
 	for pid, player := range state.FullState.Players {
@@ -441,11 +370,11 @@ func (g *GameManager) initializeObjectivesInternal(state *GameStateFull) {
 			state.Logs = append(state.Logs, LogEntry{
 				ID:        generateLogID(),
 				Timestamp: time.Now().UnixMilli(),
-				Text:      fmt.Sprintf("【英雄目标】%s: %s (%d回合内)", 
-					scenario.HeroObjective.Name, 
+				Text: fmt.Sprintf("【英雄目标】%s: %s (%d回合内)",
+					scenario.HeroObjective.Name,
 					scenario.HeroObjective.Description,
 					scenario.HeroObjective.Turns),
-				Type:      "info",
+				Type: "info",
 			})
 		}
 
@@ -453,11 +382,11 @@ func (g *GameManager) initializeObjectivesInternal(state *GameStateFull) {
 			state.Logs = append(state.Logs, LogEntry{
 				ID:        generateLogID(),
 				Timestamp: time.Now().UnixMilli(),
-				Text:      fmt.Sprintf("【叛徒目标】%s: %s (%d回合内)", 
+				Text: fmt.Sprintf("【叛徒目标】%s: %s (%d回合内)",
 					scenario.TraitorObjective.Name,
 					scenario.TraitorObjective.Description,
 					scenario.TraitorObjective.Turns),
-				Type:      "alert",
+				Type: "alert",
 			})
 		}
 	}
@@ -725,15 +654,15 @@ func (g *GameManager) AttackNPC(roomID, playerID, npcInstanceID string) (map[str
 	}
 
 	// 双方各投 1 骰子
-	playerRoll := g.RollDice(1)[0]  // 玩家
-	npcRoll := g.RollDice(1)[0]     // NPC
+	playerRoll := g.RollDice(1)[0] // 玩家
+	npcRoll := g.RollDice(1)[0]    // NPC
 
 	// Bug Fix: 同步战斗骰子结果到 LastRollResult
-	g.SetLastRollResult(roomID, playerRoll+npcRoll)
+	g.setLastRollResultUnlocked(state.FullState, playerRoll+npcRoll)
 
 	result := map[string]interface{}{
-		"playerRoll": playerRoll,
-		"npcRoll":   npcRoll,
+		"playerRoll":    playerRoll,
+		"npcRoll":       npcRoll,
 		"npcInstanceId": npcInstanceID,
 	}
 
@@ -761,9 +690,9 @@ func (g *GameManager) AttackNPC(roomID, playerID, npcInstanceID string) (map[str
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 			ID:        generateLogID(),
 			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("%s 与 %s 交锋失败！受到 %d 点理智伤害！",
+			Text: fmt.Sprintf("%s 与 %s 交锋失败！受到 %d 点理智伤害！",
 				player.Character.Name, npc.Name, damage),
-			Type:      "alert",
+			Type: "alert",
 		})
 		result["loser"] = playerID
 		result["damage"] = damage
@@ -777,9 +706,9 @@ func (g *GameManager) AttackNPC(roomID, playerID, npcInstanceID string) (map[str
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 			ID:        generateLogID(),
 			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("%s 击败了 %s！造成 %d 点伤害！%s",
+			Text: fmt.Sprintf("%s 击败了 %s！造成 %d 点伤害！%s",
 				player.Character.Name, npc.Name, damage, npcStatus),
-			Type:      "info",
+			Type: "info",
 		})
 
 		result["loser"] = npcInstanceID
@@ -840,17 +769,17 @@ func (g *GameManager) NPCAttackPlayer(roomID, npcInstanceID, playerID string) (m
 	}
 
 	// 双方各投 1 骰子
-	npcRoll := g.RollDice(1)[0]   // NPC
+	npcRoll := g.RollDice(1)[0]    // NPC
 	playerRoll := g.RollDice(1)[0] // 玩家
 
 	// Bug Fix: 同步战斗骰子结果到 LastRollResult
-	g.SetLastRollResult(roomID, playerRoll+npcRoll)
+	g.setLastRollResultUnlocked(state.FullState, playerRoll+npcRoll)
 
 	result := map[string]interface{}{
 		"npcInstanceId": npcInstanceID,
-		"npcName":      npc.Name,
-		"npcRoll":      npcRoll,
-		"playerRoll":   playerRoll,
+		"npcName":       npc.Name,
+		"npcRoll":       npcRoll,
+		"playerRoll":    playerRoll,
 	}
 
 	attrName := npcDef.AttackAttr
@@ -876,9 +805,9 @@ func (g *GameManager) NPCAttackPlayer(roomID, npcInstanceID, playerID string) (m
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 			ID:        generateLogID(),
 			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("%s 攻击失败！被 %s 反击，受到 %d 点伤害！",
+			Text: fmt.Sprintf("%s 攻击失败！被 %s 反击，受到 %d 点伤害！",
 				npc.Name, player.Character.Name, damage),
-			Type:      "alert",
+			Type: "alert",
 		})
 
 		result["loser"] = npcInstanceID
@@ -909,9 +838,9 @@ func (g *GameManager) NPCAttackPlayer(roomID, npcInstanceID, playerID string) (m
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 			ID:        generateLogID(),
 			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("%s 被 %s 击败！受到 %d 点%s伤害！",
+			Text: fmt.Sprintf("%s 被 %s 击败！受到 %d 点%s伤害！",
 				player.Character.Name, npc.Name, damage, attrName),
-			Type:      "alert",
+			Type: "alert",
 		})
 
 		result["loser"] = playerID

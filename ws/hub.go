@@ -562,7 +562,15 @@ func (h *Hub) handleGameAction(msg *Message) {
 
 		// 处理投骰子（后端生成结果）
 		numDice := 1
-		if nd, ok := req.Action["numDice"].(float64); ok {
+		if pending.Type == "ATTRIBUTE_CHECK" || pending.Type == "TILE_ATTRIBUTE_CHECK" {
+			if attrName, ok := pending.Data["attribute"].(string); ok {
+				if player, ok := state.Players[msg.client.playerID]; ok {
+					if attr, ok := player.Character.Attributes[attrName]; ok && attr.Current > 0 {
+						numDice = attr.Current
+					}
+				}
+			}
+		} else if nd, ok := req.Action["numDice"].(float64); ok {
 			numDice = int(nd)
 		}
 		results := h.gameManager.RollDice(numDice)
@@ -602,6 +610,29 @@ func (h *Hub) handleGameAction(msg *Message) {
 				h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, 1) // 1 = failure
 			}
 
+		case "TILE_ATTRIBUTE_CHECK":
+			difficulty := 3
+			if d, ok := pending.Data["difficulty"].(float64); ok {
+				difficulty = int(d)
+			}
+			success := sum >= difficulty
+			actionResult = map[string]interface{}{
+				"checkType":  "TILE_ATTRIBUTE_CHECK",
+				"attribute":  pending.Data["attribute"],
+				"difficulty": difficulty,
+				"result":     sum,
+				"success":    success,
+			}
+			if err := h.gameManager.ResolvePendingTileCheck(roomID, msg.client.playerID, success); err != nil {
+				resp := map[string]interface{}{
+					"type":    "error",
+					"message": err.Error(),
+				}
+				data, _ := json.Marshal(resp)
+				msg.client.send <- data
+				return
+			}
+
 		case "COMBAT":
 			// 战斗骰子 - 已经由 ResolveCombat 处理
 			actionResult = map[string]interface{}{
@@ -626,6 +657,7 @@ func (h *Hub) handleGameAction(msg *Message) {
 			"actionResult": actionResult,
 		}
 		h.broadcastToRoom(roomID, resp)
+		h.sendGameState(roomID)
 		return
 	case "place_tile":
 		// 放置新房间
@@ -663,13 +695,16 @@ func (h *Hub) handleGameAction(msg *Message) {
 			msg.client.send <- data
 			return
 		}
-		// 广播抽卡结果
-		h.broadcastToRoom(roomID, map[string]interface{}{
-			"type":     "card_drawn",
-			"card":     result["card"],
-			"deck":     result["deck"],
-			"playerId": msg.client.playerID,
-		})
+		if result != nil {
+			if card, ok := result["card"]; ok && card != nil {
+				h.broadcastToRoom(roomID, map[string]interface{}{
+					"type":     "card_drawn",
+					"card":     card,
+					"deck":     result["deck"],
+					"playerId": msg.client.playerID,
+				})
+			}
+		}
 		// 发送状态更新
 		h.sendGameState(roomID)
 		return
@@ -755,6 +790,15 @@ func (h *Hub) handleGameAction(msg *Message) {
 		} else {
 			err = h.gameManager.GiveItem(roomID, msg.client.playerID, targetID, itemID)
 		}
+	case "trade_items":
+		targetID, _ := req.Action["targetId"].(string)
+		itemID, _ := req.Action["itemId"].(string)
+		targetItemID, _ := req.Action["targetItemId"].(string)
+		if targetID == "" || itemID == "" || targetItemID == "" {
+			err = errors.New("未指定完整的交易物品")
+		} else {
+			err = h.gameManager.TradeItems(roomID, msg.client.playerID, targetID, itemID, targetItemID)
+		}
 	case "drop_item":
 		itemID, _ := req.Action["itemId"].(string)
 		logger.Debug("执行DropItem", map[string]interface{}{
@@ -772,6 +816,39 @@ func (h *Hub) handleGameAction(msg *Message) {
 			err = errors.New("未指定方向")
 		} else {
 			err = h.gameManager.InteractWithWall(roomID, msg.client.playerID, dir)
+		}
+	case "teleport_to_tile":
+		x, xOk := req.Action["x"].(float64)
+		y, yOk := req.Action["y"].(float64)
+		if !xOk || !yOk {
+			err = errors.New("未指定有效的传送目标")
+		} else {
+			err = h.gameManager.TeleportPlayer(roomID, msg.client.playerID, int(x), int(y))
+		}
+	case "divination":
+		action, _ := req.Action["action"].(string)
+		if action == "" {
+			err = errors.New("未指定占卜操作")
+		} else {
+			err = h.gameManager.PerformDivination(roomID, msg.client.playerID, action)
+		}
+	case "execute_tile_interaction":
+		interactionType, _ := req.Action["interactionType"].(string)
+		if interactionType == "" {
+			err = errors.New("未指定互动类型")
+		} else {
+			result, interactionErr := h.gameManager.ExecuteTileInteraction(roomID, msg.client.playerID, interactionType)
+			if interactionErr != nil {
+				err = interactionErr
+			} else if result != nil {
+				h.broadcastToRoom(roomID, map[string]interface{}{
+					"type":         "dice_result",
+					"results":      result["results"],
+					"sum":          result["sum"],
+					"playerId":     msg.client.playerID,
+					"actionResult": result["actionResult"],
+				})
+			}
 		}
 	// ===== Phase X: NPC 战斗系统 =====
 	case "attack_npc":

@@ -8,6 +8,66 @@ import (
 	"time"
 )
 
+func normalizeEffectType(effectType string) string {
+	switch strings.ToUpper(effectType) {
+	case "MODIFY_STAT", "DAMAGE", "HEAL", "DRAW_CARD", "MOVE_PLAYER", "LOG", "IF", "GIVE_ITEM", "GIVE_SKILL", "ROLL", "REVEAL_MAP", "REVEAL_TRAIL", "CLEAR_LAST_ROLL", "REVEAL_NEXT_EVENT":
+		return strings.ToUpper(effectType)
+	}
+
+	switch strings.ToLower(effectType) {
+	case "modify_stat":
+		return "MODIFY_STAT"
+	case "damage":
+		return "DAMAGE"
+	case "heal":
+		return "HEAL"
+	case "draw_card":
+		return "DRAW_CARD"
+	case "move_player", "teleport":
+		return "MOVE_PLAYER"
+	case "log", "narrative_log":
+		return "LOG"
+	case "if":
+		return "IF"
+	case "give_item", "gain_item":
+		return "GIVE_ITEM"
+	case "give_skill":
+		return "GIVE_SKILL"
+	case "roll":
+		return "ROLL"
+	case "reveal_all", "reveal_map":
+		return "REVEAL_MAP"
+	case "reveal_trail":
+		return "REVEAL_TRAIL"
+	case "clear_last_roll":
+		return "CLEAR_LAST_ROLL"
+	case "reveal_next_event":
+		return "REVEAL_NEXT_EVENT"
+	default:
+		return strings.ToUpper(effectType)
+	}
+}
+
+func normalizeEffect(effect Effect) Effect {
+	effect.Type = normalizeEffectType(effect.Type)
+	if effect.Stat == "" && effect.Attribute != "" {
+		effect.Stat = strings.ToLower(effect.Attribute)
+	}
+	if effect.Attribute == "" && effect.Stat != "" {
+		effect.Attribute = strings.ToLower(effect.Stat)
+	}
+	if effect.Deck != "" {
+		effect.Deck = strings.ToUpper(effect.Deck)
+	}
+	for i := range effect.Then {
+		effect.Then[i] = normalizeEffect(effect.Then[i])
+	}
+	for i := range effect.Else {
+		effect.Else[i] = normalizeEffect(effect.Else[i])
+	}
+	return effect
+}
+
 // ==================== 物品系统 ====================
 
 // UseItem 使用物品
@@ -25,9 +85,9 @@ func (g *GameManager) UseItem(roomID, playerID, itemID, targetID string) error {
 		return errors.New("游戏未开始")
 	}
 
-	player, ok := state.FullState.Players[playerID]
-	if !ok {
-		return errors.New("玩家不存在")
+	player, err := g.requireActivePlayerUnlocked(state.FullState, playerID)
+	if err != nil {
+		return err
 	}
 
 	// 从数据中获取物品定义
@@ -54,6 +114,16 @@ func (g *GameManager) UseItem(roomID, playerID, itemID, targetID string) error {
 	targetPlayerID := playerID
 	if targetID != "" {
 		targetPlayerID = targetID
+	}
+	targetPlayer, ok := state.FullState.Players[targetPlayerID]
+	if !ok {
+		return errors.New("目标玩家不存在")
+	}
+	if targetPlayer.IsDead {
+		return errors.New("已死亡的玩家不能成为目标")
+	}
+	if targetPlayerID != playerID && targetPlayer.Position != player.Position {
+		return errors.New("目标不在同一房间")
 	}
 
 	playerName := player.Character.Name
@@ -88,7 +158,7 @@ func (g *GameManager) UseItem(roomID, playerID, itemID, targetID string) error {
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 			ID:        generateLogID(),
 			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("%s 获得了被动效果: %s", playerName, passive),
+			Text:      fmt.Sprintf("%s 获得了被动效果: %s", playerName, passive.Text),
 			Type:      "info",
 		})
 	}
@@ -113,9 +183,9 @@ func (g *GameManager) ExecuteSkill(roomID, playerID, skillID, targetID string) e
 		return errors.New("游戏未开始")
 	}
 
-	player, ok := state.FullState.Players[playerID]
-	if !ok {
-		return errors.New("玩家不存在")
+	player, err := g.requireActivePlayerUnlocked(state.FullState, playerID)
+	if err != nil {
+		return err
 	}
 
 	// 检查技能是否已解锁
@@ -142,6 +212,16 @@ func (g *GameManager) ExecuteSkill(roomID, playerID, skillID, targetID string) e
 	if targetID != "" {
 		targetPlayerID = targetID
 	}
+	targetPlayer, ok := state.FullState.Players[targetPlayerID]
+	if !ok {
+		return errors.New("目标玩家不存在")
+	}
+	if targetPlayer.IsDead {
+		return errors.New("已死亡的玩家不能成为目标")
+	}
+	if targetPlayerID != playerID && targetPlayer.Position != player.Position {
+		return errors.New("目标不在同一房间")
+	}
 
 	// 记录日志
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
@@ -165,6 +245,8 @@ func (g *GameManager) ExecuteSkill(roomID, playerID, skillID, targetID string) e
 
 // applyEffect 应用效果（完整版）
 func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
+	effect = normalizeEffect(effect)
+
 	room, ok := g.Rooms[roomID]
 	if !ok {
 		return
@@ -207,7 +289,7 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			player.Character.Attributes[attrName] = attr
 			// 记录日志
 			if amount != 0 {
-				logMsg := fmt.Sprintf("%s 的 %s %s (当前: %d)", 
+				logMsg := fmt.Sprintf("%s 的 %s %s (当前: %d)",
 					player.Character.Name, attrName, formatSign(amount), attr.Current)
 				g.addLog(roomID, logMsg, "info")
 			}
@@ -270,19 +352,19 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			card := deck[0]
 			state.FullState.Decks[deckName] = deck[1:]
 			g.addLog(roomID, fmt.Sprintf("%s 抽到了 %s", player.Character.Name, card.Name), "success")
-			
+
 			// 添加到玩家物品栏（如果是物品卡或厄运卡）
 			if card.Type == "ITEM" {
 				player.Items = append(player.Items, card)
 				g.addLog(roomID, fmt.Sprintf("%s 获得了物品: %s", player.Character.Name, card.Name), "info")
-				
+
 				// 检查并应用被动效果
 				g.applyPassiveEffects(roomID, playerID, card)
 			}
 			if card.Type == "OMEN" {
 				player.Items = append(player.Items, card)
 				g.addLog(roomID, fmt.Sprintf("%s 获得了厄运: %s", player.Character.Name, card.Name), "info")
-				
+
 				// 检查并应用被动效果
 				g.applyPassiveEffects(roomID, playerID, card)
 			}
@@ -294,7 +376,7 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 		// 移动玩家到特定位置
 		newX := player.Position.X
 		newY := player.Position.Y
-		
+
 		// 优先使用坐标，其次使用命名位置
 		if effect.X != 0 || effect.Y != 0 {
 			// 使用指定坐标
@@ -315,21 +397,28 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 				newX, newY = 0, 0
 			}
 		}
-		
-		// 检查目标位置是否有效（在地图内）
-		targetKey := fmt.Sprintf("%d,%d", newX, newY)
-		if _, exists := state.FullState.Map[targetKey]; exists {
-			oldX, oldY := player.Position.X, player.Position.Y
-			player.Position.X = newX
-			player.Position.Y = newY
-			g.addLog(roomID, fmt.Sprintf("%s 从 (%d,%d) 移动到了 (%d,%d)", 
-				player.Character.Name, oldX, oldY, newX, newY), "info")
-		} else {
-			// 目标位置不存在，随机找一个可达位置
-			g.addLog(roomID, fmt.Sprintf("%s 被传送到了未知区域", player.Character.Name), "alert")
-			// 移动到入口
-			player.Position.X = 0
-			player.Position.Y = 0
+
+		currentTile, err := g.getCurrentTileUnlocked(state.FullState, player)
+		if err != nil {
+			g.addLog(roomID, err.Error(), "alert")
+			return
+		}
+
+		continuation := map[string]interface{}{
+			"type": "FORCED_MOVE",
+			"x":    newX,
+			"y":    newY,
+		}
+		wait, err := g.triggerTileLeaveUnlocked(roomID, playerID, currentTile.DefID, continuation)
+		if err != nil {
+			g.addLog(roomID, err.Error(), "alert")
+			return
+		}
+		if wait {
+			return
+		}
+		if err := g.finalizeRelocationUnlocked(roomID, playerID, state.FullState, player, "FORCED_MOVE", newX, newY); err != nil {
+			g.addLog(roomID, err.Error(), "alert")
 		}
 
 	case "LOG", "narrative_log":
@@ -421,8 +510,9 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 		if difficulty == 0 {
 			difficulty = 3
 		}
+		g.clearLastRollResultUnlocked(state.FullState)
 		state.FullState.PendingAction = &PendingAction{
-			Type: "ATTRIBUTE_CHECK",
+			Type:   "ATTRIBUTE_CHECK",
 			Target: playerID,
 			Data: map[string]interface{}{
 				"attribute":  attrName,
@@ -447,7 +537,7 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 				Duration: duration,
 				Source:   effect.Message,
 				Damage:   effect.Amount,
-				Faction:  effect.Style, // 兼容用 Style 存阵营
+				Faction:  effect.Style,      // 兼容用 Style 存阵营
 				Amount:   effect.Difficulty, // 兼容
 			}
 			player.StatusEffects = append(player.StatusEffects, status)
@@ -553,6 +643,28 @@ func (g *GameManager) applyPassiveEffects(roomID, playerID string, card Card) {
 	}
 }
 
+// removePassiveEffects 回退物品/厄运离开玩家时带来的被动效果
+func (g *GameManager) removePassiveEffects(roomID, playerID string, card Card) {
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return
+	}
+
+	player, ok := state.FullState.Players[playerID]
+	if !ok {
+		return
+	}
+
+	for _, passive := range card.PassiveEffects {
+		g.parseAndRemovePassiveEffect(roomID, passive, player)
+	}
+}
+
 // parseAndApplyPassiveEffect 解析并应用单个被动效果
 func (g *GameManager) parseAndApplyPassiveEffect(roomID, playerID string, passive PassiveEffect, player *GamePlayer) {
 	text := passive.Text
@@ -623,6 +735,66 @@ func (g *GameManager) parseAndApplyPassiveEffect(roomID, playerID string, passiv
 	}
 }
 
+func (g *GameManager) parseAndRemovePassiveEffect(roomID string, passive PassiveEffect, player *GamePlayer) {
+	text := passive.Text
+
+	switch passive.Type {
+	case "skill":
+		if strings.HasPrefix(text, "获得技能：") {
+			skillName := strings.TrimPrefix(text, "获得技能：")
+			skillID := g.getSkillIDByName(skillName)
+			if skillID == "" {
+				return
+			}
+			for i, existing := range player.Skills {
+				if existing == skillID {
+					player.Skills = append(player.Skills[:i], player.Skills[i+1:]...)
+					g.addLog(roomID, fmt.Sprintf("%s 失去了技能: %s", player.Character.Name, skillName), "info")
+					break
+				}
+			}
+		}
+
+	case "buff", "debuff":
+		text = strings.ReplaceAll(text, "，", ",")
+		parts := strings.Split(text, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+
+			attrName, amount := parseAttributeChange(part)
+			if attrName == "" || amount == 0 {
+				continue
+			}
+			if attr, ok := player.Character.Attributes[attrName]; ok {
+				if passive.Type == "debuff" {
+					amount = -amount
+				}
+				attr.Current -= amount
+				if attr.Current < attr.Floor {
+					attr.Current = attr.Floor
+				}
+				if attr.Current > attr.Max {
+					attr.Current = attr.Max
+				}
+				player.Character.Attributes[attrName] = attr
+				g.addLog(roomID, fmt.Sprintf("%s 的 %s 失去了 %d 点加成", player.Character.Name, attrName, amount), "info")
+			}
+		}
+
+	case "special":
+		for i, buff := range player.Buffs {
+			if buff == text {
+				player.Buffs = append(player.Buffs[:i], player.Buffs[i+1:]...)
+				g.addLog(roomID, fmt.Sprintf("%s 失去了效果: %s", player.Character.Name, text), "info")
+				break
+			}
+		}
+	}
+}
+
 // formatSignForPassive 格式化正负号（用于日志）
 func formatSignForPassive(amount int) string {
 	if amount > 0 {
@@ -630,20 +802,21 @@ func formatSignForPassive(amount int) string {
 	}
 	return ""
 }
+
 // parseAttributeChange 解析属性变化字符串
 // 返回: 属性名, 变化值
 func parseAttributeChange(s string) (string, int) {
 	s = strings.TrimSpace(s)
-	
+
 	// 属性名映射
 	attrMap := map[string]string{
-		"力量": "might",
-		"速度": "speed",
-		"理智": "sanity",
-		"知识": "knowledge",
-		"might": "might",
-		"speed": "speed",
-		"sanity": "sanity",
+		"力量":        "might",
+		"速度":        "speed",
+		"理智":        "sanity",
+		"知识":        "knowledge",
+		"might":     "might",
+		"speed":     "speed",
+		"sanity":    "sanity",
 		"knowledge": "knowledge",
 	}
 
@@ -683,9 +856,9 @@ func (g *GameManager) getSkillIDByName(skillName string) string {
 	// 简单匹配
 	nameToID := map[string]string{
 		"嗜血打击": "skill_vampiric_strike",
-		"爆发":     "skill_sprint",
-		"冥想":     "skill_meditate",
-		"闪避":     "skill_dodge",
+		"爆发":   "skill_sprint",
+		"冥想":   "skill_meditate",
+		"闪避":   "skill_dodge",
 	}
 
 	if id, ok := nameToID[skillName]; ok {
@@ -751,7 +924,7 @@ func (g *GameManager) ApplyConditionalBuffs(roomID, playerID, trigger string) {
 					}
 					// 将修改后的属性存回 map
 					player.Character.Attributes[attrName] = attr
-					g.addLog(roomID, fmt.Sprintf("%s 的 %s %s (条件触发)", 
+					g.addLog(roomID, fmt.Sprintf("%s 的 %s %s (条件触发)",
 						player.Character.Name, attrName, formatSign(amount)), "info")
 				}
 			}

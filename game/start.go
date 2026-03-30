@@ -43,14 +43,11 @@ func (g *GameManager) StartGame(roomID string) error {
 	initAttribute := func(attrName string, defaultValue int, charID string) Attribute {
 		// 尝试从角色数据中获取 values 数组
 		values, startIndex := GetCharacterAttributeValues(charID, attrName)
-		
+
 		if values == nil || len(values) == 0 {
-			// 降级：使用简单的 values 数组
+			// 数据缺失时构造一个最小可用的属性轨道，避免空切片导致 panic
 			floor := 0
-			max := values[len(values)-1]
-			if max < defaultValue {
-				max = defaultValue
-			}
+			max := defaultValue
 			simpleValues := make([]int, max-floor+1)
 			for i := range simpleValues {
 				simpleValues[i] = floor + i
@@ -64,12 +61,12 @@ func (g *GameManager) StartGame(roomID string) error {
 				Index:   defaultValue,
 			}
 		}
-		
+
 		// 使用数据源中的 values 数组
 		floor := values[0]
 		max := values[len(values)-1]
 		current := values[startIndex]
-		
+
 		return Attribute{
 			Current: current,
 			Base:    current,
@@ -87,7 +84,7 @@ func (g *GameManager) StartGame(roomID string) error {
 	for _, p := range room.Players {
 		playerID := p.ID
 		playerIDs = append(playerIDs, playerID)
-		
+
 		// 根据玩家索引获取对应的角色定义
 		var charID string
 		var charName string
@@ -101,13 +98,13 @@ func (g *GameManager) StartGame(roomID string) error {
 		}
 
 		players[playerID] = &GamePlayer{
-			ID:     playerID,
-			Team:   "UNASSIGNED",
-			Items:  []Card{},
+			ID:           playerID,
+			Team:         "UNASSIGNED",
+			Items:        []Card{},
 			DroppedItems: []Card{},
-			Buffs:  []string{},
-			Skills: []string{},
-			SkillPoints: 0,
+			Buffs:        []string{},
+			Skills:       []string{},
+			SkillPoints:  0,
 			PersonalLogs: []PersonalLog{
 				{
 					ID:        generateLogID(),
@@ -116,9 +113,9 @@ func (g *GameManager) StartGame(roomID string) error {
 					Type:      "info",
 				},
 			},
-			StatusEffects: []StatusEffect{},
+			StatusEffects:      []StatusEffect{},
 			UnlockedSkillNodes: []string{},
-			ShowTrail: false,
+			ShowTrail:          false,
 			Character: CharacterDef{
 				ID:   charID,
 				Name: charName,
@@ -145,12 +142,12 @@ func (g *GameManager) StartGame(roomID string) error {
 			ActivePlayerID: playerIDs[0],
 			Map: map[string]*TileInstance{
 				"0,0": {
-					InstanceID:        "start",
-					DefID:             "tile_entry_hall",
-					X:                 0,
-					Y:                 0,
-					Rotation:          0,
-					Edges:             map[Direction]string{
+					InstanceID: "start",
+					DefID:      "tile_entry_hall",
+					X:          0,
+					Y:          0,
+					Rotation:   0,
+					Edges: map[Direction]string{
 						DirectionNorth: "OPEN",
 						DirectionEast:  "OPEN",
 						DirectionSouth: "OPEN",
@@ -161,9 +158,9 @@ func (g *GameManager) StartGame(roomID string) error {
 					DroppedItems:      []Card{},
 				},
 			},
-			TileDeck:       tileDeck,
-			OmenCount:      0,
-			IsHauntActive:  false,
+			TileDeck:      tileDeck,
+			OmenCount:     0,
+			IsHauntActive: false,
 			Logs: []LogEntry{
 				{
 					ID:        "init",

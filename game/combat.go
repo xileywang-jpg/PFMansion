@@ -16,25 +16,27 @@ import (
 // CombatState 战斗状态
 type CombatState struct {
 	AttackerID    string `json:"attackerId"`
-	DefenderID   string `json:"defenderId"`
-	Attribute     string `json:"attribute"` // "might" 或 "speed"
-	Phase         string `json:"phase"`   // ATTACKING, RESOLUTION
-	AttackerRolls []int  `json:"attackerRolls,omitempty"`  // 攻击方骰子结果
-	DefenderRolls []int  `json:"defenderRolls,omitempty"`  // 防御方骰子结果
+	DefenderID    string `json:"defenderId"`
+	Attribute     string `json:"attribute"`               // "might" 或 "speed"
+	Phase         string `json:"phase"`                   // ATTACKING, RESOLUTION
+	AttackerRolls []int  `json:"attackerRolls,omitempty"` // 攻击方骰子结果
+	DefenderRolls []int  `json:"defenderRolls,omitempty"` // 防御方骰子结果
 }
 
 // CombatResult 战斗结果
 type CombatResult struct {
-	AttackerRolls   []int  `json:"attackerRolls"`
-	AttackerSum     int    `json:"attackerSum"`
-	DefenderRolls   []int  `json:"defenderRolls"`
-	DefenderSum     int    `json:"defenderSum"`
-	Damage          int    `json:"damage"`
-	Loser           string `json:"loser"`        // attacker, defender, 或 "" (平局)
-	Draw            bool   `json:"draw"`        // 平局标记
-	Attribute       string `json:"attribute"`  // 战斗属性 (might/speed)
-	AttackerDied    bool   `json:"attackerDied"`
-	DefenderDied    bool   `json:"defenderDied"`
+	AttackerID    string `json:"attackerId"`
+	DefenderID    string `json:"defenderId"`
+	AttackerRolls []int  `json:"attackerRolls"`
+	AttackerSum   int    `json:"attackerSum"`
+	DefenderRolls []int  `json:"defenderRolls"`
+	DefenderSum   int    `json:"defenderSum"`
+	Damage        int    `json:"damage"`
+	Loser         string `json:"loser"`     // attacker, defender, 或 "" (平局)
+	Draw          bool   `json:"draw"`      // 平局标记
+	Attribute     string `json:"attribute"` // 战斗属性 (might/speed)
+	AttackerDied  bool   `json:"attackerDied"`
+	DefenderDied  bool   `json:"defenderDied"`
 }
 
 // StartCombat 开始战斗
@@ -85,12 +87,13 @@ func (g *GameManager) StartCombat(roomID, attackerID, defenderID, attribute stri
 	attackerDiceCount := attackerAttr.Current
 	defenderDiceCount := defenderAttr.Current
 
+	g.clearLastRollResultUnlocked(state.FullState)
 	// 设置战斗状态
 	state.FullState.ActiveCombat = &CombatState{
 		AttackerID:    attackerID,
 		DefenderID:    defenderID,
 		Attribute:     attribute,
-		Phase:        "ATTACKING",
+		Phase:         "ATTACKING",
 		AttackerRolls: make([]int, 0),
 		DefenderRolls: make([]int, 0),
 	}
@@ -141,6 +144,13 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 		return nil, errors.New("防御者不存在")
 	}
 
+	if playerID != combat.AttackerID {
+		return nil, errors.New("只有攻击方可以结算战斗")
+	}
+	if state.FullState.ActivePlayerID != combat.AttackerID {
+		return nil, errors.New("当前不是攻击方的行动回合")
+	}
+
 	// 获取各方投骰子数量
 	attackerAttr, _ := attacker.Character.Attributes[combat.Attribute]
 	defenderAttr, _ := defender.Character.Attributes[combat.Attribute]
@@ -178,10 +188,10 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 			ID:        generateLogID(),
 			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("骰子被效果修改: %s = %v → %v(%d), %s = %v → %v(%d)",
+			Text: fmt.Sprintf("骰子被效果修改: %s = %v → %v(%d), %s = %v → %v(%d)",
 				attacker.Character.Name, attackerRolls, modifiedAttackerRolls, attackerSum,
 				defender.Character.Name, defenderRolls, modifiedDefenderRolls, defenderSum),
-			Type:      "info",
+			Type: "info",
 		})
 	} else {
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
@@ -193,16 +203,18 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 	}
 
 	// 同步战斗骰子结果到 LastRollResult
-	g.SetLastRollResult(roomID, attackerSum+defenderSum)
+	g.setLastRollResultUnlocked(state.FullState, attackerSum+defenderSum)
 
 	// 更新战斗状态的骰子记录（使用修改后的结果）
 	combat.AttackerRolls = modifiedAttackerRolls
 	combat.DefenderRolls = modifiedDefenderRolls
 
 	result := &CombatResult{
-		AttackerRolls: attackerRolls,
+		AttackerID:    combat.AttackerID,
+		DefenderID:    combat.DefenderID,
+		AttackerRolls: modifiedAttackerRolls,
 		AttackerSum:   attackerSum,
-		DefenderRolls: defenderRolls,
+		DefenderRolls: modifiedDefenderRolls,
 		DefenderSum:   defenderSum,
 		Damage:        0,
 		Loser:         "",
@@ -342,6 +354,7 @@ func (g *GameManager) GetCombatState(roomID string) (*CombatState, error) {
 //   - attackerRolls: 攻击方原始骰子点数
 //   - defenderRolls: 防御方原始骰子点数
 //   - attribute: 战斗属性 (might/speed)
+//
 // 返回: (修改后的攻击方骰子, 修改后的防御方骰子)
 func (g *GameManager) ModifyCombatRolls(
 	roomID, attackerID, defenderID string,

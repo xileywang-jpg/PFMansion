@@ -117,6 +117,23 @@
   ],
   "volantis": [
     {
+      "id": "vol_tile_abyss_watchtower",
+      "name": "深渊瞭望塔",
+      "description": "为监视黑潮而建的塔楼，如今已废弃。",
+      "type": "room",
+      "floors": ["GROUND", "UPPER"],
+      "edges": { "N": "OPEN", "S": "WALL", "E": "WALL", "W": "OPEN" },
+      "icon": "Tower",
+      "cardSymbol": "NONE",
+      "interact": {
+        "type": "REVEAL_MAP",
+        "description": "观察全局，发现所有未探索区域",
+        "effects": [
+          { "type": "MODIFY_STAT", "stat": "knowledge", "amount": 1 }
+        ]
+      }
+    },
+    {
       "id": "vol_tile_auremae_plaza",
       "name": "奥赫玛中心广场",
       "description": "黄金裔的骄傲，永恒之地最繁华的广场。中央矗立着创世之碑。",
@@ -284,6 +301,11 @@
       "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
       "cardSymbol": "EVENT",
       "eventTrigger": "vol_event_time_warp",
+      "interact": {
+        "type": "TIME_REWIND",
+        "description": "回溯时间",
+        "cost": { "type": "sanity", "amount": 2 }
+      },
       "onEnterEffects": [
         { "type": "MODIFY_STAT", "stat": "sanity", "amount": -2, "message": "时间的混乱让你头晕目眩，理智 -2" }
       ]
@@ -475,6 +497,37 @@
       ]
     },
     {
+      "id": "vol_tile_lake_mirror",
+      "name": "镜之湖",
+      "description": "平静如镜的湖面，能映照出人内心最深处的恐惧。",
+      "type": "room",
+      "floors": ["GROUND"],
+      "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
+      "icon": "Mirror",
+      "cardSymbol": "OMEN",
+      "interact": {
+        "type": "MIRROR",
+        "description": "投入湖中查看自己的命运",
+        "effects": [
+          { "type": "MODIFY_STAT", "stat": "sanity", "amount": -1 }
+        ]
+      }
+    },
+    {
+      "id": "vol_tile_market_square",
+      "name": "集市广场",
+      "description": "商贩云集的热闹场所，你可以在这里交易物品。",
+      "type": "room",
+      "floors": ["GROUND"],
+      "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "WALL" },
+      "icon": "Store",
+      "cardSymbol": "NONE",
+      "interact": {
+        "type": "TRADE",
+        "description": "与任意玩家交换1件物品"
+      }
+    },
+    {
       "id": "vol_tile_mirror_lake",
       "name": "镜影湖",
       "description": "平静如镜的湖面，倒映着另一个世界的影像。",
@@ -488,6 +541,43 @@
       ]
     },
     {
+      "id": "vol_tile_molten_river",
+      "name": "熔岩河流",
+      "description": "炽热的熔岩流动形成的河流，温度足以融化金属。",
+      "type": "corridor",
+      "floors": ["GROUND"],
+      "edges": { "N": "WALL", "S": "OPEN", "E": "OPEN", "W": "OPEN" },
+      "icon": "Lava",
+      "cardSymbol": "OMEN",
+      "interact": {
+        "type": "CROSS",
+        "description": "跳过熔岩障碍",
+        "attribute": "speed",
+        "difficulty": 4,
+        "successMessage": "你轻盈地跳过熔岩！",
+        "failureMessage": "你被烫伤了！",
+        "failure": [
+          { "type": "DAMAGE", "stat": "might", "amount": 2 }
+        ]
+      }
+    },
+    {
+      "id": "vol_tile_portal_chamber",
+      "name": "传送门室",
+      "description": "古代留下的传送门，部分仍可使用。",
+      "type": "room",
+      "floors": ["GROUND"],
+      "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
+      "icon": "Portal",
+      "cardSymbol": "EVENT",
+      "interact": {
+        "type": "TELEPORT",
+        "description": "使用传送门",
+        "destination": "any_revealed",
+        "cost": { "type": "sanity", "amount": 1 }
+      }
+    },
+    {
       "id": "vol_tile_whispering_woods",
       "name": "低语森林",
       "description": "树木成精的古老森林，它们在风中低语着古老的秘密。",
@@ -498,6 +588,57 @@
       "onEnterEffects": [
         { "type": "MODIFY_STAT", "stat": "knowledge", "amount": 1, "message": "树木的低语告诉你古老的秘密，知识 +1" }
       ]
+    },
+    {
+      "id": "vol_tile_sacred_spring",
+      "name": "神圣之泉",
+      "description": "传说中诸神沐浴的泉水，具有治愈之力。",
+      "type": "room",
+      "floors": ["GROUND"],
+      "edges": { "N": "OPEN", "S": "OPEN", "E": "OPEN", "W": "WALL" },
+      "icon": "Droplets",
+      "cardSymbol": "NONE",
+      "interact": {
+        "type": "HEAL",
+        "description": "在泉水中沐浴",
+        "effects": [
+          { "type": "HEAL", "stat": "might", "amount": 999 },
+          { "type": "HEAL", "stat": "sanity", "amount": 999 },
+          { "type": "MODIFY_STAT", "stat": "sanity", "amount": 1 }
+        ]
+      }
+    },
+    {
+      "id": "vol_tile_starry_observatory",
+      "name": "星空观测台",
+      "description": "用于观测星空的高台，可以看到永恒之地的全貌。",
+      "type": "room",
+      "floors": ["UPPER"],
+      "edges": { "N": "OPEN", "S": "WALL", "E": "WALL", "W": "OPEN" },
+      "icon": "Star",
+      "cardSymbol": "OMEN",
+      "interact": {
+        "type": "DIVINATION",
+        "description": "预知下一个事件",
+        "effects": [
+          { "type": "MODIFY_STAT", "stat": "knowledge", "amount": 1 }
+        ]
+      }
+    },
+    {
+      "id": "vol_tile_titan_forge",
+      "name": "泰坦锻铁炉",
+      "description": "泰坦族打造的巨型锻造炉，至今仍有余温。",
+      "type": "room",
+      "floors": ["GROUND"],
+      "edges": { "N": "OPEN", "S": "OPEN", "E": "WALL", "W": "WALL" },
+      "icon": "Hammer",
+      "cardSymbol": "ITEM",
+      "interact": {
+        "type": "FORGE",
+        "description": "锻造一件传奇武器",
+        "condition": { "op": "GT", "stat": "knowledge", "value": 4 }
+      }
     },
     {
       "id": "vol_tile_tower_titans",

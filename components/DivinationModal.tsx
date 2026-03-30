@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Sparkles, Eye, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import * as network from '../ws/network';
 
 interface DivinationModalProps {
   isOpen: boolean;
@@ -9,7 +10,7 @@ interface DivinationModalProps {
 }
 
 export const DivinationModal: React.FC<DivinationModalProps> = ({ isOpen, onClose }) => {
-  const { decks, addLog, executeScript, pendingInteractionEffects, setState } = useGameStore();
+  const { decks, addLog, showFeedback, setState } = useGameStore();
   const [selectedAction, setSelectedAction] = useState<'toTop' | 'toBottom' | null>(null);
 
   // 获取事件堆顶的牌
@@ -17,11 +18,12 @@ export const DivinationModal: React.FC<DivinationModalProps> = ({ isOpen, onClos
 
   const handleConfirm = () => {
     if (!selectedAction) return;
+    if (!network.isInNetworkMode()) {
+      showFeedback('网络未连接，无法执行占卜', 'error');
+      return;
+    }
 
-    executeScript([{ 
-      type: 'divination', 
-      action: selectedAction 
-    }]);
+    network.sendDivination(selectedAction);
 
     addLog(
       selectedAction === 'toTop' 
@@ -29,29 +31,6 @@ export const DivinationModal: React.FC<DivinationModalProps> = ({ isOpen, onClos
         : '你把预知的卡牌放到了堆底',
       'info'
     );
-
-    // 执行互动待执行效果（如 +1 知识）
-    if (pendingInteractionEffects && pendingInteractionEffects.length > 0) {
-      const context = {
-        state: useGameStore.getState(),
-        activePlayerId: useGameStore.getState().activePlayerId
-      };
-      
-      pendingInteractionEffects.forEach(effect => {
-        if (effect.type === 'MODIFY_STAT' || effect.type === 'modify_stat') {
-          const attr = effect.stat || effect.attribute;
-          const amount = effect.amount;
-          executeScript([{
-            type: 'modify_stat',
-            target: context.activePlayerId,
-            attribute: attr,
-            amount: amount
-          }]);
-        }
-      });
-      
-      addLog('星兆启示带来额外收获！', 'success');
-    }
 
     // 清空待执行效果
     setState({ pendingInteractionEffects: null });

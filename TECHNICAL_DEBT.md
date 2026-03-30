@@ -44,20 +44,16 @@ if (text.includes('力量')) attr = AttributeName.Might;
 ### TD-02: 前端网络层冗余代码 ⚠️
 
 **位置**: 
-- `ws/adapter.ts` - 死代码
-- `hooks/useGameNetwork.ts` - 部分废弃
+- 前端网络历史兼容层
 
 **问题**:
-- `ws/adapter.ts` 的 `syncFromNetwork` 从未被调用
-- `useGameNetwork.ts` 的 `syncGameState` 是空实现
-- 两个文件各自维护了 `isNetworkMode` 检查函数
+- 早期的 `ws/adapter.ts` 与 `hooks/useGameNetwork.ts` 都已脱离现行路由 + `ws/network.ts` 主链
+- 这类兼容层容易让后续改动误接到废弃入口
 
 **改进方向**:
-- 删除 `ws/adapter.ts`
-- 标记 `useGameNetwork.ts` 为废弃，仅保留房间管理接口
-- 统一使用 `ws/network.ts` 的 `isInNetworkMode()`
+- 保持单一入口：UI 直接通过 `ws/network.ts` / `ws/client.ts` 处理连接、房间与对局同步
 
-**状态**: 建议后续清理
+**状态**: 已完成，`ws/adapter.ts` 与 `hooks/useGameNetwork.ts` 均已删除
 
 ---
 

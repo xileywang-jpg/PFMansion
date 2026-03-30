@@ -4,6 +4,8 @@
 **审查范围**: 前端(React/Zustand) + 后端(Go) 状态同步与多人游戏逻辑  
 **核心问题**: 玩家角色状态改变无法被后端感知与广播
 
+> 状态更新（2026-03-30）：本报告中的 Bug 1、Bug 2 已修复；事件/地块检定已改为后端单轨推进，取消放置也不再使用前端乐观清空。其余条目请按“是否仍与当前代码一致”再评估。
+
 ---
 
 ## 🔴 P0 - 核心 Bug（必须立即修复）
@@ -131,7 +133,7 @@ function handleDiceResult(msg: ServerMessage) {
 |------|-----------|------|
 | `startHaunt` | `phase`, `isHauntActive`, `players` team | 叛徒分配只有发起者看到 |
 | `debugForceHaunt` | `phase`, `isHauntActive` | 调试功能影响所有玩家 |
-| `executeScript` | `players[*].character.attributes` | 属性修改只有本地生效 |
+| `executeScript` | `players[*].character.attributes` | 已删除；此前只会导致本地状态与后端脱节 |
 | `handlePlayerDeath` | `players.isDead`, `map.droppedItems` | 玩家死亡只有本地生效 |
 
 **代码示例**:

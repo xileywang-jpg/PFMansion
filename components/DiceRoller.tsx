@@ -7,7 +7,7 @@ import * as network from '../ws/network';
 import { Dices } from 'lucide-react';
 
 const DiceRoller: React.FC = () => {
-  const { activeRoll, cancelActiveRoll } = useGameStore();
+  const { activeRoll, cancelActiveRoll, showFeedback } = useGameStore();
   const [currentValues, setCurrentValues] = useState<number[]>([]);
   const [isRolling, setIsRolling] = useState(false);
   const [showResult, setShowResult] = useState(false);
@@ -131,8 +131,7 @@ const DiceRoller: React.FC = () => {
       setIsRolling(false);
       setHasSentRequest(false);
       console.warn('骰子请求超时');
-      // 超时后清除 activeRoll，防止 UI 卡死（服务器会返回 STALE 响应做双保险）
-      cancelActiveRoll();
+      showFeedback('服务器未及时返回检定结果，请等待状态同步或重试。', 'warning');
       network.setDiceRollTimeoutId(null);
     }, 5000);
     console.log('[DiceRoller] 已设置超时定时器, timeoutId=', timeoutId);
@@ -177,7 +176,7 @@ const DiceRoller: React.FC = () => {
                             {finalTotal >= activeRoll.targetValue ? '成功' : '失败'}
                         </div>
                     )}
-                    <button onClick={() => activeRoll.onComplete(finalTotal)} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded uppercase tracking-wider text-sm transition-colors shadow-lg">继续</button>
+                    <button onClick={cancelActiveRoll} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded uppercase tracking-wider text-sm transition-colors shadow-lg">继续</button>
                 </motion.div>
             ) : (
                 <div key="rolling" className="w-full flex flex-col gap-3">

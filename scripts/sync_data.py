@@ -5,7 +5,7 @@ Usage: python3 scripts/sync_data.py
 """
 import json, os, re
 
-BASE = "/root/.openclaw/workspace/PFMansion"
+BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 def strip_comments(content):
     """Strip // comments from TypeScript content, preserving strings."""
@@ -183,13 +183,19 @@ def main():
     print(f"  Found {len(fe_tile_ids)} frontend tiles")
 
     merged_tiles = {e['id']: e for e in fe_tiles}
-    added_tiles = [bt for bt in be_tiles if bt['id'] not in merged_tiles]
-    for bt in added_tiles:
+    added_tiles = []
+    updated_tiles = []
+    for bt in be_tiles:
+        if bt['id'] in merged_tiles:
+            updated_tiles.append(bt)
+        else:
+            added_tiles.append(bt)
         merged_tiles[bt['id']] = bt
     
     print(f"\nAdding {len(added_tiles)} missing tiles:")
     for t in sorted(added_tiles, key=lambda x: x['id']):
         print(f"  + {t['id']}: {t.get('name', '?')}")
+    print(f"\nUpdating {len(updated_tiles)} existing tiles from backend authority")
     
     write_ts_array(tiles_path, list(merged_tiles.values()))
     print(f"\n✅ Wrote {len(merged_tiles)} tiles to frontend")
@@ -213,7 +219,7 @@ def main():
 
     print("\n" + "="*50)
     print("✅ Sync complete!")
-    print("Now rebuild: cd /root/.openclaw/workspace/PFMansion && npm run build")
+    print(f"Now rebuild: cd {BASE} && npm run build")
 
 if __name__ == '__main__':
     main()

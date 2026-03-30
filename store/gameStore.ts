@@ -2,39 +2,18 @@
 import { create } from 'zustand';
 import { 
   Player, TileInstance, TileDef, GamePhase, Direction, 
-  CardDef, CardSymbol, LogEntry, AttributeName, TurnPhase, ScriptAction, Item, ActiveRoll, DirectionalEdges,
-  Scenario, EventOutcome, GameNPC
+  CardDef, CardSymbol, LogEntry, AttributeName, TurnPhase, ScriptAction, Item, ActiveRoll, DirectionalEdges, EventCard,
+  CombatState, CombatResult,
+  Scenario, GameNPC
 } from '../types';
 import { ActionDefinition } from '../types/Logic';
 import { GameDataBundle } from '../src/services/gameData';
-import { 
-  MOCK_CHARACTERS, STARTING_TILE, TILE_DECK, 
-  MOCK_EVENTS_DECK, MOCK_ITEMS_DECK, MOCK_OMENS_DECK,
-  getCharactersForGame, getTilesForGame, getItemsForGame, getEventsForGame, getOmensForGame, getStartingTileForGame
-} from '../constants';
-import { EVENTS_DB } from '../data/events';
-import { ITEMS_DB } from '../data/items';
-import { ITEMS_DATA } from '../data/source/items';
-import { OMENS_DATA } from '../data/source/omens';
-import { SKILLS_DATA } from '../data/source/skills';
-import { SCENARIOS_DATA } from '../data/source/scenarios';
-import { SCENARIOS_DB } from '../data/scenarios';
 import { SKILL_TREES } from '../data/source/skillTrees';
 import { getScenarioId } from '../data/hauntMatrix';
 import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
-import { evaluateCondition, executeEffects, GameContext, resolveTargets, canInteractWithTile } from '../utils/logicEngine';
-import { addStatusEffect, decrementStatusEffects, applyStatusEffectOnTurnStart, getStatusEffectModifiers } from '../utils/statusEffects';
+import { addStatusEffect, decrementStatusEffects, applyStatusEffectOnTurnStart } from '../utils/statusEffects';
 import { generateId } from '../utils/idGenerator';
 import * as network from '../ws/network';
-
-interface CombatState {
-  attackerId: string;
-  defenderId: string;
-  attribute: AttributeName;
-  attackerRoll?: number;
-  defenderRoll?: number;
-  phase: 'ATTACKING' | 'RESOLUTION';
-}
 
 interface GameState {
   phase: GamePhase;
@@ -50,7 +29,7 @@ interface GameState {
   logs: LogEntry[];
   movesRemaining: number;
   
-  activeCard: CardDef | Item | null;
+  activeCard: EventCard | null;
   decks: {
     EVENT: CardDef[];
     ITEM: Item[];
@@ -61,11 +40,10 @@ interface GameState {
 
   activeRoll: ActiveRoll | null;
   activeCombat: CombatState | null;
+  combatResult: CombatResult | null;
   
   // Phase X: NPC 系统
   npcs: Record<string, GameNPC>;
-
-  eventOutcome: EventOutcome | null;
 
   omenCount: number;
   isHauntActive: boolean;
@@ -122,18 +100,12 @@ interface GameState {
   getCharactersByTheme: (theme?: string) => any[];
   getCharacterById: (id: string, theme?: string) => any | undefined;
 
-  initializeGame: () => void;
   nextTurn: () => void;
   movePlayer: (direction: Direction) => void;
   rotatePendingTile: () => void;
   confirmTilePlacement: () => void;
   cancelTilePlacement: () => void;
   drawCard: (type: CardSymbol) => void;
-  triggerSpecificEvent: (eventId: string) => void;
-  triggerStatRoll: () => void;
-  resolveDiceRoll: (total: number) => void;
-  applyCardOutcome: () => void;
-  acknowledgeEventOutcome: () => void;
   resolveEventChoice: (actions: ScriptAction[], choiceIndex?: number) => void;
   incrementOmenCount: () => void;
   performHauntRoll: () => void; 
@@ -145,9 +117,6 @@ interface GameState {
   setHoveredTileId: (id: string | null) => void;
   
   showFeedback: (message: string, type?: 'error' | 'info' | 'warning' | 'turn' | 'death' | 'alert' | 'success') => void;
-
-  executeScript: (actions: ScriptAction[]) => void;
-  handlePlayerDeath: (playerId: string) => void;
   pickupItemFromTile: (itemId: string) => void;
   giveItem: (fromId: string, toId: string, itemId: string) => void;
 
@@ -173,9 +142,10 @@ interface GameState {
   
   interactWithWall: (direction: Direction) => void;
   cancelActiveRoll: () => void;
+  dismissCombatResult: () => void;
 
   isPlacementValid: () => boolean;
-  // NEW: Helper to get effective attribute value (Base + Buffs)
+  // 兼容展示层调用，当前直接返回后端同步后的权威属性值。
   getEffectiveAttributeValue: (playerId: string, attribute: AttributeName) => number;
 }
 
@@ -209,30 +179,6 @@ const areConnected = (fromDir: Direction, toTileEdges: DirectionalEdges): boolea
   return targetEdge !== 'WALL';
 };
 
-// Simple parser for Chinese attribute text to Enum
-const parseAttributeFromText = (text: string): { attr: AttributeName, value: number } | null => {
-  let attr: AttributeName | null = null;
-  if (text.includes('力量')) attr = AttributeName.Might;
-  else if (text.includes('速度') || text.includes('移动')) attr = AttributeName.Speed;
-  else if (text.includes('理智')) attr = AttributeName.Sanity;
-  else if (text.includes('知识')) attr = AttributeName.Knowledge;
-
-  if (!attr) return null;
-
-  // Extract +/- number
-  const match = text.match(/([+-]\d+)/);
-  if (match) {
-    return { attr, value: parseInt(match[0]) };
-  }
-  // Handle cases like "移动速度 +1" which might be parsed as "Speed +1" logic
-  if (text.includes('+') && !text.includes('-')) {
-      const num = text.split('+')[1];
-      if (num) return { attr, value: parseInt(num) };
-  }
-  
-  return null;
-};
-
 export const useGameStore = create<GameState>((set, get) => ({
   phase: GamePhase.Exploration,
   turnPhase: 'MOVING',
@@ -249,21 +195,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastRollResult: null,
   lastCheckSuccess: null,
   activeRoll: null,
-
-  triggerStatRoll: () => {
-    // 占位：属性检定由后端驱动
-  },
-
-  resolveDiceRoll: (_total: number) => {
-    // 占位：骰子结果由 DiceRoller 处理
-  },
-
-  applyCardOutcome: () => {
-    // 占位：卡牌结果应用由后端 state_sync 驱动
-  },
+  combatResult: null,
   activeCombat: null,
   npcs: {},
-  eventOutcome: null,
   omenCount: 0,
   isHauntActive: false,
   currentScenario: null,
@@ -304,169 +238,66 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   getEffectiveAttributeValue: (playerId: string, attribute: AttributeName): number => {
-      const state = get();
-      const player = state.players[playerId];
-      if (!player) return 0;
-
-      // 1. Base value from slider
-      let total = player.character.attributes[attribute].current;
-
-      // 2. Passive buffs from Items
-      player.items.forEach(item => {
-          if (item.passiveEffects) {
-              item.passiveEffects.forEach(eff => {
-                  if (eff.type === 'buff') {
-                      const parsed = parseAttributeFromText(eff.text);
-                      if (parsed && parsed.attr === attribute) {
-                          total += parsed.value;
-                      }
-                  }
-              });
-          }
-      });
-
-      // 3. Passive buffs from Skill Tree
-      player.buffs.forEach(buffText => {
-          const parsed = parseAttributeFromText(buffText);
-          if (parsed && parsed.attr === attribute) {
-              total += parsed.value;
-          }
-      });
-
-      // 4. Status Effects modifiers
-      if (player.statusEffects) {
-        const statusModifiers = getStatusEffectModifiers(player);
-        statusModifiers.forEach(mod => {
-          if (mod.attribute === attribute) {
-            total += mod.amount;
-          }
-        });
-      }
-
-      return Math.max(0, total);
+      return get().players[playerId]?.character.attributes[attribute].current ?? 0;
   },
 
   // ==================== 数据访问辅助函数 ====================
-  // 注意: API数据优先，本地数据仅作为降级方案使用
+  // 注意: 静态数据必须来自后端 API /api/game/data
 
-  // 获取所有物品（从API或本地）
+  // 获取所有物品
   getAllItems: (): any[] => {
-    const state = get();
-    if (state.gameData?.items?.length) {
-      return state.gameData.items;
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Items) - API数据不可用');
-    return Object.values(ITEMS_DATA as unknown as Record<string, any>);
+    return get().gameData?.items ?? [];
   },
 
   // 根据ID获取物品
   getItemById: (id: string): any | undefined => {
-    const state = get();
-    if (state.gameData?.items) {
-      return state.gameData.items.find(item => item.id === id);
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Item:', id, ') - API数据不可用');
-    return (ITEMS_DATA as unknown as Record<string, any>)[id];
+    return get().gameData?.items?.find(item => item.id === id);
   },
 
-  // 获取所有厄运（从API或本地）
+  // 获取所有厄运
   getAllOmens: (): any[] => {
-    const state = get();
-    if (state.gameData?.omens?.length) {
-      return state.gameData.omens;
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Omens) - API数据不可用');
-    return Object.values(OMENS_DATA as unknown as Record<string, any>);
+    return get().gameData?.omens ?? [];
   },
 
   // 根据ID获取厄运
   getOmenById: (id: string): any | undefined => {
-    const state = get();
-    if (state.gameData?.omens) {
-      return state.gameData.omens.find(omen => omen.id === id);
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Omen:', id, ') - API数据不可用');
-    return (OMENS_DATA as unknown as Record<string, any>)[id];
+    return get().gameData?.omens?.find(omen => omen.id === id);
   },
 
-  // 获取所有事件（从API或本地）
+  // 获取所有事件
   getAllEvents: (): any[] => {
-    const state = get();
-    if (state.gameData?.events?.length) {
-      return state.gameData.events;
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Events) - API数据不可用');
-    return Object.values(EVENTS_DB);
+    return get().gameData?.events ?? [];
   },
 
   // 根据ID获取事件
   getEventById: (id: string): any | undefined => {
-    const state = get();
-    if (state.gameData?.events) {
-      return state.gameData.events.find(event => event.id === id);
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Event:', id, ') - API数据不可用');
-    return EVENTS_DB[id];
+    return get().gameData?.events?.find(event => event.id === id);
   },
 
-  // 获取所有技能（从API或本地）
+  // 获取所有技能
   getAllSkills: (): any[] => {
-    const state = get();
-    if (state.gameData?.skills?.length) {
-      return state.gameData.skills;
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Skills) - API数据不可用');
-    return Object.values(SKILLS_DATA as unknown as Record<string, any>);
+    return get().gameData?.skills ?? [];
   },
 
   // 根据ID获取技能
   getSkillById: (id: string): any | undefined => {
-    const state = get();
-    if (state.gameData?.skills) {
-      return state.gameData.skills.find(skill => skill.id === id);
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Skill:', id, ') - API数据不可用');
-    return (SKILLS_DATA as unknown as Record<string, any>)[id];
+    return get().gameData?.skills?.find(skill => skill.id === id);
   },
 
   // 获取剧本
   getScenarios: (): Record<string, any> => {
-    const state = get();
-    if (state.gameData?.scenarios && Object.keys(state.gameData.scenarios).length > 0) {
-      return state.gameData.scenarios;
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Scenarios) - API数据不可用');
-    return SCENARIOS_DATA;
+    return get().gameData?.scenarios ?? {};
   },
 
   // 根据ID获取剧本
   getScenarioById: (id: string): any | undefined => {
-    const state = get();
     const scenarios = get().getScenarios();
-    if (!scenarios[id]) {
-      console.error('[GameData] ❌ 使用降级数据 (Scenario:', id, ') - API数据不可用');
-    }
     return scenarios[id];
   },
 
   // 获取地图（根据主题）
   getTilesByTheme: (theme: string = 'original'): any[] => {
-    const state = get();
-    if (state.gameData?.tiles?.[theme]?.length) {
-      return state.gameData.tiles[theme];
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Tiles:', theme, ') - API数据不可用');
-    return TILE_DECK;
+    return get().gameData?.tiles?.[theme] ?? [];
   },
 
   // 根据ID获取地图 (自动识别主题)
@@ -483,147 +314,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (fallbackTile) {
         return fallbackTile;
       }
-      console.error('[GameData] ❌ 使用降级数据 (Tile:', id, ') - API数据不可用');
     }
     return tile;
   },
 
   // 获取角色（根据主题）
   getCharactersByTheme: (theme: string = 'original'): any[] => {
-    const state = get();
-    if (state.gameData?.characters?.[theme]?.length) {
-      return state.gameData.characters[theme];
-    }
-    // 降级到本地数据
-    console.error('[GameData] ❌ 使用降级数据 (Characters:', theme, ') - API数据不可用');
-    return MOCK_CHARACTERS;
+    return get().gameData?.characters?.[theme] ?? [];
   },
 
   // 根据ID获取角色
   getCharacterById: (id: string, theme: string = 'original'): any | undefined => {
     const characters = get().getCharactersByTheme(theme);
-    const char = characters.find(char => char.id === id);
-    if (!char) {
-      console.error('[GameData] ❌ 使用降级数据 (Character:', id, ') - API数据不可用');
-    }
-    return char;
-  },
-
-  initializeGame: () => {
-    // P0 修复: 网络模式下游戏由后端初始化，前端不应执行本地初始化
-    if (network.isInNetworkMode()) {
-      console.warn('[initializeGame] 网络模式下游戏由服务器初始化，忽略前端初始化');
-      return;
-    }
-
-    // 根据主题动态获取起始Tile
-    const startingTile = getStartingTileForGame();
-    
-    const startTile: TileInstance = {
-      instanceId: 'start_instance',
-      defId: startingTile.id,
-      x: 0,
-      y: 0,
-      rotation: 0,
-      edges: startingTile.edges,
-      hasEventTriggered: true,
-      visibility: 'VISIBLE',
-      droppedItems: []
-    };
-
-    const playersDict: Record<string, Player> = {};
-    const ids: string[] = [];
-
-    // 根据主题动态获取角色数据
-    const characters = getCharactersForGame();
-    
-    characters.forEach((char, index) => {
-      const id = `p${index + 1}`;
-      ids.push(id);
-      
-      const initialSkillPoints = char.attributes[AttributeName.Knowledge].current;
-
-      playersDict[id] = {
-        id,
-        character: char,
-        position: { x: 0, y: 0 },
-        items: [],
-        buffs: [],
-        skills: [],
-        statusEffects: [],  // Phase 3: 状态效果
-        isDead: false,
-        team: 'UNASSIGNED',
-        skillPoints: initialSkillPoints,
-        unlockedSkillNodes: [],
-        personalLogs: [{
-            id: 'init_log',
-            timestamp: Date.now(),
-            text: '进入了大厦。',
-            type: 'info'
-        }],
-        showTrail: false,
-      };
-    });
-
-    // 根据主题动态获取游戏数据
-    const themeTiles = getTilesForGame();
-    const themeItems = getItemsForGame();
-    const themeEvents = getEventsForGame();
-    const themeOmens = getOmensForGame();
-    
-    console.log('[initializeGame] themeTiles:', themeTiles?.length);
-    console.log('[initializeGame] themeItems type:', typeof themeItems, Array.isArray(themeItems));
-    console.log('[initializeGame] themeEvents type:', typeof themeEvents, Array.isArray(themeEvents));
-    console.log('[initializeGame] themeOmens type:', typeof themeOmens, Array.isArray(themeOmens));
-    
-    // 确保数据是数组
-    const tilesArray = Array.isArray(themeTiles) ? themeTiles : [];
-    const eventsArray = Array.isArray(themeEvents) ? themeEvents : [];
-    const itemsArray = Array.isArray(themeItems) ? themeItems : [];
-    const omensArray = Array.isArray(themeOmens) ? themeOmens : [];
-
-    console.log('[initializeGame] Starting set state...');
-    
-    set({
-      players: playersDict,
-      playerIds: ids,
-      activePlayerId: ids[0] || '',
-      map: { "0,0": startTile },
-      tileDeck: [...tilesArray].sort(() => Math.random() - 0.5),
-      decks: {
-        EVENT: [...eventsArray].sort(() => Math.random() - 0.5),
-        ITEM: [...itemsArray].sort(() => Math.random() - 0.5),
-        OMEN: [...omensArray].sort(() => Math.random() - 0.5),
-      },
-      logs: [{
-        id: 'init_log',
-        timestamp: Date.now(),
-        text: '大厦沉重的大门在你们身后砰然关上。',
-        type: 'narrative'
-      }],
-      movesRemaining: playersDict[ids[0]]?.character?.attributes[AttributeName.Speed]?.current ?? 0,
-      turnIndex: 1,
-      turnPhase: 'MOVING',
-      phase: GamePhase.Exploration,
-      pendingTile: null,
-      activeCard: null,
-      lastRollResult: null,
-      activeRoll: null,
-      activeCombat: null,
-      eventOutcome: null,
-      omenCount: 0,
-      isHauntActive: false,
-      currentScenario: null,
-      traitorId: null,
-      lastTriggeredOmen: null,
-      lastTriggeredTile: null,
-      pendingAction: null,
-      isInventoryOpen: false,
-      isInteractionModalOpen: false,
-      isSkillTreeOpen: false,
-      inspectPlayerId: null,
-      pendingInteractionEffects: null,
-    });
+    return characters.find(char => char.id === id);
   },
 
   addLog: (text, type = 'info') => {
@@ -696,61 +399,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     
     const currentEdge = currentTile.edges[direction];
     
-    // PHASING buff 可以穿墙
-    if (currentEdge === 'WALL' && !player.buffs.includes('PHASING')) {
-      state.showFeedback("前方无路", "error");
+    if (currentEdge === 'WALL') {
+      state.showFeedback("该方向没有门", "error");
       return;
     }
     
     // 发送移动请求到后端
     network.sendMove(direction);
     state.showFeedback("正在移动...", "info");
-  },
-
-  handlePlayerDeath: (playerId: string) => {
-    const state = get();
-    const player = state.players[playerId];
-    if (!player || player.isDead) return;
-
-    // Bug Fix: 在网络模式下，死亡处理应由后端完成，不应前端直接修改状态
-    // 前端只负责显示后端广播的状态变化
-    if (network.isInNetworkMode()) {
-      console.warn('handlePlayerDeath 在网络模式下被调用，但死亡处理应由后端执行');
-      // 不直接修改状态，等待后端 state_sync
-      return;
-    }
-
-    get().addPersonalLog(playerId, '遭受了致命伤害，不幸阵亡。', 'alert');
-
-    const playerPos = `${player.position.x},${player.position.y}`;
-    const tile = state.map[playerPos];
-
-    const updatedTile = {
-      ...tile,
-      droppedItems: [...tile.droppedItems, ...player.items]
-    };
-
-    const newPlayers = { ...state.players };
-    newPlayers[playerId] = {
-      ...newPlayers[playerId],
-      isDead: true,
-      items: []
-    };
-
-    set({
-      players: newPlayers,
-      map: { ...state.map, [playerPos]: updatedTile },
-      turnPhase: 'DONE',
-      activeCard: null,
-      activeRoll: null,
-      activeCombat: null,
-      isInteractionModalOpen: false,
-      isSkillTreeOpen: false,
-      pendingInteractionEffects: null,
-    });
-
-    state.addLog(`${player.character.name} 在大厦中殒落了... 随身物品散落了一地。`, 'alert');
-    state.showFeedback(`${player.character.name} 已阵亡`, 'death');
   },
 
   pickupItemFromTile: (itemId: string) => {
@@ -797,215 +453,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     network.sendForceHaunt();
     state.showFeedback("正在强制触发作祟...", "warning");
   },
-
-  executeScript: (actions: ScriptAction[]) => {
-      const state = get();
-      
-      // Bug Fix: 在网络模式下，脚本应由后端执行，前端不应直接修改状态
-      // 如果是本地模式，才执行脚本
-      if (network.isInNetworkMode()) {
-        console.warn('executeScript 在网络模式下被调用，脚本应由后端执行，忽略前端执行');
-        // 发送日志提示，但不执行脚本
-        // 后端会执行效果并通过 state_sync 广播结果
-        state.showFeedback('等待服务器处理...', 'info');
-        return;
-      }
-      
-      // 深拷贝 players，避免修改原始状态
-      const newPlayers = JSON.parse(JSON.stringify(state.players)) as typeof state.players;
-      const currentPlayerId = state.activePlayerId;
-      
-      let deathTriggeredIds: string[] = [];
-
-      actions.forEach(action => {
-          // If we are executing conditional logic from CHOICE, action may have logic-style 'IF'
-          // We need to support basic logic execution here too, or delegate to logicEngine
-          // For now, we support the standard ScriptAction types + simplified logic hooks
-
-          const targetId = action.target === 'self' || !action.target ? currentPlayerId : action.target;
-          const player = newPlayers[targetId];
-          if (!player && action.target !== 'all') return; // Basic validation
-
-          switch(action.type) {
-              case 'draw_card': {
-                  if (action.deck && action.deck !== 'NONE') {
-                      state.drawCard(action.deck);
-                  }
-                  break;
-              }
-              case 'modify_stat': {
-                  if (action.attribute && action.amount) {
-                      const attr = player.character.attributes[action.attribute];
-                      const damageMitigation = player.buffs.includes('伤害减免 +1') && action.amount < 0 ? 1 : 0;
-                      const actualAmount = action.amount < 0 ? Math.min(0, action.amount + damageMitigation) : action.amount;
-
-                      const oldVal = attr.current;
-                      const newVal = attr.current + actualAmount;
-                      
-                      if (newVal <= attr.floor) {
-                          deathTriggeredIds.push(targetId);
-                          attr.current = attr.floor;
-                      } else {
-                          attr.current = Math.min(attr.max, newVal);
-                      }
-                      
-                      if (actualAmount !== 0) {
-                          get().addPersonalLog(targetId, `${action.attribute} ${actualAmount > 0 ? '+' : ''}${actualAmount} (当前: ${attr.current})`, actualAmount > 0 ? 'success' : 'alert');
-                      }
-                      
-                      if (action.message) state.addLog(action.message, actualAmount > 0 ? 'success' : 'alert');
-                  }
-                  break;
-              }
-              case 'heal': {
-                  if (action.attribute && action.amount) {
-                      const attr = player.character.attributes[action.attribute];
-                      const oldVal = attr.current;
-                      attr.current = Math.min(attr.max, attr.current + action.amount);
-                      if (attr.current !== oldVal) {
-                           get().addPersonalLog(targetId, `${action.attribute} 恢复了 ${action.amount} 点。`, 'success');
-                      }
-                  }
-                  break;
-              }
-              case 'add_item': {
-                  if (action.itemId) {
-                      const item = ITEMS_DB[action.itemId];
-                      if (item) {
-                          player.items.push(item);
-                          state.addLog(`获得了 ${item.name}`, 'success');
-                          get().addPersonalLog(targetId, `获得了物品: ${item.name}。`, 'success');
-                      }
-                  }
-                  break;
-              }
-              case 'remove_item': {
-                  if (action.itemId) {
-                      const itemIndex = player.items.findIndex(item => item.id === action.itemId);
-                      if (itemIndex >= 0) {
-                          const removedItem = player.items.splice(itemIndex, 1)[0];
-                          state.addLog(`失去了 ${removedItem.name}`, 'alert');
-                          get().addPersonalLog(targetId, `失去了物品: ${removedItem.name}。`, 'alert');
-                      }
-                  }
-                  break;
-              }
-              case 'move_player': {
-                  if (action.location === 'basement') state.addLog("你掉到了地下室！", 'alert');
-                  break;
-              }
-              case 'narrative_log': {
-                  if (action.message) state.addLog(action.message, 'narrative');
-                  break;
-              }
-              case 'damage': {
-                  // 伤害效果 - 等同于 reduce stat
-                  if (action.amount) {
-                      const attr = player.character.attributes['might'];
-                      const damageMitigation = player.buffs.includes('伤害减免 +1') ? 1 : 0;
-                      const actualAmount = Math.min(0, -Math.abs(action.amount) + damageMitigation);
-                      
-                      const oldVal = attr.current;
-                      const newVal = attr.current + actualAmount;
-                      
-                      if (newVal <= attr.floor) {
-                          deathTriggeredIds.push(targetId);
-                          attr.current = attr.floor;
-                      } else {
-                          attr.current = Math.min(attr.max, newVal);
-                      }
-                      
-                      if (action.message) state.addLog(action.message, 'alert');
-                      get().addPersonalLog(targetId, `受到 ${Math.abs(action.amount)} 点伤害 (实际: ${Math.abs(actualAmount)})`, 'alert');
-                  }
-                  break;
-              }
-              case 'teleport': {
-                  // 传送效果 - 传送到随机位置或指定位置
-                  if (action.destination === 'random' || action.destination === 'any') {
-                      // 找到所有可见且空闲的地块
-                      const availableTiles = Object.entries(state.map)
-                          .filter(([_, tile]) => tile.visibility === 'VISIBLE')
-                          .filter(([key, tile]) => {
-                              const [x, y] = key.split(',').map(Number);
-                              return !Object.values(state.players).some(p => p.position.x === x && p.position.y === y && !p.isDead);
-                          });
-                      
-                      if (availableTiles.length > 0) {
-                          const randomTile = availableTiles[Math.floor(Math.random() * availableTiles.length)];
-                          const [tx, ty] = randomTile[0].split(',').map(Number);
-                          player.position = { x: tx, y: ty };
-                          state.addLog(`你被传送到随机位置！`, 'narrative');
-                      }
-                  } else if (action.destination === 'basement') {
-                      state.addLog("你掉到了地下室！", 'alert');
-                  }
-                  break;
-              }
-              case 'gain_item': {
-                  // gain_item 是 add_item 的别名
-                  if (action.itemId) {
-                      const item = ITEMS_DB[action.itemId];
-                      if (item) {
-                          player.items.push(item);
-                          state.addLog(`获得了 ${item.name}`, 'success');
-                          get().addPersonalLog(targetId, `获得了物品: ${item.name}。`, 'success');
-                      }
-                  }
-                  break;
-              }
-              case 'reveal_all_tiles': {
-                  // 揭示所有地块
-                  const newMap = { ...state.map };
-                  Object.keys(newMap).forEach(key => {
-                      newMap[key] = { ...newMap[key], visibility: 'VISIBLE' };
-                  });
-                  set({ map: newMap });
-                  state.addLog(`地图已完全揭示！`, 'success');
-                  break;
-              }
-              case 'reveal_next_event': {
-                  // 揭示下一个事件（暂为提示）
-                  state.addLog(`你感觉到前方有重要的事件即将发生...`, 'info');
-                  break;
-              }
-              case 'reveal_trail': {
-                  // 显示足迹
-                  if (newPlayers[targetId]) {
-                      newPlayers[targetId].showTrail = true;
-                      state.addLog(`足迹已在地图上标记`, 'info');
-                  }
-                  break;
-              }
-              case 'reroll_dice': {
-                  // 重掷骰子（需要前端支持）
-                  state.addLog(`你可以重新投掷骰子！`, 'info');
-                  break;
-              }
-              case 'reveal_map': {
-                  // 揭示地图（等同于揭示所有地块）
-                  const revealMap = { ...state.map };
-                  Object.keys(revealMap).forEach(key => {
-                      revealMap[key] = { ...revealMap[key], visibility: 'VISIBLE' };
-                  });
-                  set({ map: revealMap });
-                  state.addLog(`地图已揭示！`, 'success');
-                  break;
-              }
-              // Basic support for logic embedded in events (like "IF HAS_ITEM")
-              // In a real scenario, we'd use logicEngine entirely, but here we bridge.
-              // We'll rely on logicEngine for complex skill execution, but event scripts are simple.
-              // If an action has a 'condition' (not in standard ScriptAction yet), we skip.
-          }
-      });
-
-      set({ players: newPlayers });
-
-      deathTriggeredIds.forEach(id => {
-          get().handlePlayerDeath(id);
-      });
-  },
-
   resolveEventChoice: (actions: ScriptAction[], choiceIndex?: number) => {
       if (!network.isInNetworkMode()) {
           get().showFeedback("网络未连接，无法进行选择", "error");
@@ -1104,26 +551,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!state.pendingTile) return;
 
     if (network.isInNetworkMode()) {
-      // 乐观更新：立即清除放置状态避免 UI 残留，后端 state_sync 会确认
-      set({
-        pendingTile: null,
-        pendingTargetPosition: null,
-        pendingMoveDirection: null,
-        pendingTileRotation: 0,
-      });
+      state.showFeedback("正在取消放置...", "info");
       network.sendCancelTilePlacement();
       return;
     }
 
-    // 本地模式降级：归还牌和步数
-    set({
-      tileDeck: [state.pendingTile, ...state.tileDeck],
-      pendingTile: null,
-      pendingTargetPosition: null,
-      pendingMoveDirection: null,
-      pendingTileRotation: 0,
-      movesRemaining: state.movesRemaining + 1,
-    });
+    state.showFeedback("网络未连接，无法取消放置，请等待重连或重新进入房间", "error");
   },
 
   drawCard: (type: CardSymbol) => {
@@ -1133,69 +566,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       network.sendDrawCard(type);
   },
-
-  triggerSpecificEvent: (eventId: string) => {
-      const event = get().getEventById(eventId);
-      if (event) set({ activeCard: event });
-  },
-
-    acknowledgeEventOutcome: () => {
-     set({
-        activeCard: null,
-        activeRoll: null,
-        lastRollResult: null,
-        lastCheckSuccess: null,
-        eventOutcome: null
-        // Bug Fix: 移除 turnPhase: 'DONE'，网络模式下应由后端 state_sync 控制
-     });
-  },
   incrementOmenCount: () => set(s => ({ omenCount: s.omenCount + 1 })),
 
   performHauntRoll: () => {
       const state = get();
-      set({
-        activeRoll: {
-          id: 'haunt_roll',
-          attributeName: '作祟检定',
-          numberOfDice: 6,
-          targetValue: state.omenCount,
-          onComplete: (total) => {
-              // Bug Fix: 使用 get() 获取最新的 omenCount，而不是闭包中捕获的旧 state
-              const currentOmenCount = get().omenCount;
-              if (total < currentOmenCount) {
-                  set({
-                    isHauntActive: true,
-                    phase: GamePhase.HauntReveal,
-                    activeRoll: null,
-                    lastRollResult: total
-                  });
-              } else {
-                  set({
-                    phase: GamePhase.Exploration,
-                    activeRoll: null,
-                    lastRollResult: total,
-                    turnPhase: 'DONE'
-                  });
-              }
-          }
-        }
-      });
+
+      if (!network.isInNetworkMode()) {
+        state.showFeedback("网络未连接，无法执行作祟检定", "error");
+        return;
+      }
+
+      network.sendPerformHauntRoll();
+      state.showFeedback("正在执行作祟检定...", "info");
   },
 
   startHaunt: () => {
-    const state = get();
-    
-    // Bug Fix: 发送请求到后端，而不是直接修改状态
-    // 后端 processHauntRoll 会计算骰子并触发作祟
-    if (!network.isInNetworkMode()) {
-      state.showFeedback("网络未连接，无法执行作祟检定", "error");
-      return;
-    }
-    
-    // 发送 perform_haunt_roll 请求
-    network.sendPerformHauntRoll();
-    
-    state.showFeedback("正在执行作祟检定...", "info");
+    get().performHauntRoll();
   },
 
   setHoveredTileId: (id) => set({ hoveredTileId: id }),
@@ -1240,6 +626,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       network.sendInteractWithWall(direction);
       state.showFeedback("正在破坏墙壁...", "info");
   },
+
+  dismissCombatResult: () => set({ combatResult: null }),
   
   cancelActiveRoll: () => {
     const state = get();

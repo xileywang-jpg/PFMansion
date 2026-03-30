@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,41 @@ func (g *GameManager) RollDiceSum(numDice int) int {
 	return sum
 }
 
+func (g *GameManager) setLastRollResultUnlocked(state *GameStateFull, result int) {
+	if state == nil {
+		return
+	}
+	state.LastRollResult = &result
+}
+
+func (g *GameManager) clearLastRollResultUnlocked(state *GameStateFull) {
+	if state == nil {
+		return
+	}
+	state.LastRollResult = nil
+}
+
+func (g *GameManager) requireActivePlayerUnlocked(state *GameStateFull, playerID string) (*GamePlayer, error) {
+	if state == nil {
+		return nil, errors.New("游戏未开始")
+	}
+
+	if state.ActivePlayerID != playerID {
+		return nil, errors.New("还没轮到你")
+	}
+
+	player, ok := state.Players[playerID]
+	if !ok {
+		return nil, errors.New("玩家不存在")
+	}
+
+	if player.IsDead {
+		return nil, errors.New("已死亡的玩家无法行动")
+	}
+
+	return player, nil
+}
+
 // SetLastRollResult 设置最近一次骰子结果（用于前端同步显示）
 func (g *GameManager) SetLastRollResult(roomID string, result int) error {
 	g.mu.Lock()
@@ -46,7 +82,26 @@ func (g *GameManager) SetLastRollResult(roomID string, result int) error {
 		return errors.New("游戏未开始")
 	}
 
-	state.FullState.LastRollResult = &result
+	g.setLastRollResultUnlocked(state.FullState, result)
+	return nil
+}
+
+// ClearLastRollResult 清除最近一次骰子结果，避免跨检定复用
+func (g *GameManager) ClearLastRollResult(roomID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	g.clearLastRollResultUnlocked(state.FullState)
 	return nil
 }
 
@@ -65,6 +120,7 @@ func (g *GameManager) SetPendingAction(roomID string, action *PendingAction) err
 		return errors.New("游戏未开始")
 	}
 
+	g.clearLastRollResultUnlocked(state.FullState)
 	state.FullState.PendingAction = action
 	return nil
 }
@@ -106,6 +162,552 @@ func (g *GameManager) CheckPendingAction(roomID string) (*PendingAction, error) 
 	return state.FullState.PendingAction, nil
 }
 
+type drawCardExecutionResult struct {
+	Card   *Card
+	Deck   string
+	Wait   bool
+	Reveal bool
+}
+
+func (g *GameManager) executeDeckDrawUnlocked(roomID, playerID, deckName string) (*drawCardExecutionResult, error) {
+	room, ok := g.Rooms[roomID]
+	if !ok || room.GameState == nil || room.GameState.FullState == nil {
+		return nil, errors.New("游戏未开始")
+	}
+	state := room.GameState.FullState
+	player, ok := state.Players[playerID]
+	if !ok {
+		return nil, errors.New("玩家不存在")
+	}
+
+	deckName = strings.ToUpper(deckName)
+	deck := state.Decks[deckName]
+	if len(deck) == 0 {
+		g.addLog(roomID, fmt.Sprintf("%s 牌堆已空！", deckName), "alert")
+		return nil, nil
+	}
+
+	card := deck[0]
+	state.Decks[deckName] = deck[1:]
+	result := &drawCardExecutionResult{
+		Card: &card,
+		Deck: deckName,
+	}
+
+	switch deckName {
+	case "ITEM":
+		player.Items = append(player.Items, card)
+		g.applyPassiveEffects(roomID, playerID, card)
+		g.addLog(roomID, fmt.Sprintf("%s 发现了物品：%s！", player.Character.Name, card.Name), "success")
+		g.addLog(roomID, fmt.Sprintf("%s 获得了物品：%s", player.Character.Name, card.Name), "success")
+		state.ActiveCard = nil
+		if winner := g.updateObjectivesUnlocked(state, "ITEM_COLLECTED", map[string]interface{}{"playerId": playerID, "itemId": card.ID}); winner != "" {
+			return result, nil
+		}
+		return result, nil
+
+	case "OMEN":
+		state.ActiveCard = &card
+		state.OmenCount++
+		state.LastTriggeredOmen = card.ID
+		g.addLog(roomID, fmt.Sprintf("%s 发现了预兆：%s！", player.Character.Name, card.Name), "alert")
+		g.addLog(roomID, fmt.Sprintf("预兆计数：%d。进行作祟检定...", state.OmenCount), "alert")
+		g.clearLastRollResultUnlocked(state)
+		results := g.RollDice(6)
+		sum := 0
+		for _, v := range results {
+			sum += v
+		}
+		g.setLastRollResultUnlocked(state, sum)
+		g.addLog(roomID, fmt.Sprintf("作祟检定: %v = %d vs %d", results, sum, state.OmenCount), "alert")
+		if sum < state.OmenCount {
+			g.addLog(roomID, "作祟爆发！大厦的阴暗面显露无疑...", "alert")
+			state.Phase = GamePhaseHauntReveal
+			state.ActiveCard = nil
+			return result, g.triggerHauntRoom(room, &card)
+		}
+		g.addLog(roomID, fmt.Sprintf("作祟检定通过（%d >= %d），暂时安全。", sum, state.OmenCount), "info")
+		player.Items = append(player.Items, card)
+		g.applyPassiveEffects(roomID, playerID, card)
+		g.addLog(roomID, fmt.Sprintf("%s 获得了预兆：%s", player.Character.Name, card.Name), "success")
+		state.ActiveCard = nil
+		if winner := g.updateObjectivesUnlocked(state, "ITEM_COLLECTED", map[string]interface{}{"playerId": playerID, "itemId": card.ID}); winner != "" {
+			return result, nil
+		}
+		return result, nil
+
+	case "EVENT":
+		state.ActiveCard = &card
+		g.addLog(roomID, fmt.Sprintf("%s 触发了事件：%s！", player.Character.Name, card.Name), "alert")
+		if card.Interaction != nil {
+			switch card.Interaction.Type {
+			case "ATTRIBUTE_CHECK":
+				g.clearLastRollResultUnlocked(state)
+				state.PendingAction = &PendingAction{
+					Type:   "ATTRIBUTE_CHECK",
+					Target: playerID,
+					Data: map[string]interface{}{
+						"attribute":  card.Interaction.Attribute,
+						"difficulty": card.Interaction.Difficulty,
+						"eventID":    card.ID,
+					},
+				}
+				result.Wait = true
+				result.Reveal = true
+				return result, nil
+			case "CHOICE":
+				g.clearLastRollResultUnlocked(state)
+				state.PendingAction = &PendingAction{
+					Type:   "CHOICE",
+					Target: playerID,
+					Data: map[string]interface{}{
+						"eventID": card.ID,
+					},
+				}
+				result.Wait = true
+				result.Reveal = true
+				return result, nil
+			}
+		}
+		player.Items = append(player.Items, card)
+		g.addLog(roomID, fmt.Sprintf("%s 获得了事件奖励：%s", player.Character.Name, card.Name), "success")
+		state.ActiveCard = nil
+		return result, nil
+	}
+
+	result.Reveal = state.ActiveCard != nil
+	return result, nil
+}
+
+func (g *GameManager) drawCardFromDeckUnlocked(roomID, playerID, deckName string) (bool, error) {
+	result, err := g.executeDeckDrawUnlocked(roomID, playerID, deckName)
+	if err != nil || result == nil {
+		return false, err
+	}
+	return result.Wait, nil
+}
+
+func intValueFromPendingData(value interface{}) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int32:
+		return int(v), true
+	case int64:
+		return int(v), true
+	case float32:
+		return int(v), true
+	case float64:
+		return int(v), true
+	default:
+		return 0, false
+	}
+}
+
+func (g *GameManager) attachPendingContinuationUnlocked(state *GameStateFull, continuation map[string]interface{}) {
+	if state == nil || state.PendingAction == nil || continuation == nil {
+		return
+	}
+	if state.PendingAction.Data == nil {
+		state.PendingAction.Data = map[string]interface{}{}
+	}
+	state.PendingAction.Data["continuation"] = continuation
+}
+
+func (g *GameManager) triggerTileLeaveUnlocked(roomID, playerID, tileDefID string, continuation map[string]interface{}) (bool, error) {
+	if tileDefID == "" {
+		return false, nil
+	}
+
+	room, ok := g.Rooms[roomID]
+	if !ok || room.GameState == nil || room.GameState.FullState == nil {
+		return false, errors.New("游戏未开始")
+	}
+	state := room.GameState.FullState
+
+	tileDef := g.getTileDef(roomID, tileDefID)
+	if tileDef == nil || tileDef.OnLeave == nil {
+		return false, nil
+	}
+
+	wait, err := g.executeTileTriggerUnlocked(roomID, playerID, tileDef.OnLeave)
+	if wait {
+		g.attachPendingContinuationUnlocked(state, continuation)
+	}
+	return wait, err
+}
+
+func (g *GameManager) completeMoveToExistingTileUnlocked(roomID, playerID string, state *GameStateFull, player *GamePlayer, existingTile *TileInstance, newX, newY int) error {
+	player.Position.X = newX
+	player.Position.Y = newY
+	state.MovesRemaining--
+
+	state.Logs = append(state.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("%s 进入了 %s", player.Character.Name, existingTile.DefID),
+		Type:      "info",
+	})
+	state.LastTriggeredTile = existingTile.DefID
+	if winner := g.updateObjectivesUnlocked(state, "TILE_REACHED", map[string]interface{}{
+		"playerId": playerID,
+		"tileId":   existingTile.DefID,
+	}); winner != "" {
+		return nil
+	}
+
+	if !existingTile.HasEventTriggered && existingTile.DefID != "start_tile" {
+		existingTile.HasEventTriggered = true
+		return g.TriggerRoomEvent(roomID, playerID, existingTile.DefID)
+	}
+
+	return nil
+}
+
+func (g *GameManager) preparePendingTileUnlocked(roomID string, state *GameStateFull, player *GamePlayer, direction string, newX, newY int) error {
+	if len(state.TileDeck) == 0 {
+		return errors.New("房间牌堆已空")
+	}
+
+	tileDef := state.TileDeck[0]
+	state.TileDeck = state.TileDeck[1:]
+	state.PendingTile = &tileDef
+	state.PendingMoveDirection = direction
+	state.PendingTargetPos = &Pos{X: newX, Y: newY}
+	state.MovesRemaining--
+	g.addLog(roomID, fmt.Sprintf("%s 探索发现了新区域，请放置房间", player.Character.Name), "info")
+	return nil
+}
+
+func (g *GameManager) placePendingTileUnlocked(roomID, playerID string, state *GameStateFull, player *GamePlayer, direction string, rotation int) error {
+	if state.PendingTile == nil {
+		return errors.New("没有待放置的房间，请先移动到新区域")
+	}
+	if state.PendingTargetPos == nil {
+		return errors.New("缺少待放置目标位置")
+	}
+
+	currentTile, ok := state.Map[fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)]
+	if !ok {
+		return errors.New("当前位置没有房间")
+	}
+
+	dir := Direction(direction)
+	currentEdge := currentTile.Edges[dir]
+	if currentEdge != "OPEN" {
+		return errors.New("该方向没有开放的门口")
+	}
+
+	newX := state.PendingTargetPos.X
+	newY := state.PendingTargetPos.Y
+	targetKey := fmt.Sprintf("%d,%d", newX, newY)
+	if _, exists := state.Map[targetKey]; exists {
+		return errors.New("该位置已有房间")
+	}
+
+	tileDef := *state.PendingTile
+	rotatedEdges := rotateEdges(tileDef.Edges, rotation)
+	oppositeDir := getOppositeDirection(dir)
+	if rotatedEdges[oppositeDir] != "OPEN" {
+		return errors.New("该方向无法放置：房间边缘不相通")
+	}
+
+	newTile := &TileInstance{
+		InstanceID:        generateTileID(),
+		DefID:             tileDef.ID,
+		X:                 newX,
+		Y:                 newY,
+		Rotation:          rotation,
+		Edges:             rotatedEdges,
+		HasEventTriggered: false,
+		Visibility:        "VISIBLE",
+		DroppedItems:      []Card{},
+	}
+
+	state.Map[targetKey] = newTile
+	player.Position.X = newX
+	player.Position.Y = newY
+	state.PendingTile = nil
+	state.PendingMoveDirection = ""
+	state.PendingTargetPos = nil
+
+	state.Logs = append(state.Logs, LogEntry{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      fmt.Sprintf("%s 探索发现了 %s", player.Character.Name, tileDef.Name),
+		Type:      "success",
+	})
+	state.LastTriggeredTile = tileDef.ID
+	if winner := g.updateObjectivesUnlocked(state, "ROOM_EXPLORED", map[string]interface{}{
+		"playerId": playerID,
+		"count":    len(state.Map),
+	}); winner != "" {
+		return nil
+	}
+	if winner := g.updateObjectivesUnlocked(state, "TILE_REACHED", map[string]interface{}{
+		"playerId": playerID,
+		"tileId":   tileDef.ID,
+	}); winner != "" {
+		return nil
+	}
+
+	newTile.HasEventTriggered = true
+	return g.TriggerRoomEvent(roomID, playerID, tileDef.ID)
+}
+
+func (g *GameManager) normalizeRelocationTargetUnlocked(state *GameStateFull, targetX, targetY int) (*TileInstance, int, int, bool, error) {
+	if state == nil {
+		return nil, 0, 0, false, errors.New("游戏未开始")
+	}
+
+	targetKey := fmt.Sprintf("%d,%d", targetX, targetY)
+	if targetTile, ok := state.Map[targetKey]; ok {
+		return targetTile, targetX, targetY, false, nil
+	}
+
+	entryTile, ok := state.Map["0,0"]
+	if !ok {
+		return nil, 0, 0, false, errors.New("目标位置不存在且入口不可用")
+	}
+
+	return entryTile, 0, 0, true, nil
+}
+
+func (g *GameManager) finalizeRelocationUnlocked(roomID, playerID string, state *GameStateFull, player *GamePlayer, moveType string, targetX, targetY int) error {
+	targetTile, finalX, finalY, fallbackToEntry, err := g.normalizeRelocationTargetUnlocked(state, targetX, targetY)
+	if err != nil {
+		return err
+	}
+
+	oldX, oldY := player.Position.X, player.Position.Y
+	player.Position = Position{X: finalX, Y: finalY}
+
+	switch moveType {
+	case "TELEPORT":
+		if fallbackToEntry {
+			g.addLog(roomID, fmt.Sprintf("%s 被传送到了未知区域", player.Character.Name), "alert")
+		} else {
+			g.addLog(roomID, fmt.Sprintf("%s 被传送到了 %s", player.Character.Name, targetTile.DefID), "success")
+		}
+	default:
+		if fallbackToEntry {
+			g.addLog(roomID, fmt.Sprintf("%s 被传送到了未知区域", player.Character.Name), "alert")
+		} else {
+			g.addLog(roomID, fmt.Sprintf("%s 从 (%d,%d) 移动到了 (%d,%d)", player.Character.Name, oldX, oldY, finalX, finalY), "info")
+		}
+	}
+
+	state.LastTriggeredTile = targetTile.DefID
+	if winner := g.updateObjectivesUnlocked(state, "TILE_REACHED", map[string]interface{}{
+		"playerId": playerID,
+		"tileId":   targetTile.DefID,
+	}); winner != "" {
+		return nil
+	}
+
+	if !targetTile.HasEventTriggered && targetTile.DefID != "start_tile" {
+		targetTile.HasEventTriggered = true
+		return g.TriggerRoomEvent(roomID, playerID, targetTile.DefID)
+	}
+
+	return nil
+}
+
+func (g *GameManager) resumePendingContinuationUnlocked(roomID, playerID string, state *GameStateFull, continuation map[string]interface{}) error {
+	if continuation == nil {
+		return nil
+	}
+
+	player, ok := state.Players[playerID]
+	if !ok {
+		return errors.New("玩家不存在")
+	}
+
+	continuationType, _ := continuation["type"].(string)
+	switch continuationType {
+	case "MOVE_EXISTING_TILE":
+		newX, okX := intValueFromPendingData(continuation["x"])
+		newY, okY := intValueFromPendingData(continuation["y"])
+		if !okX || !okY {
+			return errors.New("离场续行动作缺少目标坐标")
+		}
+		existingTile, ok := state.Map[fmt.Sprintf("%d,%d", newX, newY)]
+		if !ok {
+			return errors.New("离场续行动作的目标房间不存在")
+		}
+		return g.completeMoveToExistingTileUnlocked(roomID, playerID, state, player, existingTile, newX, newY)
+
+	case "PREPARE_PENDING_TILE":
+		newX, okX := intValueFromPendingData(continuation["x"])
+		newY, okY := intValueFromPendingData(continuation["y"])
+		direction, okDir := continuation["direction"].(string)
+		if !okX || !okY || !okDir {
+			return errors.New("离场续行动作缺少探索信息")
+		}
+		return g.preparePendingTileUnlocked(roomID, state, player, direction, newX, newY)
+
+	case "PLACE_PENDING_TILE":
+		direction, okDir := continuation["direction"].(string)
+		rotation, okRotation := intValueFromPendingData(continuation["rotation"])
+		if !okDir || !okRotation {
+			return errors.New("离场续行动作缺少放置信息")
+		}
+		return g.placePendingTileUnlocked(roomID, playerID, state, player, direction, rotation)
+
+	case "TELEPORT":
+		newX, okX := intValueFromPendingData(continuation["x"])
+		newY, okY := intValueFromPendingData(continuation["y"])
+		if !okX || !okY {
+			return errors.New("离场续行动作缺少传送坐标")
+		}
+		return g.finalizeRelocationUnlocked(roomID, playerID, state, player, "TELEPORT", newX, newY)
+
+	case "FORCED_MOVE":
+		newX, okX := intValueFromPendingData(continuation["x"])
+		newY, okY := intValueFromPendingData(continuation["y"])
+		if !okX || !okY {
+			return errors.New("离场续行动作缺少强制位移坐标")
+		}
+		return g.finalizeRelocationUnlocked(roomID, playerID, state, player, "FORCED_MOVE", newX, newY)
+
+	case "":
+		return nil
+
+	default:
+		return fmt.Errorf("未知的离场续行动作: %s", continuationType)
+	}
+}
+
+func (g *GameManager) executeTileTriggerUnlocked(roomID, playerID string, trigger *TileTrigger) (bool, error) {
+	if trigger == nil {
+		return false, nil
+	}
+
+	room, ok := g.Rooms[roomID]
+	if !ok || room.GameState == nil || room.GameState.FullState == nil {
+		return false, errors.New("游戏未开始")
+	}
+	state := room.GameState.FullState
+	player, ok := state.Players[playerID]
+	if !ok {
+		return false, errors.New("玩家不存在")
+	}
+
+	switch trigger.Type {
+	case "", "EFFECTS":
+		for _, effect := range trigger.Effects {
+			g.applyEffect(roomID, playerID, effect)
+		}
+		return false, nil
+
+	case "ATTRIBUTE_CHECK":
+		g.clearLastRollResultUnlocked(state)
+		state.PendingAction = &PendingAction{
+			Type:   "TILE_ATTRIBUTE_CHECK",
+			Target: playerID,
+			Data: map[string]interface{}{
+				"attribute":      trigger.Attribute,
+				"difficulty":     trigger.Difficulty,
+				"successEffects": trigger.Success,
+				"failureEffects": trigger.Failure,
+			},
+			Message: trigger.Message,
+		}
+		if trigger.Message != "" {
+			g.addLog(roomID, trigger.Message, "alert")
+		} else {
+			g.addLog(roomID, fmt.Sprintf("%s 需要进行 %s 检定", player.Character.Name, trigger.Attribute), "alert")
+		}
+		return true, nil
+
+	case "DRAW_CARD":
+		count := trigger.Count
+		if count <= 0 {
+			count = 1
+		}
+		deckName := trigger.Deck
+		if deckName == "" {
+			deckName = "EVENT"
+		}
+		for i := 0; i < count; i++ {
+			wait, err := g.drawCardFromDeckUnlocked(roomID, playerID, deckName)
+			if err != nil || wait {
+				return wait, err
+			}
+		}
+		return false, nil
+
+	case "RANDOM_EVENT":
+		if len(trigger.Possibilities) == 0 {
+			return false, nil
+		}
+		totalWeight := 0
+		for _, possibility := range trigger.Possibilities {
+			weight := possibility.Weight
+			if weight <= 0 {
+				weight = 1
+			}
+			totalWeight += weight
+		}
+		roll := rand.Intn(totalWeight)
+		for _, possibility := range trigger.Possibilities {
+			weight := possibility.Weight
+			if weight <= 0 {
+				weight = 1
+			}
+			if roll < weight {
+				g.applyEffect(roomID, playerID, possibility.Effect)
+				return false, nil
+			}
+			roll -= weight
+		}
+		return false, nil
+
+	default:
+		return false, fmt.Errorf("不支持的地块触发类型: %s", trigger.Type)
+	}
+}
+
+func (g *GameManager) ResolvePendingTileCheck(roomID, playerID string, success bool) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok || room.GameState == nil || room.GameState.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+	state := room.GameState.FullState
+	pending := state.PendingAction
+	if pending == nil || pending.Type != "TILE_ATTRIBUTE_CHECK" {
+		return errors.New("没有待处理的地块检定")
+	}
+	if pending.Target != playerID {
+		return errors.New("当前不是你的地块检定")
+	}
+	continuation, _ := pending.Data["continuation"].(map[string]interface{})
+	state.PendingAction = nil
+
+	var selected []Effect
+	if success {
+		if effects, ok := pending.Data["successEffects"].([]Effect); ok {
+			selected = effects
+		}
+	} else {
+		if effects, ok := pending.Data["failureEffects"].([]Effect); ok {
+			selected = effects
+		}
+	}
+	for _, effect := range selected {
+		g.applyEffect(roomID, playerID, effect)
+	}
+	if state.PendingAction == nil && continuation != nil {
+		if err := g.resumePendingContinuationUnlocked(roomID, playerID, state, continuation); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // TriggerRoomEvent 触发房间事件
 func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error {
 	room, ok := g.Rooms[roomID]
@@ -129,6 +731,8 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 		return errors.New("玩家不存在")
 	}
 
+	state.FullState.LastTriggeredTile = tileDefID
+
 	// 1. 检查 EventTrigger - 触发事件卡
 	if tileDef.EventTrigger != "" {
 		event := GetEvent(tileDef.EventTrigger)
@@ -140,6 +744,7 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 			if event.Interaction != nil {
 				switch event.Interaction.Type {
 				case "ATTRIBUTE_CHECK":
+					g.clearLastRollResultUnlocked(state.FullState)
 					// 设置待处理动作，让玩家投骰子
 					state.FullState.PendingAction = &PendingAction{
 						Type:   "ATTRIBUTE_CHECK",
@@ -155,6 +760,7 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 					return nil // 等待玩家投骰子
 
 				case "CHOICE":
+					g.clearLastRollResultUnlocked(state.FullState)
 					// 设置待处理动作，让玩家选择
 					state.FullState.PendingAction = &PendingAction{
 						Type:   "CHOICE",
@@ -173,117 +779,20 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 
 	// 2. 检查 CardSymbol - 根据类型从对应牌堆抽牌
 	if tileDef.CardSymbol != "" && tileDef.CardSymbol != "NONE" {
-		switch tileDef.CardSymbol {
-		case "ITEM":
-			// 从物品牌堆抽取顶部物品卡
-			// 默认自动给予玩家（除非效果特殊说明掉落）
-			itemDeck := state.FullState.Decks["ITEM"]
-			if len(itemDeck) > 0 {
-				card := itemDeck[0]
-				state.FullState.Decks["ITEM"] = itemDeck[1:]
-				// 物品默认自动给予玩家
-				player.Items = append(player.Items, card)
-				g.addLog(roomID, fmt.Sprintf("%s 发现了物品：%s！", player.Character.Name, card.Name), "success")
-				g.addLog(roomID, fmt.Sprintf("%s 获得了物品：%s", player.Character.Name, card.Name), "success")
-				// 自动给予的物品不需要 ActiveCard，前端直接显示获得提示
-				state.FullState.ActiveCard = nil
-			} else {
-				g.addLog(roomID, "物品牌堆已空！", "alert")
-			}
-		case "OMEN":
-			// 从厄运牌堆抽取顶部预兆卡
-			// 山屋惊魂规则：每次揭示预兆时立即进行作祟检定
-			omenDeck := state.FullState.Decks["OMEN"]
-			if len(omenDeck) > 0 {
-				card := omenDeck[0]
-				state.FullState.Decks["OMEN"] = omenDeck[1:]
-				state.FullState.ActiveCard = &card
-
-				// 增加预兆计数
-				state.FullState.OmenCount++
-				state.FullState.LastTriggeredOmen = card.ID
-
-				g.addLog(roomID, fmt.Sprintf("%s 发现了预兆：%s！", player.Character.Name, card.Name), "alert")
-				g.addLog(roomID, fmt.Sprintf("预兆计数：%d。进行作祟检定...", state.FullState.OmenCount), "alert")
-
-				// ===== 山屋惊魂核心机制：立即进行作祟检定 =====
-				// 6 骰子检定：sum < OmenCount 则触发作祟
-				results := g.RollDice(6)
-				sum := 0
-				for _, v := range results {
-					sum += v
-				}
-				state.FullState.LastRollResult = &sum
-
-				g.addLog(roomID, fmt.Sprintf("作祟检定: %v = %d vs %d", results, sum, state.FullState.OmenCount), "alert")
-
-				if sum < state.FullState.OmenCount {
-					// 作祟爆发！进入作祟揭晓阶段
-					g.addLog(roomID, "作祟爆发！大厦的阴暗面显露无疑...", "alert")
-					state.FullState.Phase = GamePhaseHauntReveal
-					// 预兆卡在作祟揭晓后由叛徒获得，此处先清除 ActiveCard
-					state.FullState.ActiveCard = nil
-					// 触发作祟（分配叛徒、确定剧本）
-					return g.triggerHauntRoom(room, &card)
-				} else {
-					// 暂时安全，玩家获得预兆卡
-					g.addLog(roomID, fmt.Sprintf("作祟检定通过（%d >= %d），暂时安全。", sum, state.FullState.OmenCount), "info")
-					// 预兆卡直接给予玩家
-					player.Items = append(player.Items, card)
-					g.addLog(roomID, fmt.Sprintf("%s 获得了预兆：%s", player.Character.Name, card.Name), "success")
-					// 检定通过，自动给予的预兆不需要 ActiveCard
-					state.FullState.ActiveCard = nil
-					// 检定通过，不需要切换阶段或切换玩家，继续当前回合
-				}
-			} else {
-				g.addLog(roomID, "厄运牌堆已空！", "alert")
-			}
-		case "EVENT":
-			// 从事件牌堆抽取顶部卡牌并触发
-			eventDeck := state.FullState.Decks["EVENT"]
-			if len(eventDeck) > 0 {
-				card := eventDeck[0]
-				state.FullState.Decks["EVENT"] = eventDeck[1:]
-				state.FullState.ActiveCard = &card
-				g.addLog(roomID, fmt.Sprintf("%s 触发了事件：%s！", player.Character.Name, card.Name), "alert")
-				// 根据交互类型设置待处理动作
-				if card.Interaction != nil {
-					switch card.Interaction.Type {
-					case "ATTRIBUTE_CHECK":
-						state.FullState.PendingAction = &PendingAction{
-							Type:   "ATTRIBUTE_CHECK",
-							Target: playerID,
-							Data: map[string]interface{}{
-								"attribute":  card.Interaction.Attribute,
-								"difficulty": card.Interaction.Difficulty,
-								"eventID":    card.ID,
-							},
-						}
-					case "CHOICE":
-						state.FullState.PendingAction = &PendingAction{
-							Type:   "CHOICE",
-							Target: playerID,
-							Data: map[string]interface{}{
-								"eventID": card.ID,
-							},
-						}
-					}
-				} else {
-					// 如果事件没有交互类型，自动给予玩家并清除 ActiveCard
-					player.Items = append(player.Items, card)
-					g.addLog(roomID, fmt.Sprintf("%s 获得了事件奖励：%s", player.Character.Name, card.Name), "success")
-					state.FullState.ActiveCard = nil
-				}
-			} else {
-				g.addLog(roomID, "事件牌堆已空！", "alert")
-			}
+		wait, err := g.drawCardFromDeckUnlocked(roomID, playerID, tileDef.CardSymbol)
+		if err != nil {
+			return err
+		}
+		if wait {
+			return nil
 		}
 	}
 
-	// 3. 执行房间被动效果 (通用化)
-	for _, effect := range tileDef.OnEnterEffects {
-		// 应用效果
-		g.applyEffect(roomID, playerID, effect)
+	// 3. 执行统一的入场触发器
+	if wait, err := g.executeTileTriggerUnlocked(roomID, playerID, tileDef.OnEnter); err != nil {
+		return err
+	} else if wait {
+		return nil
 	}
 
 	return nil
@@ -304,9 +813,9 @@ func (g *GameManager) ProcessMove(roomID, playerID, direction string) error {
 		return errors.New("游戏未开始")
 	}
 
-	// 验证是否是当前玩家
-	if state.FullState.ActivePlayerID != playerID {
-		return errors.New("还没轮到你")
+	player, err := g.requireActivePlayerUnlocked(state.FullState, playerID)
+	if err != nil {
+		return err
 	}
 
 	// 验证回合阶段
@@ -317,11 +826,6 @@ func (g *GameManager) ProcessMove(roomID, playerID, direction string) error {
 	// 验证体力
 	if state.FullState.MovesRemaining <= 0 {
 		return errors.New("体力已耗尽")
-	}
-
-	player, ok := state.FullState.Players[playerID]
-	if !ok {
-		return errors.New("玩家不存在")
 	}
 
 	// 获取当前位置的房间
@@ -354,40 +858,22 @@ func (g *GameManager) ProcessMove(roomID, playerID, direction string) error {
 	// 检查目标位置
 	targetKey := fmt.Sprintf("%d,%d", newX, newY)
 	if existingTile, exists := state.FullState.Map[targetKey]; exists {
-		// 移动到已有房间
-		player.Position.X = newX
-		player.Position.Y = newY
-		state.FullState.MovesRemaining--
-
-		// 添加日志
-		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-			ID:        generateLogID(),
-			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("%s 进入了 %s", player.Character.Name, existingTile.DefID),
-			Type:      "info",
-		})
-
-		// 检查是否有事件触发
-		if !existingTile.HasEventTriggered && existingTile.DefID != "start_tile" {
-			existingTile.HasEventTriggered = true
-			// 触发房间事件（包含 EventTrigger 和 CardSymbol）
-			g.TriggerRoomEvent(roomID, playerID, existingTile.DefID)
+		continuation := map[string]interface{}{
+			"type": "MOVE_EXISTING_TILE",
+			"x":    newX,
+			"y":    newY,
 		}
+		wait, err := g.triggerTileLeaveUnlocked(roomID, playerID, currentTile.DefID, continuation)
+		if err != nil {
+			return err
+		}
+		if wait {
+			return nil
+		}
+		return g.completeMoveToExistingTileUnlocked(roomID, playerID, state.FullState, player, existingTile, newX, newY)
 	} else {
-		// 需要放置新房间：弹出牌堆顶部，设置 pending 状态
-		if len(state.FullState.TileDeck) == 0 {
-			return errors.New("房间牌堆已空")
-		}
-		tileDef := state.FullState.TileDeck[0]
-		state.FullState.TileDeck = state.FullState.TileDeck[1:]
-		state.FullState.PendingTile = &tileDef
-		state.FullState.PendingMoveDirection = string(dir)
-		state.FullState.PendingTargetPos = &Pos{X: newX, Y: newY}
-		state.FullState.MovesRemaining--
-		g.addLog(roomID, fmt.Sprintf("%s 探索发现了新区域，请放置房间", player.Character.Name), "info")
+		return g.preparePendingTileUnlocked(roomID, state.FullState, player, string(dir), newX, newY)
 	}
-
-	return nil
 }
 
 // rotateEdges 将边缘按旋转角度旋转（每步90°）
@@ -429,19 +915,14 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 		return errors.New("游戏未开始")
 	}
 
-	// 验证是否是当前玩家
-	if state.FullState.ActivePlayerID != playerID {
-		return errors.New("还没轮到你")
+	player, err := g.requireActivePlayerUnlocked(state.FullState, playerID)
+	if err != nil {
+		return err
 	}
 
 	// 验证待放置的房间已就绪（体力和牌堆已在 ProcessMove 中消耗和准备）
 	if state.FullState.PendingTile == nil {
 		return errors.New("没有待放置的房间，请先移动到新区域")
-	}
-
-	player, ok := state.FullState.Players[playerID]
-	if !ok {
-		return errors.New("玩家不存在")
 	}
 
 	// 获取当前位置
@@ -477,55 +958,19 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 		return errors.New("该位置已有房间")
 	}
 
-	// 使用待放置的房间（已在 ProcessMove 中从牌堆取出）
-	tileDef := *state.FullState.PendingTile
-
-	// 应用旋转后的边缘
-	rotatedEdges := rotateEdges(tileDef.Edges, rotation)
-
-	// 对面方向的边缘必须也是 OPEN 才能放置（两面都对上才是门）
-	oppositeDir := getOppositeDirection(dir)
-	if rotatedEdges[oppositeDir] != "OPEN" {
-		// 验证失败，保留 PendingTile（用户可以换个旋转角度再试）
-		return errors.New("该方向无法放置：房间边缘不相通")
+	continuation := map[string]interface{}{
+		"type":      "PLACE_PENDING_TILE",
+		"direction": direction,
+		"rotation":  rotation,
 	}
-
-	// 创建房间实例
-	newTile := &TileInstance{
-		InstanceID:        generateTileID(),
-		DefID:             tileDef.ID,
-		X:                 newX,
-		Y:                 newY,
-		Rotation:          rotation,
-		Edges:             rotatedEdges,
-		HasEventTriggered: false,
-		Visibility:        "VISIBLE",
-		DroppedItems:      []Card{},
+	wait, err := g.triggerTileLeaveUnlocked(roomID, playerID, currentTile.DefID, continuation)
+	if err != nil {
+		return err
 	}
-
-	// 放置房间并移动玩家（MovesRemaining 已在 ProcessMove 中消耗）
-	state.FullState.Map[targetKey] = newTile
-	player.Position.X = newX
-	player.Position.Y = newY
-
-	// 清除 pending 放置状态
-	state.FullState.PendingTile = nil
-	state.FullState.PendingMoveDirection = ""
-	state.FullState.PendingTargetPos = nil
-
-	// 添加日志
-	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-		ID:        generateLogID(),
-		Timestamp: time.Now().UnixMilli(),
-		Text:      fmt.Sprintf("%s 探索发现了 %s", player.Character.Name, tileDef.Name),
-		Type:      "success",
-	})
-
-	// 触发房间事件（包含 EventTrigger 和 CardSymbol）
-	newTile.HasEventTriggered = true
-	g.TriggerRoomEvent(roomID, playerID, tileDef.ID)
-
-	return nil
+	if wait {
+		return nil
+	}
+	return g.placePendingTileUnlocked(roomID, playerID, state.FullState, player, direction, rotation)
 }
 
 // CancelTilePlacement 取消房间放置，将待放置的房间归还牌堆
@@ -693,9 +1138,9 @@ func (g *GameManager) PickupItem(roomID, playerID, itemID string) error {
 		return errors.New("游戏未开始")
 	}
 
-	player, ok := state.FullState.Players[playerID]
-	if !ok {
-		return errors.New("玩家不存在")
+	player, err := g.requireActivePlayerUnlocked(state.FullState, playerID)
+	if err != nil {
+		return err
 	}
 
 	// 获取玩家当前位置的地块
@@ -729,13 +1174,33 @@ func (g *GameManager) PickupItem(roomID, playerID, itemID string) error {
 		Text:      fmt.Sprintf("%s 捡起了 %s", player.Character.Name, item.Name),
 		Type:      "success",
 	})
+	state.FullState.ActiveCard = nil
+	state.FullState.PendingAction = nil
+	if len(item.PassiveEffects) > 0 {
+		g.applyPassiveEffects(roomID, playerID, item)
+	}
+	if winner := g.updateObjectivesUnlocked(state.FullState, "ITEM_COLLECTED", map[string]interface{}{
+		"playerId": playerID,
+		"itemId":   item.ID,
+	}); winner != "" {
+		return nil
+	}
 
 	// 若是厄运卡，说明是从地面拾取（旧版流程遗留）
 	// 新版流程中，预兆卡在 TriggerRoomEvent 中已直接给玩家，不会放到地面
 	// 此处仅作为防御性处理
 	if item.Type == "OMEN" {
+		state.FullState.LastTriggeredTile = tile.DefID
+		state.FullState.LastTriggeredOmen = item.ID
 		// 预兆已被玩家获得（OmenCount 在揭示时已增加）
+		if !state.FullState.IsHauntActive {
+			state.FullState.OmenCount++
+			state.FullState.Phase = GamePhaseHauntRoll
+			g.clearLastRollResultUnlocked(state.FullState)
+		}
 		g.addLog(roomID, fmt.Sprintf("%s 获得了预兆：%s", player.Character.Name, item.Name), "success")
+	} else {
+		state.FullState.TurnPhase = TurnPhaseDone
 	}
 
 	return nil
@@ -756,14 +1221,20 @@ func (g *GameManager) GiveItem(roomID, fromPlayerID, toPlayerID, itemID string) 
 		return errors.New("游戏未开始")
 	}
 
-	fromPlayer, ok := state.FullState.Players[fromPlayerID]
-	if !ok {
-		return errors.New("发送者不存在")
+	fromPlayer, err := g.requireActivePlayerUnlocked(state.FullState, fromPlayerID)
+	if err != nil {
+		return err
 	}
 
 	toPlayer, ok := state.FullState.Players[toPlayerID]
 	if !ok {
 		return errors.New("接收者不存在")
+	}
+	if toPlayer.IsDead {
+		return errors.New("已死亡的玩家无法接收物品")
+	}
+	if fromPlayer.Position != toPlayer.Position {
+		return errors.New("只能将物品交给同一房间的玩家")
 	}
 
 	// 在发送者物品中查找
@@ -780,8 +1251,14 @@ func (g *GameManager) GiveItem(roomID, fromPlayerID, toPlayerID, itemID string) 
 
 	// 转移物品
 	item := fromPlayer.Items[foundIdx]
+	if len(item.PassiveEffects) > 0 {
+		g.removePassiveEffects(roomID, fromPlayerID, item)
+	}
 	fromPlayer.Items = append(fromPlayer.Items[:foundIdx], fromPlayer.Items[foundIdx+1:]...)
 	toPlayer.Items = append(toPlayer.Items, item)
+	if len(item.PassiveEffects) > 0 {
+		g.applyPassiveEffects(roomID, toPlayerID, item)
+	}
 
 	// 记录日志
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
@@ -809,9 +1286,9 @@ func (g *GameManager) DropItem(roomID, playerID, itemID string) error {
 		return errors.New("游戏未开始")
 	}
 
-	player, ok := state.FullState.Players[playerID]
-	if !ok {
-		return errors.New("玩家不存在")
+	player, err := g.requireActivePlayerUnlocked(state.FullState, playerID)
+	if err != nil {
+		return err
 	}
 
 	// 在玩家物品中查找
@@ -828,6 +1305,9 @@ func (g *GameManager) DropItem(roomID, playerID, itemID string) error {
 
 	// 丢弃物品到当前位置
 	item := player.Items[foundIdx]
+	if len(item.PassiveEffects) > 0 {
+		g.removePassiveEffects(roomID, playerID, item)
+	}
 	player.Items = append(player.Items[:foundIdx], player.Items[foundIdx+1:]...)
 
 	posKey := fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)
@@ -863,18 +1343,9 @@ func (g *GameManager) InteractWithWall(roomID, playerID, direction string) error
 		return errors.New("游戏未开始")
 	}
 
-	// 验证是否是当前玩家
-	if state.FullState.ActivePlayerID != playerID {
-		return errors.New("还没轮到你")
-	}
-
-	player, ok := state.FullState.Players[playerID]
-	if !ok {
-		return errors.New("玩家不存在")
-	}
-
-	if player.IsDead {
-		return errors.New("已死亡的玩家无法行动")
+	player, err := g.requireActivePlayerUnlocked(state.FullState, playerID)
+	if err != nil {
+		return err
 	}
 
 	// 获取玩家当前位置

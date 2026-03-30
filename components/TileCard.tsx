@@ -5,7 +5,7 @@ import { TileInstance, Direction, AttributeName, Player } from '../types';
 import { STARTING_TILE, PLAYER_COLORS } from '../constants';
 import { useGameStore } from '../store/gameStore';
 import * as Icons from 'lucide-react';
-import { Hammer, Search, Ghost, Ban, Package, Skull } from 'lucide-react';
+import { Hammer, Ban, Package, Skull } from 'lucide-react';
 
 interface TileCardProps {
   tile: TileInstance;
@@ -27,22 +27,17 @@ const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) =>
   const IconComponent = def.icon && (Icons as any)[def.icon] ? (Icons as any)[def.icon] : Icons.HelpCircle;
   const hasActivePlayer = playersOnTile.some(p => p.id === activePlayerId);
 
-  // 根据玩家状态判断可进行的墙壁动作
+    // 后端当前只支持“破坏墙壁”这一种墙壁互动。
   const getWallAction = () => {
       const currentPlayer = players[activePlayerId];
       if (!currentPlayer || currentPlayer.isDead) return { type: 'NONE', icon: Ban, label: '无法行动', color: 'text-zinc-600' };
 
       const hasPickaxe = currentPlayer.items.some(i => i.id === 'item_pickaxe');
       const might = currentPlayer.character.attributes[AttributeName.Might].current;
-      const knowledge = currentPlayer.character.attributes[AttributeName.Knowledge].current;
-      const phasing = currentPlayer.buffs.includes('PHASING');
 
-      // 优先级：穿墙 > 破坏 > 调查
-      if (phasing) return { type: 'PHASE', icon: Ghost, label: '穿墙', color: 'text-cyan-400' };
       if (hasPickaxe || might > 5) return { type: 'BREAK', icon: Hammer, label: '破坏', color: 'text-red-500' };
-      if (knowledge > 4) return { type: 'SEARCH', icon: Search, label: '调查', color: 'text-indigo-400' };
 
-      return { type: 'NONE', icon: Ban, label: '封闭', color: 'text-zinc-600' };
+      return { type: 'NONE', icon: Ban, label: '无法破坏', color: 'text-zinc-600' };
   };
 
   const wallAction = getWallAction();

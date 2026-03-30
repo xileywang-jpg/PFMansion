@@ -250,14 +250,14 @@ export const ITEMS_DATA = [
    └── 体力耗尽自动结束
 
 4. 回合切换
-   ├── 检查作祟 (预兆>=6)
+  ├── 结算上一轮揭示出的预兆/事件状态
    ├── 切换到下一玩家
    └── 重复流程
 ```
 
 ### 5.2 作祟系统
 ```
-触发条件: 预兆数 >= 6
+触发条件: 每次揭示预兆时立即检查
 
 作祟检定:
 - 投6个骰子
@@ -320,14 +320,16 @@ PFMansion/
 │   ├── MapGrid.tsx      # 地图网格
 │   ├── PlayerHUD.tsx    # 玩家信息
 │   ├── NetworkScreens.tsx # 登录/大厅
-│   └── LocalGame.tsx    # 本地游戏
+│   └── GameScreen.tsx   # 游戏主界面
+├── src/
+│   ├── App.tsx          # 路由入口
+│   └── pages/           # 登录/游戏列表页面
 ├── store/
 │   └── gameStore.ts     # Zustand 状态
 ├── hooks/                # React Hooks
 ├── ws/                  # 前端网络
 │   ├── client.ts        # WebSocket 客户端
-│   ├── network.ts      # 网络层封装
-│   └── adapter.ts      # 操作适配器
+│   └── network.ts      # 网络层封装
 ├── data/                # 游戏数据
 │   ├── source/         # 原始数据
 │   └── *.ts            # 数据导出

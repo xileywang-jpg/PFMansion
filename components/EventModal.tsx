@@ -1,32 +1,20 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useEventSystem } from '../hooks/useEventSystem';
-import { Dice5, Skull, Gem, CheckCircle, XCircle, MousePointerClick } from 'lucide-react';
+import { Dice5, MousePointerClick } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Item } from '../types';
-import * as network from '../ws/network';
 
 const CardResolutionModal: React.FC = () => {
-  const { activeCard, players, activePlayerId, lastRollResult, lastCheckSuccess, activeRoll, eventOutcome, acknowledgeEventOutcome, resolveEventChoice } = useGameStore();
-  const { initiateEventRoll, resolveItemPickup } = useEventSystem();
+    const { activeCard, players, activePlayerId, lastRollResult, lastCheckSuccess, activeRoll, resolveEventChoice } = useGameStore();
+    const { initiateEventRoll } = useEventSystem();
   const [choiceMade, setChoiceMade] = useState(false);
   const player = players[activePlayerId];
   
-  // Bug Fix: 当显示 outcome 时重置 choiceMade，这样"继续探索"按钮可以点击
-  useEffect(() => {
-    if (eventOutcome) {
-      setChoiceMade(false);
-    }
-  }, [eventOutcome]);
-  
   if (!activeCard) return null;
 
-  const isItem = 'usage' in activeCard || ['ITEM', 'OMEN', 'WEAPON', 'PASSIVE', 'CONSUMABLE'].includes(activeCard.type);
-  const cardTitle = 'name' in activeCard ? activeCard.name : activeCard.title || '未知卡牌';
-  const cardType = activeCard.type;
-  const isEvent = activeCard.type === 'EVENT';
-  const interaction = isEvent ? activeCard.interaction : null;
+    const cardTitle = activeCard.title || '未知卡牌';
+    const interaction = activeCard.interaction;
   const isAttributeCheck = interaction?.type === 'ATTRIBUTE_CHECK';
   const isChoice = interaction?.type === 'CHOICE';
 
@@ -38,85 +26,13 @@ const CardResolutionModal: React.FC = () => {
   const attributeNameMap: any = { might: '力量', speed: '速度', sanity: '理智', knowledge: '知识' };
   const attributeLabel = isAttributeCheck && interaction ? attributeNameMap[interaction.attribute] : '';
 
-  const getCardTypeLabel = (type: string) => {
-      switch(type) {
-          case 'OMEN': return '预兆';
-          case 'ITEM': return '物品';
-          case 'EVENT': return '事件';
-          default: return type;
-      }
-  };
-
-  // If we have an outcome, show the resolution screen
-  if (eventOutcome) {
-      const isSuccess = eventOutcome.type === 'success';
-      return (
-        <AnimatePresence>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
-                <motion.div initial={{ y: 20, scale: 0.95 }} animate={{ y: 0, scale: 1 }} className={`w-full max-w-md bg-zinc-900 border shadow-2xl rounded-lg overflow-hidden flex flex-col ${isSuccess ? 'border-emerald-500/50' : 'border-red-500/50'}`}>
-                    <div className={`p-6 border-b flex items-center gap-3 ${isSuccess ? 'bg-emerald-950/30 border-emerald-900/30' : 'bg-red-950/30 border-red-900/30'}`}>
-                        {isSuccess ? <CheckCircle className="text-emerald-400" size={28} /> : <XCircle className="text-red-400" size={28} />}
-                        <div>
-                            <div className="text-[10px] uppercase font-bold tracking-widest opacity-50 mb-1">事件结算</div>
-                            <h2 className={`text-2xl font-serif-display tracking-wide ${isSuccess ? 'text-emerald-100' : 'text-red-100'}`}>{eventOutcome.title}</h2>
-                        </div>
-                    </div>
-                    <div className="p-8 flex-1 flex flex-col items-center">
-                        <div className="flex items-center gap-8 mb-8 w-full justify-center">
-                             <div className="flex flex-col items-center">
-                                 <span className="text-[10px] uppercase text-zinc-500 font-bold mb-1">你的点数</span>
-                                 <span className={`text-4xl font-bold font-serif-display ${isSuccess ? 'text-white' : 'text-red-400'}`}>{eventOutcome.roll}</span>
-                             </div>
-                             <div className="text-zinc-700 text-2xl font-thin">/</div>
-                             <div className="flex flex-col items-center">
-                                 <span className="text-[10px] uppercase text-zinc-500 font-bold mb-1">目标值</span>
-                                 <span className="text-4xl font-bold font-serif-display text-zinc-400">{eventOutcome.target}</span>
-                             </div>
-                        </div>
-                        
-                        <div className="bg-zinc-950/50 p-6 rounded-lg border border-zinc-800 w-full text-center">
-                            <p className="text-lg text-zinc-300 italic leading-relaxed">"{eventOutcome.description}"</p>
-                        </div>
-                    </div>
-                    <div className="p-6 bg-zinc-950/50 border-t border-zinc-800/50">
-                        {isAttributeCheck ? (
-                            // 对于属性检定，点击后应用效果并关闭
-                            <button 
-                                onClick={() => {
-                                    // lastCheckSuccess: true = 成功(choiceIndex=0), false = 失败(choiceIndex=1)
-                                    const choiceIndex = lastCheckSuccess ? 0 : 1;
-                                    network.sendResolveEvent(choiceIndex);
-                                    acknowledgeEventOutcome();
-                                }} 
-                                className={`w-full px-6 py-4 rounded font-bold uppercase tracking-wider text-xs transition-colors ${
-                                    isSuccess 
-                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
-                                        : 'bg-red-600 hover:bg-red-500 text-white'
-                                }`}
-                            >
-                                {isSuccess ? '接受成功效果' : '接受失败后果'}
-                            </button>
-                        ) : (
-                            <button onClick={acknowledgeEventOutcome} className="w-full bg-zinc-100 hover:bg-white text-black px-6 py-4 rounded font-bold uppercase tracking-wider text-xs transition-colors">
-                                继续探索
-                            </button>
-                        )}
-                    </div>
-                </motion.div>
-            </motion.div>
-        </AnimatePresence>
-      );
-  }
-
   return (
     <AnimatePresence>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
-            <motion.div initial={{ y: 50, scale: 0.95 }} animate={{ y: 0, scale: 1 }} className={`w-full max-w-md bg-zinc-900 border shadow-2xl rounded-lg overflow-hidden flex flex-col ${cardType === 'OMEN' ? 'border-emerald-900/50' : isItem ? 'border-indigo-900/50' : 'border-zinc-700'}`}>
-                <div className={`p-6 border-b flex items-center gap-3 relative ${cardType === 'OMEN' ? 'bg-emerald-950/30' : isItem ? 'bg-indigo-950/30' : 'bg-zinc-950'}`}>
-                    {cardType === 'OMEN' && <Skull className="text-emerald-400" />}
-                    {isItem && cardType !== 'OMEN' && <Gem className="text-indigo-400" />}
+            <motion.div initial={{ y: 50, scale: 0.95 }} animate={{ y: 0, scale: 1 }} className="w-full max-w-md bg-zinc-900 border border-zinc-700 shadow-2xl rounded-lg overflow-hidden flex flex-col">
+                <div className="p-6 border-b flex items-center gap-3 relative bg-zinc-950">
                     <div>
-                        <div className="text-[10px] uppercase font-bold tracking-widest opacity-50 mb-1">{getCardTypeLabel(cardType)}</div>
+                        <div className="text-[10px] uppercase font-bold tracking-widest opacity-50 mb-1">事件</div>
                         <h2 className="text-2xl font-serif-display text-white tracking-wide">{cardTitle}</h2>
                     </div>
                 </div>
@@ -167,16 +83,16 @@ const CardResolutionModal: React.FC = () => {
                 </div>
                 <div className="p-6 bg-zinc-950/50 border-t border-zinc-800/50 flex justify-end">
                     {isAttributeCheck && lastRollResult === null ? (
-                        <button onClick={() => { if (choiceMade) return; setChoiceMade(true); initiateEventRoll(activeCard as any); }} disabled={!!activeRoll || choiceMade} className={`w-full px-6 py-4 rounded font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 ${choiceMade ? 'opacity-50 cursor-not-allowed bg-zinc-700 text-zinc-400' : 'bg-zinc-100 hover:bg-white text-black'}`}>
+                        <button onClick={() => { if (choiceMade) return; setChoiceMade(true); initiateEventRoll(activeCard); }} disabled={!!activeRoll || choiceMade} className={`w-full px-6 py-4 rounded font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 ${choiceMade ? 'opacity-50 cursor-not-allowed bg-zinc-700 text-zinc-400' : 'bg-zinc-100 hover:bg-white text-black'}`}>
                             <Dice5 size={16} /> 进行 {attributeLabel} 检定
                         </button>
                     ) : isChoice ? (
                         // Choice handling is inside the options buttons above
                         null
                     ) : (
-                        <button onClick={() => { if (choiceMade) return; setChoiceMade(true); if (isItem) resolveItemPickup(activeCard as Item); }} disabled={!!activeRoll || choiceMade} className={`w-full px-6 py-4 rounded font-bold uppercase tracking-wider text-xs ${choiceMade ? 'opacity-50 cursor-not-allowed' : isItem ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-zinc-100 text-black'}`}>
-                            {isItem ? '捡起道具' : '继续'}
-                        </button>
+                        <div className="w-full px-6 py-4 rounded text-center font-bold uppercase tracking-wider text-xs bg-zinc-800 text-zinc-400">
+                            等待服务器结算...
+                        </div>
                     )}
                 </div>
             </motion.div>

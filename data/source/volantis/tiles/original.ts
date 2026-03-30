@@ -50,11 +50,8 @@ export const TILES_DATA = [
     "description": "观察全局，发现所有未探索区域",
     "effects": [
       {
-        "type": "reveal_all"
-      },
-      {
-        "type": "modify_stat",
-        "attribute": "knowledge",
+        "type": "MODIFY_STAT",
+        "stat": "knowledge",
         "amount": 1
       }
     ]
@@ -149,12 +146,13 @@ export const TILES_DATA = [
     "E": "OPEN",
     "W": "OPEN"
   },
-  "icon": "Crown",
   "cardSymbol": "NONE",
-  "effects": [
+  "onEnterEffects": [
     {
-      "type": "buff",
-      "text": "所有属性+1"
+      "type": "MODIFY_STAT",
+      "stat": "knowledge",
+      "amount": 1,
+      "message": "创世之碑的光辉照耀着你，知识 +1"
     }
   ]
 },
@@ -608,12 +606,13 @@ export const TILES_DATA = [
     "E": "OPEN",
     "W": "OPEN"
   },
-  "icon": "Gate",
   "cardSymbol": "NONE",
-  "effects": [
+  "onEnterEffects": [
     {
-      "type": "buff",
-      "text": "力量+1"
+      "type": "MODIFY_STAT",
+      "stat": "might",
+      "amount": 1,
+      "message": "黄金门的能量让你充满力量，力量 +1"
     }
   ]
 },
@@ -760,11 +759,8 @@ export const TILES_DATA = [
     "description": "投入湖中查看自己的命运",
     "effects": [
       {
-        "type": "reveal_trail"
-      },
-      {
-        "type": "modify_stat",
-        "attribute": "sanity",
+        "type": "MODIFY_STAT",
+        "stat": "sanity",
         "amount": -1
       }
     ]
@@ -940,13 +936,20 @@ export const TILES_DATA = [
   },
   "icon": "Lava",
   "cardSymbol": "OMEN",
-  "effects": [],
   "interact": {
     "type": "CROSS",
-    "difficulty": 4,
+    "description": "跳过熔岩障碍",
     "attribute": "speed",
+    "difficulty": 4,
     "successMessage": "你轻盈地跳过熔岩！",
-    "failureMessage": "你被烫伤了！"
+    "failureMessage": "你被烫伤了！",
+    "failure": [
+      {
+        "type": "DAMAGE",
+        "stat": "might",
+        "amount": 2
+      }
+    ]
   }
 },
 {
@@ -1097,8 +1100,8 @@ export const TILES_DATA = [
   "cardSymbol": "EVENT",
   "interact": {
     "type": "TELEPORT",
-    "destination": "any_revealed",
     "description": "使用传送门",
+    "destination": "any_revealed",
     "cost": {
       "type": "sanity",
       "amount": 1
@@ -1212,12 +1215,18 @@ export const TILES_DATA = [
     "description": "在泉水中沐浴",
     "effects": [
       {
-        "type": "heal",
+        "type": "HEAL",
+        "stat": "might",
         "amount": 999
       },
       {
-        "type": "modify_stat",
-        "attribute": "sanity",
+        "type": "HEAL",
+        "stat": "sanity",
+        "amount": 999
+      },
+      {
+        "type": "MODIFY_STAT",
+        "stat": "sanity",
         "amount": 1
       }
     ]
@@ -1280,41 +1289,28 @@ export const TILES_DATA = [
 },
 {
   "id": "vol_tile_shadow_realm",
-  "name": "暗影领域",
-  "description": "永远被黑暗笼罩的区域，视线所及只有阴影。",
+  "name": "幽影领域",
+  "description": "通往冥潭的阴影边界，这里时间停滞，空间扭曲。",
   "type": "room",
   "floors": [
     "GROUND"
   ],
   "edges": {
     "N": "OPEN",
-    "S": "OPEN",
-    "E": "OPEN",
+    "S": "WALL",
+    "E": "WALL",
     "W": "WALL"
   },
-  "icon": "Moon",
   "cardSymbol": "OMEN",
-  "onEnter": {
-    "type": "ATTRIBUTE_CHECK",
-    "attribute": "sanity",
-    "difficulty": 4,
-    "success": [
-      {
-        "type": "special",
-        "effect": "stealth",
-        "amount": 2,
-        "message": "你融入了黑暗！"
-      }
-    ],
-    "failure": [
-      {
-        "type": "modify_stat",
-        "attribute": "speed",
-        "amount": -2,
-        "message": "黑暗让你迷失了方向！"
-      }
-    ]
-  }
+  "eventTrigger": "vol_event_shadow_touch",
+  "onEnterEffects": [
+    {
+      "type": "MODIFY_STAT",
+      "stat": "sanity",
+      "amount": -2,
+      "message": "阴影的侵蚀让你感到恐惧，理智 -2"
+    }
+  ]
 },
 {
   "id": "vol_tile_starlight_academy",
@@ -1362,11 +1358,8 @@ export const TILES_DATA = [
     "description": "预知下一个事件",
     "effects": [
       {
-        "type": "reveal_next_event"
-      },
-      {
-        "type": "modify_stat",
-        "attribute": "knowledge",
+        "type": "MODIFY_STAT",
+        "stat": "knowledge",
         "amount": 1
       }
     ]
@@ -1386,93 +1379,49 @@ export const TILES_DATA = [
     "E": "WALL",
     "W": "OPEN"
   },
-  "icon": "Temple",
   "cardSymbol": "OMEN",
-  "onEnter": {
-    "type": "ATTRIBUTE_CHECK",
-    "attribute": "knowledge",
-    "difficulty": 3,
-    "success": [
-      {
-        "type": "modify_stat",
-        "attribute": "knowledge",
-        "amount": 1,
-        "message": "你获得了神的启示！"
-      }
-    ],
-    "failure": []
-  }
+  "eventTrigger": "vol_event_divine_light",
+  "onEnterEffects": [
+    {
+      "type": "MODIFY_STAT",
+      "stat": "sanity",
+      "amount": 2,
+      "message": "神庙的光辉净化着你，理智 +2"
+    }
+  ]
 },
 {
   "id": "vol_tile_time_distortion",
-  "name": "时间扭曲区",
-  "description": "时间流动异常的区域，过去与未来交错。",
-  "type": "corridor",
+  "name": "时间漩涡",
+  "description": "空间中扭曲的奇点，时间在这里变得毫无意义。",
+  "type": "room",
   "floors": [
     "GROUND"
   ],
   "edges": {
     "N": "OPEN",
     "S": "OPEN",
-    "E": "OPEN",
-    "W": "OPEN"
+    "E": "WALL",
+    "W": "WALL"
   },
-  "icon": "Clock",
-  "cardSymbol": "OMEN",
-  "onEnter": {
-    "type": "RANDOM_EVENT",
-    "possibilities": [
-      {
-        "type": "modify_stat",
-        "attribute": "might",
-        "amount": 1,
-        "weight": 1
-      },
-      {
-        "type": "modify_stat",
-        "attribute": "speed",
-        "amount": 1,
-        "weight": 1
-      },
-      {
-        "type": "modify_stat",
-        "attribute": "sanity",
-        "amount": 1,
-        "weight": 1
-      },
-      {
-        "type": "modify_stat",
-        "attribute": "knowledge",
-        "amount": 1,
-        "weight": 1
-      },
-      {
-        "type": "modify_stat",
-        "attribute": "might",
-        "amount": -1,
-        "weight": 1
-      },
-      {
-        "type": "modify_stat",
-        "attribute": "speed",
-        "amount": -1,
-        "weight": 1
-      }
-    ]
-  },
+  "cardSymbol": "EVENT",
+  "eventTrigger": "vol_event_time_warp",
   "interact": {
     "type": "TIME_REWIND",
     "description": "回溯时间",
     "cost": {
       "type": "sanity",
       "amount": 2
-    },
-    "effects": [
-      {
-        "type": "reroll_initiative"
-      }
-    ]
-  }
+    }
+  },
+  "onEnterEffects": [
+    {
+      "type": "MODIFY_STAT",
+      "stat": "sanity",
+      "amount": -2,
+      "message": "时间的混乱让你头晕目眩，理智 -2"
+    }
+  ]
 },
 {
   "id": "vol_tile_titan_forge",
@@ -1497,13 +1446,7 @@ export const TILES_DATA = [
       "op": "GT",
       "stat": "knowledge",
       "value": 4
-    },
-    "effects": [
-      {
-        "type": "gain_item",
-        "tier": "legendary"
-      }
-    ]
+    }
   }
 },
 {

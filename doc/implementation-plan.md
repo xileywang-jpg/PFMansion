@@ -1,12 +1,14 @@
 # 翁法罗斯主题 - 实现Plan
 
 > 卡片正确装载 + TODO功能实现
+>
+> 更新于 2026-03-30：本文档中的 `onEnter` / `onLeave` / `interact` 类型扩展与基础接线已完成。涉及前端本地执行 trigger 的方案已过时，当前以 Go 后端权威执行与 `state_sync` 同步为准。
 
 ---
 
-## 当前问题
+## 当前问题（历史记录）
 
-1. **类型定义缺失** - `onEnter`、`onLeave`、`interact` 等新字段未在类型中定义
+1. **类型定义缺失** - 已完成
 2. **数据聚合问题** - 目前 `constants.ts` 直接引用 `data/source/xxx`，未包含所有主题
 3. **引擎功能缺失** - 很多特殊效果未实现
 
@@ -76,7 +78,9 @@ import { ALL_TILES } from './data/source';
 
 ### 2.1 进入/离开检定
 
-**文件**: `utils/logicEngine.ts`
+> 历史方案：下述前端本地执行示例已不再采用，相关 `utils/logicEngine.ts` 已移除。当前实现位于后端 `game/actions.go` / `game/interactions.go`，并通过 `PendingAction` + `state_sync` 驱动前端展示。
+
+**历史文件**: `utils/logicEngine.ts`（已移除）
 
 ```typescript
 // 新增处理函数
@@ -237,7 +241,7 @@ export interface Scenario {
 - `types.ts` - 扩展类型
 - `constants.ts` - 更新导入
 - `store/gameStore.ts` - 回合触发、装备系统
-- `utils/logicEngine.ts` - 地块触发器
+- `game/actions.go` / `game/interactions.go` - 地块触发与互动后端执行
 - `components/Tile.tsx` - 互动检测
 
 ---

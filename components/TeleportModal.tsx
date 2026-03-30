@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, ArrowRight } from 'lucide-react';
+import * as network from '../ws/network';
 
 interface TeleportModalProps {
   isOpen: boolean;
@@ -9,7 +10,7 @@ interface TeleportModalProps {
 }
 
 export const TeleportModal: React.FC<TeleportModalProps> = ({ isOpen, onClose }) => {
-  const { map, players, activePlayerId, addLog, executeScript } = useGameStore();
+  const { map, players, activePlayerId, addLog, showFeedback } = useGameStore();
   const player = players[activePlayerId];
   const [selectedTile, setSelectedTile] = useState<string | null>(null);
 
@@ -22,15 +23,15 @@ export const TeleportModal: React.FC<TeleportModalProps> = ({ isOpen, onClose })
 
   const handleTeleport = () => {
     if (!selectedTile) return;
+    if (!network.isInNetworkMode()) {
+      showFeedback('网络未连接，无法执行传送', 'error');
+      return;
+    }
     
     const tile = map[selectedTile];
     if (tile) {
-      executeScript([{
-        type: 'teleport_to_revealed',
-        target: activePlayerId,
-        locationId: tile.defId
-      }]);
-      addLog(`你传送到了 ${selectedTile}`, 'success');
+      network.sendTeleportToTile(tile.x, tile.y);
+      addLog(`正在传送到 ${selectedTile}...`, 'info');
       onClose();
     }
   };

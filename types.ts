@@ -395,7 +395,7 @@ export type ConditionType = 'stat_check' | 'has_item' | 'tile_check' | 'dice_rol
 export type ActionType = 'modify_stat' | 'move_player' | 'add_item' | 'remove_item' | 'draw_card' | 'trigger_haunt' | 'narrative_log' | 'heal' 
   | 'trade_items' | 'teleport_to_revealed' | 'reveal_all_tiles' | 'reveal_next_event' | 'reveal_trail' 
   | 'reroll_dice' | 'add_status_effect' | 'divination'
-  // 前端本地脚本执行使用的额外类型
+  // 历史数据里仍可能出现的扩展动作类型
   | 'damage' | 'teleport' | 'gain_item' | 'reveal_map';
 
 export interface ScriptCondition {
@@ -486,10 +486,27 @@ export interface ActiveRoll {
   onComplete: (total: number) => void;
 }
 
-export interface EventOutcome {
-  title: string;
-  description: string;
-  type: 'success' | 'failure';
-  roll: number;
-  target: number;
+export interface CombatState {
+  attackerId: string;
+  defenderId: string;
+  attribute: AttributeName;
+  phase: 'ATTACKING' | 'RESOLUTION';
+  attackerRolls?: number[];
+  defenderRolls?: number[];
 }
+
+export interface CombatResult {
+  attackerId: string;
+  defenderId: string;
+  attackerRolls: number[];
+  attackerSum: number;
+  defenderRolls: number[];
+  defenderSum: number;
+  damage: number;
+  loser: string;
+  draw: boolean;
+  attribute: string;
+  attackerDied?: boolean;
+  defenderDied?: boolean;
+}
+

@@ -1,7 +1,7 @@
 # 🎮 Mansion Protocol 游戏实现文档
 
 > **目标**: 让开发人员可以参照本文档 review 代码实现程度
-> **最后更新**: 2026-03-27
+> **最后更新**: 2026-03-30
 
 ---
 
@@ -122,12 +122,12 @@ export type TurnPhase =
    ├── 设置准备状态 (set_ready)
    └── 房主开始游戏 (start_game)
 
-3. 游戏初始化 (initializeGame)
+3. 游戏初始化 (start_game -> state_sync)
    │
-   ├── 创建起始房间 (0,0)
-   ├── 初始化玩家属性
-   ├── 洗牌 (tiles, events, items, omens)
-   └── 设置 activePlayerId = playerIds[0]
+  ├── 房主发送 start_game
+  ├── 后端创建起始房间与玩家状态
+  ├── 后端初始化牌堆/作祟上下文
+  └── 前端通过 state_sync / get_state 接收完整状态
 
 4. 回合循环
    │
@@ -208,14 +208,14 @@ export type TurnPhase =
 │ Case: ITEM (物品) - 自动获得                                 │
 │   1. 从 ITEM 牌堆抽取一张                                   │
 │   2. 物品直接给予玩家（无需拾取）                            │
-│   3. 除非效果特殊说明，否则默认自动获得                       │
+│   3. 被动效果立即生效，并更新收集目标                         │
 │                                                              │
 │ Case: OMEN (预兆) - 揭示时检定                               │
 │   1. 从 OMEN 牌堆抽取一张                                   │
 │   2. OmenCount++                                            │
 │   3. 立即进行作祟检定（6骰子）                               │
-│   4. 检定成功: 玩家获得预兆卡，继续回合                       │
-│   5. 检定失败: 叛徒获得预兆卡，进入 HAUNT_REVEAL             │
+│   4. 检定成功: 当前玩家自动获得预兆卡，继续回合               │
+│   5. 检定失败: 进入 HAUNT_REVEAL，并以当前预兆/房间决定剧本   │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -397,6 +397,8 @@ export type TurnPhase =
 
 ### 4.4 物品拾取 (Pickup Item)
 
+> 当前 `pickup_item` 只处理地块上的掉落物。通过牌堆抽到的 `ITEM`/`OMEN` 已在后端抽卡流程中直接结算，不再先落地再拾取。
+
 ```
 前端                           后端
   │                              │
@@ -414,9 +416,9 @@ export type TurnPhase =
   │                     ┌────────┴────────┐
   │                     │ 执行:           │
   │                     │ - 物品移入player│
-  │                     │ - 如果是OMEN:  │
-  │                     │   OmenCount++   │
-  │                     │ - 检查>=6触发  │
+  │                     │ - 应用被动效果   │
+  │                     │ - 更新目标/日志  │
+  │                     │ - OMEN 仅作为旧掉落兜底│
   │                     └────────┬────────┘
   │                              │
   │ ◄── state_sync ──────────────│
@@ -471,7 +473,7 @@ export type TurnPhase =
 #### 前端实现
 | 文件 | 函数/组件 | 说明 |
 |------|----------|------|
-| `store/gameStore.ts` | `initializeGame` | 初始化游戏状态 |
+| `store/gameStore.ts` | `setGameData`, `nextTurn`, `movePlayer` | 维护前端展示状态并向后端发起操作 |
 | `components/MapGrid.tsx` | `MapGrid` | 地图网格组件 |
 | `components/Tile.tsx` | `Tile` | 地块组件 |
 
@@ -881,7 +883,7 @@ interface SyncState {
   tileDeck: TileDef[];
   
   // 事件状态
-  activeCard: Card | Item | null;
+  activeCard: EventCard | null;
   pendingAction: PendingAction | null;
   activeRoll: ActiveRoll | null;
   activeCombat: CombatState | null;
@@ -939,7 +941,7 @@ type PendingAction struct {
 
 | 模块 | 文件 | 主要函数/组件 |
 |------|------|--------------|
-| **状态管理** | `store/gameStore.ts` | initializeGame, nextTurn, movePlayer |
+| **状态管理** | `store/gameStore.ts` | setGameData, nextTurn, movePlayer |
 | **网络层** | `ws/network.ts` | sendMove, sendPlaceTile, handleStateSync |
 | **地图组件** | `components/MapGrid.tsx` | MapGrid |
 | **玩家HUD** | `components/PlayerHUD.tsx` | PlayerHUD |

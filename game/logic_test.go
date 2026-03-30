@@ -19,15 +19,15 @@ func createTestRoomForLogic(gm *GameManager) string {
 			Phase:     "PLAYING",
 			TurnIndex: 1,
 			FullState: &GameStateFull{
-				Phase:           GamePhaseExploration,
-				TurnPhase:       TurnPhaseMoving,
-				ActivePlayerID:  "player_1",
-				Players:         make(map[string]*GamePlayer),
-				PlayerIDs:       []string{"player_1", "player_2"},
-				Map:             make(map[string]*TileInstance),
-				Logs:            []LogEntry{},
-				MovesRemaining:  4,
-				PendingAction:   nil,
+				Phase:          GamePhaseExploration,
+				TurnPhase:      TurnPhaseMoving,
+				ActivePlayerID: "player_1",
+				Players:        make(map[string]*GamePlayer),
+				PlayerIDs:      []string{"player_1", "player_2"},
+				Map:            make(map[string]*TileInstance),
+				Logs:           []LogEntry{},
+				MovesRemaining: 4,
+				PendingAction:  nil,
 			},
 		},
 	}
@@ -58,7 +58,7 @@ func createTestRoomForLogic(gm *GameManager) string {
 
 	room.GameState.FullState.Map["0,0"] = &TileInstance{
 		InstanceID: "start_tile", DefID: "tile_start", X: 0, Y: 0,
-		Edges: map[Direction]string{DirectionNorth: "WALL", DirectionSouth: "WALL", DirectionEast: "OPEN", DirectionWest: "WALL"},
+		Edges:        map[Direction]string{DirectionNorth: "WALL", DirectionSouth: "WALL", DirectionEast: "OPEN", DirectionWest: "WALL"},
 		DroppedItems: []Card{},
 	}
 
@@ -146,6 +146,24 @@ func TestNextTurnInternal_ClearsPendingAction(t *testing.T) {
 
 	if room.GameState.FullState.PendingAction != nil {
 		t.Errorf("PendingAction 应该被清除")
+	}
+}
+
+func TestNextTurnInternal_ClearsLastRollResult(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	result := 7
+	room.GameState.FullState.LastRollResult = &result
+
+	err := gm.nextTurnInternal(room)
+	if err != nil {
+		t.Fatalf("nextTurnInternal 失败: %v", err)
+	}
+
+	if room.GameState.FullState.LastRollResult != nil {
+		t.Error("LastRollResult 应该在切换回合时被清除")
 	}
 }
 
@@ -271,6 +289,29 @@ func TestSetPendingAction_Success(t *testing.T) {
 	}
 	if room.GameState.FullState.PendingAction.Type != "ATTRIBUTE_CHECK" {
 		t.Errorf("PendingAction 类型应该是 ATTRIBUTE_CHECK, 实际是 %s", room.GameState.FullState.PendingAction.Type)
+	}
+}
+
+func TestSetPendingAction_ClearsLastRollResult(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+	result := 5
+	room.GameState.FullState.LastRollResult = &result
+
+	action := &PendingAction{
+		Type:   "ATTRIBUTE_CHECK",
+		Target: "player_1",
+		Data:   map[string]interface{}{"attribute": "might", "difficulty": 3},
+	}
+
+	err := gm.SetPendingAction(roomID, action)
+	if err != nil {
+		t.Fatalf("SetPendingAction 失败: %v", err)
+	}
+
+	if room.GameState.FullState.LastRollResult != nil {
+		t.Error("SetPendingAction 应该清除旧的 LastRollResult")
 	}
 }
 

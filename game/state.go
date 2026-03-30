@@ -16,14 +16,14 @@ func (g *GameStateFull) SyncStateJSON() (string, error) {
 		Timestamp int64       `json:"timestamp"`
 		State     interface{} `json:"state"`
 	}
-	
+
 	msg := SyncMessage{
 		Type:      "state_sync",
 		Version:   time.Now().UnixMilli(),
 		Timestamp: time.Now().UnixMilli(),
 		State:     g,
 	}
-	
+
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return "", fmt.Errorf("序列化状态失败: %v", err)
@@ -139,12 +139,12 @@ var OriginalTileDeck = []TileDef{
 		},
 	},
 	{
-		ID:          "tile_vault",
-		Name:        "金库",
-		Description: "财富的象征",
-		Type:        "room",
-		Edges:       map[Direction]string{DirectionNorth: "OPEN", DirectionSouth: "WALL", DirectionEast: "WALL", DirectionWest: "WALL"},
-		CardSymbol:  "ITEM",
+		ID:           "tile_vault",
+		Name:         "金库",
+		Description:  "财富的象征",
+		Type:         "room",
+		Edges:        map[Direction]string{DirectionNorth: "OPEN", DirectionSouth: "WALL", DirectionEast: "WALL", DirectionWest: "WALL"},
+		CardSymbol:   "ITEM",
 		EventTrigger: "event_vault_chest",
 	},
 	// ========== Phase X: NPC 测试房间 ==========
@@ -296,52 +296,6 @@ var VolantisTileDeck = []TileDef{
 
 // 兼容旧名称
 var TileDeck = OriginalTileDeck
-
-// HauntMatrix 剧本矩阵 (按主题)
-var HauntMatrix = map[string]map[string]string{
-	"original": {
-		"tile_library":      "haunt_ghost",
-		"tile_conservatory": "haunt_beast",
-		"tile_chapel":       "haunt_demon",
-		"tile_basement":     "haunt_shadow",
-		"tile_attic":        "haunt_vampire",
-		"default":           "haunt_default",
-	},
-	"volantis": {
-		"vol_tile_temple_light":  "vol_haunt_divine",
-		"vol_tile_shadow_realm": "vol_haunt_shadow",
-		"vol_tile_underworld":   "vol_haunt_death",
-		"vol_tile_heros_rest":   "vol_haunt_revenge",
-		"vol_tile_arena":        "vol_haunt_warrior",
-		"default":                "vol_haunt_default",
-	},
-}
-
-// GetHauntMatrix 获取主题的剧本矩阵
-func GetHauntMatrix(theme string) map[string]string {
-	if matrix, ok := HauntMatrix[theme]; ok {
-		return matrix
-	}
-	return HauntMatrix["original"]
-}
-
-// Scenarios 剧本定义
-var Scenarios = map[string]Scenario{
-	// Original 剧本
-	"haunt_ghost":    {ID: "haunt_ghost", Name: "幽灵的复仇", IntroText: "一位含冤而死的幽灵在大厦中游荡...", TraitorRule: "LOWEST_SANITY"},
-	"haunt_beast":    {ID: "haunt_beast", Name: "野兽之王", IntroText: "有人变成了嗜血的怪物...", TraitorRule: "HIGHEST_MIGHT"},
-	"haunt_demon":    {ID: "haunt_demon", Name: "恶魔契约", IntroText: "有人与黑暗签订了契约...", TraitorRule: "TRIGGER_PLAYER"},
-	"haunt_shadow":   {ID: "haunt_shadow", Name: "阴影侵袭", IntroText: "虚无的阴影正在吞噬一切...", TraitorRule: "LOWEST_SANITY"},
-	"haunt_vampire":  {ID: "haunt_vampire", Name: "血色饥渴", IntroText: "鲜血的渴望控制了某人...", TraitorRule: "HIGHEST_MIGHT"},
-	"haunt_default":  {ID: "haunt_default", Name: "黑暗觉醒", IntroText: "邪恶在大厦中苏醒...", TraitorRule: "TRIGGER_PLAYER"},
-	// Volantis 剧本
-	"vol_haunt_divine":   {ID: "vol_haunt_divine", Name: "神罚", IntroText: "黄金裔的诸神降下了惩罚...", TraitorRule: "LOWEST_SANITY"},
-	"vol_haunt_shadow":   {ID: "vol_haunt_shadow", Name: "幽影侵袭", IntroText: "虚无的阴影正在侵蚀永恒之地...", TraitorRule: "LOWEST_SANITY"},
-	"vol_haunt_death":    {ID: "vol_haunt_death", Name: "死亡侵袭", IntroText: "冥潭的力量正在涌出...", TraitorRule: "HIGHEST_MIGHT"},
-	"vol_haunt_revenge":  {ID: "vol_haunt_revenge", Name: "英灵复仇", IntroText: "战士的英灵从安息地苏醒...", TraitorRule: "HIGHEST_MIGHT"},
-	"vol_haunt_warrior":  {ID: "vol_haunt_warrior", Name: "永火战士", IntroText: "竞技场的亡魂再次苏醒...", TraitorRule: "TRIGGER_PLAYER"},
-	"vol_haunt_default":  {ID: "vol_haunt_default", Name: "末日降临", IntroText: "永恒之地迎来了终结...", TraitorRule: "TRIGGER_PLAYER"},
-}
 
 // ThemeTileDecks 主题房间牌堆映射 (降级用)
 var ThemeTileDecks = map[string][]TileDef{

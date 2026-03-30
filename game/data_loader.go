@@ -34,11 +34,11 @@ var skillTreesData []byte
 
 // ThemeConfig 主题配置
 type ThemeConfig struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
 	PrimaryColor string `json:"primaryColor"`
-	Enabled     bool   `json:"enabled"`
+	Enabled      bool   `json:"enabled"`
 }
 
 // ConfigJSON 配置文件结构
@@ -61,29 +61,29 @@ type EventsJSON struct {
 
 // ItemsJSON 物品 JSON 结构
 type ItemsJSON struct {
-	Items   []Card `json:"items"`
-	Omens   []Card `json:"omens"`
-	Skills  []Card `json:"skills"`
+	Items  []Card `json:"items"`
+	Omens  []Card `json:"omens"`
+	Skills []Card `json:"skills"`
 }
 
 // HauntMatrixJSON 剧本矩阵 JSON 结构
 type HauntMatrixJSON struct {
 	HauntMatrix map[string]map[string]string `json:"hauntMatrix"`
-	Scenarios   map[string]Scenario        `json:"scenarios"`
+	Scenarios   map[string]Scenario          `json:"scenarios"`
 }
 
 // CharacterAttributeJSON 角色属性 JSON 结构
 type CharacterAttributeJSON struct {
-	Values    []int `json:"values"`
-	StartIndex int  `json:"startIndex"`
+	Values     []int `json:"values"`
+	StartIndex int   `json:"startIndex"`
 }
 
 // CharacterJSON 角色 JSON 结构
 type CharacterJSON struct {
-	ID          string                     `json:"id"`
-	Name        string                    `json:"name"`
-	Description string                    `json:"description"`
-	Traits      []string                  `json:"traits"`
+	ID          string                            `json:"id"`
+	Name        string                            `json:"name"`
+	Description string                            `json:"description"`
+	Traits      []string                          `json:"traits"`
 	Attributes  map[string]CharacterAttributeJSON `json:"attributes"`
 }
 
@@ -95,16 +95,16 @@ type CharactersJSON struct {
 
 // SkillTreeNodeJSON 技能树节点 JSON 结构
 type SkillTreeNodeJSON struct {
-	ID               string   `json:"id"`
-	Name             string   `json:"name"`
-	Description      string   `json:"description"`
-	Cost             int      `json:"cost"`
-	Icon             string   `json:"icon"`
-	Prerequisites    []string `json:"prerequisites,omitempty"`
-	RequiredTrait    string   `json:"requiredTrait,omitempty"`
-	GrantsSkillID    string   `json:"grantsSkillId,omitempty"`
-	GrantsBuff       string   `json:"grantsBuff,omitempty"`
-	Position         struct {
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description"`
+	Cost          int      `json:"cost"`
+	Icon          string   `json:"icon"`
+	Prerequisites []string `json:"prerequisites,omitempty"`
+	RequiredTrait string   `json:"requiredTrait,omitempty"`
+	GrantsSkillID string   `json:"grantsSkillId,omitempty"`
+	GrantsBuff    string   `json:"grantsBuff,omitempty"`
+	Position      struct {
 		Row int `json:"row"`
 		Col int `json:"col"`
 	} `json:"position"`
@@ -112,10 +112,10 @@ type SkillTreeNodeJSON struct {
 
 // SkillTreeCategoryJSON 技能树类别 JSON 结构
 type SkillTreeCategoryJSON struct {
-	ID          string               `json:"id"`
-	Name        string               `json:"name"`
-	Description string               `json:"description"`
-	Nodes       []SkillTreeNodeJSON  `json:"nodes"`
+	ID          string              `json:"id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	Nodes       []SkillTreeNodeJSON `json:"nodes"`
 }
 
 // SkillTreesJSON 技能树 JSON 结构
@@ -128,13 +128,103 @@ var dataLoader *DataLoader
 
 // DataLoader 数据加载器
 type DataLoader struct {
-	Config      ConfigJSON
-	Tiles       TileDeckJSON
-	Events      EventsJSON
-	Items       ItemsJSON
-	Scenarios   HauntMatrixJSON
-	Characters  CharactersJSON
-	SkillTrees  SkillTreesJSON
+	Config     ConfigJSON
+	Tiles      TileDeckJSON
+	Events     EventsJSON
+	Items      ItemsJSON
+	Scenarios  HauntMatrixJSON
+	Characters CharactersJSON
+	SkillTrees SkillTreesJSON
+}
+
+func ensureDataLoaded() {
+	if dataLoader != nil {
+		return
+	}
+	if err := LoadData(); err != nil {
+		log.Printf("⚠️ 懒加载游戏数据失败: %v", err)
+	}
+}
+
+func normalizeTileTrigger(trigger *TileTrigger) {
+	if trigger == nil {
+		return
+	}
+	trigger.Type = strings.ToUpper(trigger.Type)
+	if trigger.Attribute != "" {
+		trigger.Attribute = strings.ToLower(trigger.Attribute)
+	}
+	if trigger.Deck != "" {
+		trigger.Deck = strings.ToUpper(trigger.Deck)
+	}
+	for i := range trigger.Success {
+		trigger.Success[i] = normalizeEffect(trigger.Success[i])
+	}
+	for i := range trigger.Failure {
+		trigger.Failure[i] = normalizeEffect(trigger.Failure[i])
+	}
+	for i := range trigger.Effects {
+		trigger.Effects[i] = normalizeEffect(trigger.Effects[i])
+	}
+	for i := range trigger.Possibilities {
+		trigger.Possibilities[i].Effect = normalizeEffect(trigger.Possibilities[i].Effect)
+		if trigger.Possibilities[i].Weight <= 0 {
+			trigger.Possibilities[i].Weight = 1
+		}
+	}
+}
+
+func normalizeTileInteraction(interaction *TileInteraction) {
+	if interaction == nil {
+		return
+	}
+	interaction.Type = strings.ToUpper(interaction.Type)
+	if interaction.Attribute != "" {
+		interaction.Attribute = strings.ToLower(interaction.Attribute)
+	}
+	for i := range interaction.Effects {
+		interaction.Effects[i] = normalizeEffect(interaction.Effects[i])
+	}
+	for i := range interaction.Success {
+		interaction.Success[i] = normalizeEffect(interaction.Success[i])
+	}
+	for i := range interaction.Failure {
+		interaction.Failure[i] = normalizeEffect(interaction.Failure[i])
+	}
+}
+
+func normalizeTileDef(tile *TileDef) {
+	if tile == nil {
+		return
+	}
+	for i := range tile.Effects {
+		tile.Effects[i] = normalizeEffect(tile.Effects[i])
+	}
+	for i := range tile.OnEnterEffects {
+		tile.OnEnterEffects[i] = normalizeEffect(tile.OnEnterEffects[i])
+	}
+	for i := range tile.OnExitEffects {
+		tile.OnExitEffects[i] = normalizeEffect(tile.OnExitEffects[i])
+	}
+	if tile.OnEnter == nil && len(tile.OnEnterEffects) > 0 {
+		effects := make([]Effect, len(tile.OnEnterEffects))
+		copy(effects, tile.OnEnterEffects)
+		tile.OnEnter = &TileTrigger{Type: "EFFECTS", Effects: effects}
+	}
+	if tile.OnLeave == nil && len(tile.OnExitEffects) > 0 {
+		effects := make([]Effect, len(tile.OnExitEffects))
+		copy(effects, tile.OnExitEffects)
+		tile.OnLeave = &TileTrigger{Type: "EFFECTS", Effects: effects}
+	}
+	normalizeTileTrigger(tile.OnEnter)
+	normalizeTileTrigger(tile.OnLeave)
+	normalizeTileInteraction(tile.Interact)
+}
+
+func normalizeTileDefs(tiles []TileDef) {
+	for i := range tiles {
+		normalizeTileDef(&tiles[i])
+	}
 }
 
 // LoadData 加载所有数据
@@ -151,6 +241,8 @@ func LoadData() error {
 		log.Printf("⚠️ 加载房间数据失败: %v", err)
 		return err
 	}
+	normalizeTileDefs(dataLoader.Tiles.Original)
+	normalizeTileDefs(dataLoader.Tiles.Volantis)
 
 	// 加载事件数据
 	if err := json.Unmarshal(eventsData, &dataLoader.Events); err != nil {
@@ -253,6 +345,7 @@ func GetThemeIDs() []string {
 
 // GetTileDeckByTheme 获取房间牌堆
 func GetTileDeckByTheme(theme string) []TileDef {
+	ensureDataLoaded()
 	if dataLoader != nil {
 		switch theme {
 		case "volantis":
@@ -270,6 +363,7 @@ func GetTileDeckByTheme(theme string) []TileDef {
 
 // GetEvents 获取事件卡
 func GetEvents() []Card {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -278,6 +372,7 @@ func GetEvents() []Card {
 
 // GetEventByID 根据ID获取事件
 func GetEventByID(id string) *Card {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -291,6 +386,7 @@ func GetEventByID(id string) *Card {
 
 // GetScenarios 获取所有剧本
 func GetScenarios() map[string]Scenario {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -299,6 +395,7 @@ func GetScenarios() map[string]Scenario {
 
 // GetItems 获取物品
 func GetItems() []Card {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -307,6 +404,7 @@ func GetItems() []Card {
 
 // GetItemByID 根据ID获取物品
 func GetItemByID(id string) *Card {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -320,6 +418,7 @@ func GetItemByID(id string) *Card {
 
 // GetOmens 获取厄运卡
 func GetOmens() []Card {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -328,6 +427,7 @@ func GetOmens() []Card {
 
 // GetOmenByID 根据ID获取厄运
 func GetOmenByID(id string) *Card {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -341,6 +441,7 @@ func GetOmenByID(id string) *Card {
 
 // GetSkills 获取技能
 func GetSkills() []Card {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -349,6 +450,7 @@ func GetSkills() []Card {
 
 // GetSkillByID 根据ID获取技能
 func GetSkillByID(id string) *Card {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -362,8 +464,9 @@ func GetSkillByID(id string) *Card {
 
 // GetHauntMatrixByTheme 获取剧本矩阵
 func GetHauntMatrixByTheme(theme string) map[string]string {
+	ensureDataLoaded()
 	if dataLoader == nil {
-		return GetHauntMatrix(theme)
+		return nil
 	}
 	if matrix, ok := dataLoader.Scenarios.HauntMatrix[theme]; ok {
 		return matrix
@@ -373,6 +476,7 @@ func GetHauntMatrixByTheme(theme string) map[string]string {
 
 // GetScenarioByID 获取剧本
 func GetScenarioByID(id string) *Scenario {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -384,6 +488,7 @@ func GetScenarioByID(id string) *Scenario {
 
 // GetCharactersByTheme 获取主题角色列表
 func GetCharactersByTheme(theme string) []CharacterJSON {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -397,6 +502,7 @@ func GetCharactersByTheme(theme string) []CharacterJSON {
 
 // GetCharacterByID 根据ID获取角色定义
 func GetCharacterByID(id string) *CharacterJSON {
+	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
@@ -432,6 +538,7 @@ func GetCharacterAttributeValues(characterID, attributeName string) ([]int, int)
 
 // GetSkillTrees 获取所有技能树
 func GetSkillTrees() []SkillTreeCategoryJSON {
+	ensureDataLoaded()
 	if dataLoader == nil || len(dataLoader.SkillTrees.Trees) == 0 {
 		return []SkillTreeCategoryJSON{}
 	}
@@ -527,4 +634,3 @@ func FindSkillByName(skillName string) string {
 	}
 	return ""
 }
-

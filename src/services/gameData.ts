@@ -7,7 +7,7 @@
  * 
  * 日志级别:
  * - INFO: 正常加载
- * - WARN: 使用降级数据
+ * - WARN: 使用缓存降级数据
  * - ERROR: 加载失败
  */
 
@@ -33,7 +33,7 @@ export interface GameDataBundle {
   omens: any[];
   skills: any[];
   events: any[];
-  scenarios: any[];
+  scenarios: Record<string, any>;
   skillTrees: any[];
   characters: { original: any[]; volantis: any[] };
   version: number;
@@ -113,29 +113,9 @@ export async function fetchGameData(forceRefresh = false): Promise<GameDataBundl
       return cachedData;
     }
 
-    // 没有缓存，抛出错误
-    isUsingFallback = true;
-    Log.error('❗ 无法加载游戏数据，使用空数据', { error: err.message });
-    
-    // 返回最小化的空数据结构
-    const emptyData: GameDataBundle = {
-      themes: [],
-      tiles: { original: [], volantis: [] },
-      items: [],
-      omens: [],
-      skills: [],
-      events: [],
-      scenarios: [],
-      skillTrees: [],
-      characters: { original: [], volantis: [] },
-      version: 0,
-      timestamp: now,
-    };
-    
-    // 更新 store 为空数据
-    useGameStore.getState().setGameData(emptyData);
-    
-    return emptyData;
+    // 没有缓存时，直接让上层进入错误态，避免继续以空数据运行
+    isUsingFallback = false;
+    throw err;
   }
 }
 
@@ -262,7 +242,7 @@ export function useGameData() {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       setError(error);
-      setUsingFallback(true);
+      setUsingFallback(false);
     } finally {
       setLoading(false);
     }

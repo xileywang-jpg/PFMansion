@@ -2,34 +2,33 @@
 
 ## 1. 运行环境要求
 
-### 1.1 单机模式
-本项目基于现代 ESM (ES Modules) 架构，无需复杂的构建步骤即可在浏览器中直接运行。
-
-*   **浏览器支持**：Chrome 110+, Edge 110+, Safari 16.4+ (必须支持 `importmap`)。
-*   **本地服务器**：由于浏览器安全限制（CORS），建议使用简单的静态服务器运行。
-    *   VS Code 用户：安装 `Live Server` 扩展。
-    *   Node.js 用户：执行 `npx serve .` 或 `npm install -g serve`。
-
-### 1.2 联机模式
-联机模式需要运行 Go 后端服务器：
+### 1.1 联机运行
+当前默认运行方式是前端路由页面 + Go 后端 + WebSocket 同步，没有旧的“切换到联机模式”入口。
 
 *   **Go 1.22+**：需要 Go 1.22 或更高版本
+*   **Node.js 20+**：用于运行 Vite 前端开发服务器
 *   **端口**：默认 8080（可自定义）
+*   **浏览器支持**：Chrome 110+, Edge 110+, Safari 16.4+
 
 ---
 
 ## 2. 快速启动
 
-### 2.1 单机模式（无需后端）
+### 2.1 开发环境
 ```bash
-# 安装依赖
+# 1. 安装前端依赖
 npm install
 
-# 启动开发服务器
+# 2. 启动前端开发服务器
 npm run dev
+
+# 3. 启动 Go 后端
+go run server.go
 ```
 
-### 2.2 联机模式（需要后端）
+前端默认地址通常为 `http://localhost:5173`，登录后进入大厅页面，再创建或加入房间。
+
+### 2.2 一体化部署
 ```bash
 # 1. 构建后端服务器
 go build -o mansion-server server.go
@@ -38,10 +37,7 @@ go build -o mansion-server server.go
 ./mansion-server -port 8080
 
 # 3. 访问游戏
-# 浏览器打开 http://localhost:8080
-
-# 4. 切换到联机模式
-# 点击右下角 "切换到联机模式" 按钮
+# 浏览器打开 http://localhost:8080/login
 ```
 
 ---

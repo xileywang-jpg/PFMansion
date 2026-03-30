@@ -9,12 +9,12 @@ import (
 
 // StatusEffect 状态效果
 type StatusEffect struct {
-	Type      string `json:"type"` // INVISIBLE, DISGUISED, PETRIFIED, BURNING, CONFUSED, STEALTH, PHASING, BLESSED, CURSED, MIRROR_REFLECT
-	Duration  int    `json:"duration"` // 剩余回合数，-1表示永久
-	Source    string `json:"source,omitempty"` // 来源
-	Damage    int    `json:"damage,omitempty"` // 燃烧伤害
-	Faction   string `json:"faction,omitempty"` // 伪装阵营
-	Amount    int    `json:"amount,omitempty"` // 数值
+	Type     string `json:"type"`              // INVISIBLE, DISGUISED, PETRIFIED, BURNING, CONFUSED, STEALTH, PHASING, BLESSED, CURSED, MIRROR_REFLECT
+	Duration int    `json:"duration"`          // 剩余回合数，-1表示永久
+	Source   string `json:"source,omitempty"`  // 来源
+	Damage   int    `json:"damage,omitempty"`  // 燃烧伤害
+	Faction  string `json:"faction,omitempty"` // 伪装阵营
+	Amount   int    `json:"amount,omitempty"`  // 数值
 }
 
 // ==================== 玩家结构 ====================
@@ -57,10 +57,10 @@ const (
 type TurnPhase string
 
 const (
-	TurnPhaseMoving          TurnPhase = "MOVING"
-	TurnPhaseEventResolving  TurnPhase = "EVENT_RESOLVING"
-	TurnPhaseAttributeCheck  TurnPhase = "ATTRIBUTE_CHECK"  // 等待属性检定
-	TurnPhaseChoice         TurnPhase = "CHOICE"           // 等待玩家选择
+	TurnPhaseMoving         TurnPhase = "MOVING"
+	TurnPhaseEventResolving TurnPhase = "EVENT_RESOLVING"
+	TurnPhaseAttributeCheck TurnPhase = "ATTRIBUTE_CHECK" // 等待属性检定
+	TurnPhaseChoice         TurnPhase = "CHOICE"          // 等待玩家选择
 	TurnPhaseCombatAttack   TurnPhase = "COMBAT_ATTACK"   // 战斗攻击骰
 	TurnPhaseCombatDefense  TurnPhase = "COMBAT_DEFENSE"  // 战斗防御骰
 	TurnPhaseDone           TurnPhase = "DONE"
@@ -68,11 +68,11 @@ const (
 
 // PendingAction 待处理动作（用于状态控制）
 type PendingAction struct {
-	Type      string                 `json:"type"`      // "ATTRIBUTE_CHECK", "CHOICE", "COMBAT"
-	Target    string                 `json:"target"`    // 等待哪个玩家输入
-	Data      map[string]interface{} `json:"data"`      // 额外数据（attribute, difficulty, eventID 等）
-	CardID    string                `json:"cardId,omitempty"` // 关联的卡牌ID
-	Message   string                `json:"message,omitempty"` // 显示给玩家的提示
+	Type    string                 `json:"type"`              // "ATTRIBUTE_CHECK", "TILE_ATTRIBUTE_CHECK", "CHOICE", "COMBAT"
+	Target  string                 `json:"target"`            // 等待哪个玩家输入
+	Data    map[string]interface{} `json:"data"`              // 额外数据（attribute, difficulty, eventID 等）
+	CardID  string                 `json:"cardId,omitempty"`  // 关联的卡牌ID
+	Message string                 `json:"message,omitempty"` // 显示给玩家的提示
 }
 
 // AttributeName 属性类型
@@ -87,18 +87,18 @@ const (
 
 // Attribute 属性结构
 type Attribute struct {
-	Current int   `json:"current"`
-	Base    int   `json:"base"`
-	Floor   int   `json:"floor"`
-	Max     int   `json:"max"`
+	Current int `json:"current"`
+	Base    int `json:"base"`
+	Floor   int `json:"floor"`
+	Max     int `json:"max"`
 	// P0 修复：添加 values 和 index 字段，对齐前端
-	Values  []int `json:"values"` // 所有可能的值 [floor, floor+1, ..., max]
-	Index   int   `json:"index"`  // 当前值在 values 中的索引
+	Values []int `json:"values"` // 所有可能的值 [floor, floor+1, ..., max]
+	Index  int   `json:"index"`  // 当前值在 values 中的索引
 }
 
 // CharacterDef 角色定义
 type CharacterDef struct {
-	ID          string                `json:"id"`
+	ID          string               `json:"id"`
 	Name        string               `json:"name"`
 	Attributes  map[string]Attribute `json:"attributes"`
 	Traits      []string             `json:"traits"`
@@ -107,20 +107,20 @@ type CharacterDef struct {
 
 // GamePlayer 游戏玩家
 type GamePlayer struct {
-	ID               string            `json:"id"`
-	Character        CharacterDef     `json:"character"`
-	Position         Position         `json:"position"`
-	Items            []Card           `json:"items"`         // P1修复：存储完整物品对象
-	DroppedItems     []Card           `json:"droppedItems"`  // P1修复：存储完整物品对象
-	IsDead           bool             `json:"isDead"`
-	Team             string           `json:"team"`
-	Buffs            []string         `json:"buffs"`
-	Skills           []string         `json:"skills"`
-	SkillPoints      int              `json:"skillPoints"`
-	PersonalLogs     []PersonalLog   `json:"personalLogs"` // 个人日志
-	StatusEffects   []StatusEffect  `json:"statusEffects"` // 状态效果
-	UnlockedSkillNodes []string      `json:"unlockedSkillNodes"` // 已解锁技能节点
-	ShowTrail        bool            `json:"showTrail"` // 轨迹显示
+	ID                 string         `json:"id"`
+	Character          CharacterDef   `json:"character"`
+	Position           Position       `json:"position"`
+	Items              []Card         `json:"items"`        // P1修复：存储完整物品对象
+	DroppedItems       []Card         `json:"droppedItems"` // P1修复：存储完整物品对象
+	IsDead             bool           `json:"isDead"`
+	Team               string         `json:"team"`
+	Buffs              []string       `json:"buffs"`
+	Skills             []string       `json:"skills"`
+	SkillPoints        int            `json:"skillPoints"`
+	PersonalLogs       []PersonalLog  `json:"personalLogs"`       // 个人日志
+	StatusEffects      []StatusEffect `json:"statusEffects"`      // 状态效果
+	UnlockedSkillNodes []string       `json:"unlockedSkillNodes"` // 已解锁技能节点
+	ShowTrail          bool           `json:"showTrail"`          // 轨迹显示
 }
 
 // PersonalLog 个人日志条目
@@ -139,32 +139,81 @@ type Position struct {
 
 // TileDef 房间定义
 type TileDef struct {
-	ID            string                 `json:"id"`
-	Name          string                `json:"name"`
-	Description   string                `json:"description"`
-	Type          string                `json:"type"`
-	Floors        []string              `json:"floors"`
-	Edges         map[Direction]string  `json:"edges"`
-	CardSymbol   string                `json:"cardSymbol,omitempty"`
-	EventTrigger string                `json:"eventTrigger,omitempty"`
-	Icon          string                `json:"icon,omitempty"` // 图标名称
+	ID           string               `json:"id"`
+	Name         string               `json:"name"`
+	Description  string               `json:"description"`
+	Type         string               `json:"type"`
+	Floors       []string             `json:"floors"`
+	Edges        map[Direction]string `json:"edges"`
+	CardSymbol   string               `json:"cardSymbol,omitempty"`
+	EventTrigger string               `json:"eventTrigger,omitempty"`
+	Icon         string               `json:"icon,omitempty"` // 图标名称
 	// 被动效果
-	Effects       []Effect              `json:"effects,omitempty"` // 简化版效果数组
-	OnEnterEffects []Effect             `json:"onEnterEffects,omitempty"` // 进入时触发
-	OnExitEffects  []Effect             `json:"onExitEffects,omitempty"`  // 离开时触发（暂未实现）
+	Effects        []Effect         `json:"effects,omitempty"` // 简化版效果数组
+	OnEnter        *TileTrigger     `json:"onEnter,omitempty"`
+	OnLeave        *TileTrigger     `json:"onLeave,omitempty"`
+	OnEnterEffects []Effect         `json:"onEnterEffects,omitempty"` // 进入时触发
+	OnExitEffects  []Effect         `json:"onExitEffects,omitempty"`  // 离开时触发（暂未实现）
+	Interact       *TileInteraction `json:"interact,omitempty"`
+}
+
+type TileInteractionCost struct {
+	Type   string `json:"type"`
+	Amount int    `json:"amount"`
+}
+
+type TileInteractionCondition struct {
+	Op    string `json:"op"`
+	Stat  string `json:"stat,omitempty"`
+	Value int    `json:"value,omitempty"`
+}
+
+type TileInteraction struct {
+	Type               string                    `json:"type"`
+	Description        string                    `json:"description"`
+	Condition          *TileInteractionCondition `json:"condition,omitempty"`
+	Effects            []Effect                  `json:"effects,omitempty"`
+	Cost               *TileInteractionCost      `json:"cost,omitempty"`
+	Difficulty         int                       `json:"difficulty,omitempty"`
+	Attribute          string                    `json:"attribute,omitempty"`
+	Success            []Effect                  `json:"success,omitempty"`
+	Failure            []Effect                  `json:"failure,omitempty"`
+	SuccessMessage     string                    `json:"successMessage,omitempty"`
+	FailureMessage     string                    `json:"failureMessage,omitempty"`
+	Destination        string                    `json:"destination,omitempty"`
+	DivinationPosition string                    `json:"divinationPosition,omitempty"`
+	MirrorDuration     int                       `json:"mirrorDuration,omitempty"`
+}
+
+type WeightedEffect struct {
+	Effect
+	Weight int `json:"weight"`
+}
+
+type TileTrigger struct {
+	Type          string           `json:"type"`
+	Attribute     string           `json:"attribute,omitempty"`
+	Difficulty    int              `json:"difficulty,omitempty"`
+	Success       []Effect         `json:"success,omitempty"`
+	Failure       []Effect         `json:"failure,omitempty"`
+	Message       string           `json:"message,omitempty"`
+	Deck          string           `json:"deck,omitempty"`
+	Count         int              `json:"count,omitempty"`
+	Possibilities []WeightedEffect `json:"possibilities,omitempty"`
+	Effects       []Effect         `json:"effects,omitempty"`
 }
 
 // TileInstance 房间实例
 type TileInstance struct {
-	InstanceID        string                 `json:"instanceId"`
-	DefID             string                `json:"defId"`
-	X                 int                   `json:"x"`
-	Y                 int                   `json:"y"`
-	Rotation          int                   `json:"rotation"`
-	Edges             map[Direction]string  `json:"edges"`
-	HasEventTriggered bool                  `json:"hasEventTriggered"`
-	Visibility        string                `json:"visibility"`
-	DroppedItems      []Card                `json:"droppedItems"`  // P1修复：存储完整物品对象
+	InstanceID        string               `json:"instanceId"`
+	DefID             string               `json:"defId"`
+	X                 int                  `json:"x"`
+	Y                 int                  `json:"y"`
+	Rotation          int                  `json:"rotation"`
+	Edges             map[Direction]string `json:"edges"`
+	HasEventTriggered bool                 `json:"hasEventTriggered"`
+	Visibility        string               `json:"visibility"`
+	DroppedItems      []Card               `json:"droppedItems"` // P1修复：存储完整物品对象
 }
 
 // CardDef 卡牌定义
@@ -178,23 +227,31 @@ type CardDef struct {
 
 // Scenario 剧本定义
 type Scenario struct {
-	ID          string          `json:"id"`
-	Name        string         `json:"name"`
-	IntroText   string         `json:"introText"`
-	TraitorRule string         `json:"traitorRule"`
-	
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	IntroText   string           `json:"introText"`
+	TraitorRule string           `json:"traitorRule"`
+	HeroInfo    *ScenarioSecrets `json:"heroInfo,omitempty"`
+	TraitorInfo *ScenarioSecrets `json:"traitorInfo,omitempty"`
+
 	// Phase 3: 目标系统
 	HeroObjective    *Objective `json:"heroObjective,omitempty"`
 	TraitorObjective *Objective `json:"traitorObjective,omitempty"`
+}
+
+type ScenarioSecrets struct {
+	Objective string   `json:"objective"`
+	SetupText string   `json:"setupText,omitempty"`
+	Abilities []string `json:"abilities,omitempty"`
 }
 
 // Objective 目标定义
 type Objective struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Type        string `json:"type"`        // ELIMINATE, SURVIVE, REACH, COLLECT, CONVERT, CUSTOM
-	Target      string `json:"target,omitempty"` // 目标ID或类型
-	Turns       int    `json:"turns"`          // 达成目标的回合限制
+	Type        string `json:"type"`               // ELIMINATE, SURVIVE, REACH, COLLECT, CONVERT, CUSTOM
+	Target      string `json:"target,omitempty"`   // 目标ID或类型
+	Turns       int    `json:"turns"`              // 达成目标的回合限制
 	CustomID    string `json:"customId,omitempty"` // 自定义目标ID
 }
 
@@ -220,33 +277,33 @@ const (
 
 // NPCDef NPC 定义（模板）
 type NPCDef struct {
-	ID          string   `json:"id"`           // 模板ID，如 "npc_ghost"
-	Name        string   `json:"name"`         // 显示名称
-	Type        NPCType  `json:"type"`         // 怪物类型
-	Description string   `json:"description"`   // 描述
-	Icon        string   `json:"icon"`         // 图标
+	ID          string  `json:"id"`          // 模板ID，如 "npc_ghost"
+	Name        string  `json:"name"`        // 显示名称
+	Type        NPCType `json:"type"`        // 怪物类型
+	Description string  `json:"description"` // 描述
+	Icon        string  `json:"icon"`        // 图标
 	// 属性（仅用于显示/ flavor，实际战斗用骰子拼点）
-	Might      int `json:"might"`      // 力量
-	Speed      int `json:"speed"`      // 速度
-	Sanity     int `json:"sanity"`     // 理智
-	Knowledge  int `json:"knowledge"`  // 知识
+	Might     int `json:"might"`     // 力量
+	Speed     int `json:"speed"`     // 速度
+	Sanity    int `json:"sanity"`    // 理智
+	Knowledge int `json:"knowledge"` // 知识
 	// 战斗属性
-	Health     int `json:"health"`     // 生命值（被击败需要的伤害量）
+	Health int `json:"health"` // 生命值（被击败需要的伤害量）
 	// 行为
-	CanAttack  bool   `json:"canAttack"`   // 是否可以攻击玩家
+	CanAttack  bool   `json:"canAttack"`  // 是否可以攻击玩家
 	AttackAttr string `json:"attackAttr"` // 攻击使用的属性 (might/speed/sanity/knowledge)
 }
 
 // GameNPC 实例化的 NPC（在地图上存在的）
 type GameNPC struct {
-	InstanceID string   `json:"instanceId"` // 实例ID
-	DefID      string   `json:"defId"`     // 模板ID
-	Name       string   `json:"name"`      // 显示名称
-	Type       NPCType  `json:"type"`      // 怪物类型
-	Position   Position `json:"position"`  // 当前位置
-	Health     int      `json:"health"`    // 当前生命值
-	MaxHealth  int      `json:"maxHealth"` // 最大生命值
-	IsDead     bool     `json:"isDead"`    // 是否已死亡
+	InstanceID    string         `json:"instanceId"`    // 实例ID
+	DefID         string         `json:"defId"`         // 模板ID
+	Name          string         `json:"name"`          // 显示名称
+	Type          NPCType        `json:"type"`          // 怪物类型
+	Position      Position       `json:"position"`      // 当前位置
+	Health        int            `json:"health"`        // 当前生命值
+	MaxHealth     int            `json:"maxHealth"`     // 最大生命值
+	IsDead        bool           `json:"isDead"`        // 是否已死亡
 	StatusEffects []StatusEffect `json:"statusEffects"` // 状态效果
 }
 
@@ -255,25 +312,25 @@ var NPCDatabase = map[string]*NPCDef{
 	"npc_ghost": {
 		ID: "npc_ghost", Name: "幽灵", Type: NPCType_Ghost,
 		Description: "一只游荡的幽灵，会吸取玩家的理智",
-		Icon: "ghost", Might: 1, Speed: 4, Sanity: 2, Knowledge: 1,
+		Icon:        "ghost", Might: 1, Speed: 4, Sanity: 2, Knowledge: 1,
 		Health: 2, CanAttack: true, AttackAttr: "sanity",
 	},
 	"npc_beast": {
 		ID: "npc_beast", Name: "野兽", Type: NPCType_Beast,
 		Description: "嗜血的野兽，力量惊人",
-		Icon: "paw-print", Might: 5, Speed: 3, Sanity: 1, Knowledge: 0,
+		Icon:        "paw-print", Might: 5, Speed: 3, Sanity: 1, Knowledge: 0,
 		Health: 4, CanAttack: true, AttackAttr: "might",
 	},
 	"npc_spirit": {
 		ID: "npc_spirit", Name: "怨灵", Type: NPCType_Spirit,
 		Description: "含冤而死的怨灵，行动诡秘",
-		Icon: "skull", Might: 2, Speed: 5, Sanity: 3, Knowledge: 2,
+		Icon:        "skull", Might: 2, Speed: 5, Sanity: 3, Knowledge: 2,
 		Health: 2, CanAttack: true, AttackAttr: "knowledge",
 	},
 	"npc_zombie": {
 		ID: "npc_zombie", Name: "僵尸", Type: NPCType_Zombie,
 		Description: "缓慢但坚韧的不死生物",
-		Icon: "heart", Might: 3, Speed: 1, Sanity: 0, Knowledge: 0,
+		Icon:        "heart", Might: 3, Speed: 1, Sanity: 0, Knowledge: 0,
 		Health: 5, CanAttack: true, AttackAttr: "might",
 	},
 }
@@ -303,9 +360,9 @@ type GameStateFull struct {
 	Timestamp int64 `json:"timestamp"` // 更新时间戳
 
 	// 游戏阶段
-	Phase          GamePhase              `json:"phase"`
-	TurnPhase      TurnPhase              `json:"turnPhase"`
-	TurnIndex      int                    `json:"turnIndex"`
+	Phase     GamePhase `json:"phase"`
+	TurnPhase TurnPhase `json:"turnPhase"`
+	TurnIndex int       `json:"turnIndex"`
 
 	// 玩家
 	Players        map[string]*GamePlayer `json:"players"`
@@ -313,8 +370,8 @@ type GameStateFull struct {
 	ActivePlayerID string                 `json:"activePlayerId"`
 
 	// 地图
-	Map            map[string]*TileInstance `json:"map"`
-	TileDeck       []TileDef              `json:"tileDeck"`
+	Map      map[string]*TileInstance `json:"map"`
+	TileDeck []TileDef                `json:"tileDeck"`
 
 	// 资源
 	OmenCount      int    `json:"omenCount"`
@@ -323,40 +380,40 @@ type GameStateFull struct {
 	TraitorID      string `json:"traitorId,omitempty"`
 
 	// 剧本
-	CurrentScenario  *Scenario `json:"currentScenario,omitempty"`
+	CurrentScenario   *Scenario `json:"currentScenario,omitempty"`
 	LastTriggeredOmen string    `json:"lastTriggeredOmen,omitempty"`
 	LastTriggeredTile string    `json:"lastTriggeredTile,omitempty"`
-	
+
 	// Phase 3: 目标系统
-	HeroObjectives      map[string]*PlayerObjective `json:"heroObjectives,omitempty"`      // playerID -> PlayerObjective
-	TraitorObjectives   map[string]*PlayerObjective `json:"traitorObjectives,omitempty"`   // traitorID -> PlayerObjective
-	TurnsSinceHaunt    int             `json:"turnsSinceHaunt,omitempty"`    // 作祟后的回合数
-	GameWinner         string          `json:"gameWinner,omitempty"`          // HERO, TRAITOR, NONE
-	
+	HeroObjectives    map[string]*PlayerObjective `json:"heroObjectives,omitempty"`    // playerID -> PlayerObjective
+	TraitorObjectives map[string]*PlayerObjective `json:"traitorObjectives,omitempty"` // traitorID -> PlayerObjective
+	TurnsSinceHaunt   int                         `json:"turnsSinceHaunt,omitempty"`   // 作祟后的回合数
+	GameWinner        string                      `json:"gameWinner,omitempty"`        // HERO, TRAITOR, NONE
+
 	// 日志
 	Logs []LogEntry `json:"logs"`
 
 	// 战斗
-	LastRollResult *int           `json:"lastRollResult,omitempty"`
-	ActiveCombat   *CombatState  `json:"activeCombat,omitempty"`
+	LastRollResult *int         `json:"lastRollResult,omitempty"`
+	ActiveCombat   *CombatState `json:"activeCombat,omitempty"`
 
 	// Phase X: NPC/怪物系统
-	NPCs     map[string]*GameNPC `json:"npcs"`  // NPC 实例 map，key 是 InstanceID
+	NPCs map[string]*GameNPC `json:"npcs"` // NPC 实例 map，key 是 InstanceID
 
 	// 卡牌系统
-	Decks     map[string][]Card `json:"decks"`
-	ActiveCard *Card            `json:"activeCard,omitempty"`
+	Decks      map[string][]Card `json:"decks"`
+	ActiveCard *Card             `json:"activeCard,omitempty"`
 
 	// Phase 1: 等待玩家输入（状态控制）
 	PendingAction *PendingAction `json:"pendingAction,omitempty"`
 
 	// Phase 3: 房间放置状态 (前端 <-> 后端同步)
-	PendingTile          *TileDef `json:"pendingTile,omitempty"`          // 待放置的房间
-	PendingTileRotation  int      `json:"pendingTileRotation,omitempty"` // 旋转角度 (0, 90, 180, 270)
-	PendingTargetPos     *Pos     `json:"pendingTargetPos,omitempty"`    // 放置目标位置
+	PendingTile         *TileDef `json:"pendingTile,omitempty"`         // 待放置的房间
+	PendingTileRotation int      `json:"pendingTileRotation,omitempty"` // 旋转角度 (0, 90, 180, 270)
+	PendingTargetPos    *Pos     `json:"pendingTargetPos,omitempty"`    // 放置目标位置
 
 	// Phase 3: 移动等待确认
-	PendingMoveDirection string   `json:"pendingMoveDirection,omitempty"` // 等待确认的移动方向
+	PendingMoveDirection string `json:"pendingMoveDirection,omitempty"` // 等待确认的移动方向
 }
 
 // Pos 位置坐标
@@ -374,16 +431,16 @@ func (g *GameStateFull) ToSyncState() *GameStateFull {
 
 // RoomGameState 房间游戏状态
 type RoomGameState struct {
-	Phase      string          `json:"phase"` // WAITING, PLAYING
-	TurnIndex  int             `json:"turnIndex"`
-	FullState  *GameStateFull `json:"fullState,omitempty"`
+	Phase     string         `json:"phase"` // WAITING, PLAYING
+	TurnIndex int            `json:"turnIndex"`
+	FullState *GameStateFull `json:"fullState,omitempty"`
 }
 
 // Room 房间结构
 type Room struct {
-	ID        string              `json:"id"`
-	Name      string              `json:"name"`
-	Theme     string              `json:"theme"` // 主题: "original" 或 "volantis"
+	ID        string             `json:"id"`
+	Name      string             `json:"name"`
+	Theme     string             `json:"theme"` // 主题: "original" 或 "volantis"
 	Players   map[string]*Player `json:"players"`
 	GameState *RoomGameState     `json:"gameState"`
 	CreatedAt int64              `json:"createdAt"`

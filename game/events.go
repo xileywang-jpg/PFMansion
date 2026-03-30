@@ -3,6 +3,7 @@ package game
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -34,72 +35,31 @@ func (g *GameManager) DrawCard(roomID, playerID, cardType string) (map[string]in
 		return nil, errors.New("还没轮到你")
 	}
 
-	// 牌堆已在 StartGame 中初始化
-
-	deckName := ""
-	switch cardType {
-	case "EVENT":
-		deckName = "EVENT"
-	case "ITEM":
-		deckName = "ITEM"
-	case "OMEN":
-		deckName = "OMEN"
+	deckName := strings.ToUpper(cardType)
+	switch deckName {
+	case "EVENT", "ITEM", "OMEN":
 	case "NONE", "":
 		// 前端可能在边界情况下发送 NONE，静默返回不处理
 		return nil, nil
+	default:
+		return nil, errors.New("无效的牌堆类型")
 	}
 
-	deck := state.FullState.Decks[deckName]
-	if len(deck) == 0 {
-		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-			ID:        generateLogID(),
-			Timestamp: time.Now().UnixMilli(),
-			Text:      fmt.Sprintf("%s 牌堆已空！", deckName),
-			Type:      "alert",
-		})
+	result, err := g.executeDeckDrawUnlocked(roomID, playerID, deckName)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
 		return nil, errors.New(fmt.Sprintf("%s 牌堆已空", deckName))
 	}
 
-	// 抽取卡牌
-	card := deck[0]
-	state.FullState.Decks[deckName] = deck[1:]
-
-	// 获取玩家名称用于日志
-	playerName := "玩家"
-	player, playerExists := state.FullState.Players[playerID]
-	if playerExists {
-		playerName = player.Character.Name
+	response := map[string]interface{}{
+		"deck": result.Deck,
 	}
-
-	// 记录抽卡日志
-	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-		ID:        generateLogID(),
-		Timestamp: time.Now().UnixMilli(),
-		Text:      fmt.Sprintf("%s 抽到了 %s", playerName, card.Name),
-		Type:      "info",
-	})
-
-	// 设置激活的卡牌（前端会显示卡牌弹窗）
-	state.FullState.ActiveCard = &card
-
-	// 将物品卡/厄运卡添加到当前地块的掉落物品列表，这样玩家可以"捡起"
-	if (card.Type == "ITEM" || card.Type == "OMEN") && playerExists {
-		posKey := fmt.Sprintf("%d,%d", player.Position.X, player.Position.Y)
-		if tile, ok := state.FullState.Map[posKey]; ok {
-			tile.DroppedItems = append(tile.DroppedItems, card)
-			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
-				ID:        generateLogID(),
-				Timestamp: time.Now().UnixMilli(),
-				Text:      fmt.Sprintf("%s 发现了 %s", playerName, card.Name),
-				Type:      "info",
-			})
-		}
+	if result.Reveal && result.Card != nil {
+		response["card"] = *result.Card
 	}
-
-	return map[string]interface{}{
-		"card": card,
-		"deck": deckName,
-	}, nil
+	return response, nil
 }
 
 // ResolveEventChoice 处理事件选择

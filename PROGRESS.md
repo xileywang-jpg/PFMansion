@@ -71,11 +71,9 @@
 ### 新增文件
 - `ws/client.ts` - WebSocket 客户端
 - `ws/network.ts` - 网络层封装
-- `ws/adapter.ts` - 操作拦截适配器
-- `hooks/useGameNetwork.ts` - React Hook
 - `components/NetworkScreens.tsx` - 登录/大厅 UI
-- `components/LocalGame.tsx` → `GameScreen.tsx` - 游戏主界面
-- `App.tsx` - 双模式入口
+- `components/GameScreen.tsx` - 游戏主界面
+- `App.tsx` - 路由入口
 
 ---
 

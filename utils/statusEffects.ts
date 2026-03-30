@@ -127,7 +127,7 @@ export const applyStatusEffectOnTurnStart = (
         break;
         
       case 'PHASING':
-        logs.push('相位状态：可以穿过墙壁！');
+        logs.push('相位状态：特殊移动效果由后端裁决。');
         break;
         
       case 'BLESSED':
