@@ -32,7 +32,7 @@ const AttributeRow: React.FC<{ label: string, current: number, max: number, icon
 };
 
 const PlayerHUD: React.FC = () => {
-  const { players, playerIds, activePlayerId, logs, toggleInventory, toggleInteractionModal, phase, currentScenario, executeLogicAction, toggleSkillTree } = useGameStore();
+  const { players, playerIds, activePlayerId, logs, toggleInventory, toggleInteractionModal, phase, currentScenario, executeLogicAction, toggleSkillTree, getEffectiveAttributeValue, openInspection } = useGameStore();
   const player = players[activePlayerId];
   const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
   const [logTab, setLogTab] = useState<'global' | 'personal'>('global');
@@ -79,9 +79,22 @@ const PlayerHUD: React.FC = () => {
         )}
         
         <div className="flex items-center gap-4 mb-4 relative z-10">
+            {/* 头像 - 点击打开角色详情 */}
             <div 
-                className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-lg transition-all ${player.isDead ? 'grayscale border-zinc-800 bg-zinc-900' : ''}`}
-                style={{ borderColor: !player.isDead ? playerColor : undefined, backgroundColor: !player.isDead ? `${playerColor}20` : undefined }}
+                className={`
+                    w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-lg 
+                    transition-all cursor-pointer hover:scale-105 hover:shadow-[0_0_20px_rgba(99,102,241,0.3)]
+                    ${player.isDead 
+                        ? 'grayscale border-zinc-800 bg-zinc-900 cursor-default hover:scale-100 hover:shadow-lg' 
+                        : ''
+                    }
+                `}
+                style={{ 
+                    borderColor: !player.isDead ? playerColor : undefined, 
+                    backgroundColor: !player.isDead ? `${playerColor}20` : undefined 
+                }}
+                onClick={() => !player.isDead && openInspection(activePlayerId)}
+                title={player.isDead ? '已阵亡' : '点击查看角色详情'}
             >
                 {player.isDead ? <Skull size={24} className="text-zinc-600" /> : <User style={{ color: playerColor }} />}
             </div>
