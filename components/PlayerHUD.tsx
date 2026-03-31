@@ -36,6 +36,14 @@ const PlayerHUD: React.FC = () => {
   const player = players[activePlayerId];
   const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
   const [logTab, setLogTab] = useState<'global' | 'personal'>('global');
+  const logContainerRef = React.useRef<HTMLDivElement>(null);
+
+  // 日志滚动到顶部（最新日志）
+  React.useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = 0;
+    }
+  }, [logs, player?.personalLogs, logTab]);
 
   const otherPlayersInRoom = useMemo(() => {
     if (!player) return [];
@@ -67,7 +75,10 @@ const PlayerHUD: React.FC = () => {
   const isHauntPhase = phase === GamePhase.Haunt;
   const isTraitor = player.team === 'TRAITOR';
   
-  const activeLogs = logTab === 'global' ? logs : player.personalLogs || [];
+  const activeLogs = useMemo(() => {
+    if (logTab === 'global') return logs;
+    return player?.personalLogs || [];
+  }, [logTab, logs, player?.personalLogs]);
 
   return (
     <div className="w-80 h-full bg-zinc-950/90 border-l border-zinc-800 flex flex-col backdrop-blur-sm z-30 shadow-2xl overflow-hidden">
@@ -333,7 +344,7 @@ const PlayerHUD: React.FC = () => {
                 </div>
             </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3" ref={logContainerRef}>
           {activeLogs.length === 0 ? (
               <div className="text-center py-8 text-zinc-600 text-xs italic">暂无记录</div>
           ) : (
