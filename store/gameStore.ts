@@ -74,6 +74,13 @@ interface GameState {
   isSkillTreeOpen: boolean; 
   inspectPlayerId: string | null;
   
+  // 卡牌揭示弹窗
+  cardRevealModal: {
+    card: any;
+    deck: 'OMEN' | 'ITEM' | 'EVENT';
+    onConfirmAction?: any;
+  } | null;
+  
   // 预知/互动待执行效果
   pendingInteractionEffects: any[] | null;
 
@@ -220,6 +227,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   isSkillTreeOpen: false,
   inspectPlayerId: null,
   pendingInteractionEffects: null,
+  cardRevealModal: null,
   activeFeedback: null,
 
   // 游戏静态数据
@@ -594,6 +602,23 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   openInspection: (playerId) => set({ inspectPlayerId: playerId }),
   closeInspection: () => set({ inspectPlayerId: null }),
+
+  // 卡牌揭示弹窗
+  showCardReveal: (card: any, deck: 'OMEN' | 'ITEM' | 'EVENT', onConfirmAction?: any) => {
+    set({ 
+      cardRevealModal: { card, deck, onConfirmAction },
+      // 确保日志不会遮挡
+      activeFeedback: null 
+    });
+  },
+  closeCardReveal: () => {
+    const state = get();
+    // 如果有确认动作，先执行它
+    if (state.cardRevealModal?.onConfirmAction) {
+      // onConfirmAction 会在组件中被调用
+    }
+    set({ cardRevealModal: null });
+  },
 
   useItem: (itemId: string, targetId?: string) => {
       if (!network.isInNetworkMode()) {

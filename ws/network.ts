@@ -404,10 +404,17 @@ function handleNPCAttackedPlayer(msg: ServerMessage) {
 // 抽卡结果处理
 function handleCardDrawn(msg: ServerMessage) {
   console.log('🃏 抽卡结果:', msg);
-  
+
   const store = useGameStore.getState();
   const { card, deck } = msg as any;
-  
+
+  // OMEN 或 ITEM 类型，使用揭示弹窗
+  if (deck === 'OMEN' || deck === 'ITEM') {
+    store.showCardReveal(card, deck);
+    return;
+  }
+
+  // EVENT 类型，如果需要交互则走 activeCard 流程
   const activeCard = normalizeActiveEventCard(card);
   if (activeCard) {
     // 设置 activeCard 以显示卡牌弹窗
