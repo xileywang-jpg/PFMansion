@@ -289,7 +289,7 @@ func (g *GameManager) applyEffect(roomID, playerID string, effect Effect) {
 			player.Character.Attributes[attrName] = attr
 			// 记录日志
 			if amount != 0 {
-				logMsg := fmt.Sprintf("%s 的 %s %s (当前: %d)",
+				logMsg := fmt.Sprintf("%s 的 %s %s (结算后有效值: %d)",
 					player.Character.Name, attrName, formatSign(amount), attr.Current)
 				g.addLog(roomID, logMsg, "info")
 			}

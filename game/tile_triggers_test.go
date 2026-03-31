@@ -51,7 +51,10 @@ func TestTriggerRoomEvent_OnEnterAttributeCheckCreatesPendingAction(t *testing.T
 func TestResolvePendingTileCheck_AppliesFailureEffects(t *testing.T) {
 	gm := setupTestGameManager()
 	roomID := createTestRoom(gm)
+	state := gm.Rooms[roomID].GameState.FullState
 	player := gm.Rooms[roomID].GameState.FullState.Players["player_1"]
+	result := 5
+	state.LastRollResult = &result
 
 	before := player.Character.Attributes["sanity"].Current
 	wait, err := gm.executeTileTriggerUnlocked(roomID, "player_1", &TileTrigger{
@@ -81,6 +84,9 @@ func TestResolvePendingTileCheck_AppliesFailureEffects(t *testing.T) {
 	}
 	if gm.Rooms[roomID].GameState.FullState.PendingAction != nil {
 		t.Fatal("地块检定结算后应清除 PendingAction")
+	}
+	if state.LastRollResult != nil {
+		t.Fatal("地块检定结算后应清除 LastRollResult")
 	}
 }
 

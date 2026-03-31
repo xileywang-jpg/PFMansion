@@ -102,7 +102,6 @@ function mergePlayersWithLocalLogs(incomingPlayers: Record<string, any>, existin
 
 function buildSyncedStatePatch(state: any, store: ReturnType<typeof useGameStore.getState>, options?: { resetCombatResult?: boolean }) {
   const mergedPlayers = mergePlayersWithLocalLogs(state.players || {}, store.players || {});
-  const lastRollResult = state.lastRollResult ?? null;
   const activeCombat = state.activeCombat ? {
     attackerId: state.activeCombat.attackerId,
     defenderId: state.activeCombat.defenderId,
@@ -113,6 +112,13 @@ function buildSyncedStatePatch(state: any, store: ReturnType<typeof useGameStore
   } : null;
   const pendingAction = mapPendingAction(state.pendingAction);
   const syncedActiveRoll = buildPendingActionActiveRoll(pendingAction, mergedPlayers, store.activeRoll);
+  const serverLastRollResult = state.lastRollResult ?? null;
+  const isCurrentPlayerServerDrivenCheck =
+    pendingAction?.target === currentPlayerId &&
+    (pendingAction?.type === 'TILE_ATTRIBUTE_CHECK' || pendingAction?.type === 'ATTRIBUTE_CHECK');
+  const lastRollResult =
+    serverLastRollResult ??
+    (store.activeRoll !== null && !isCurrentPlayerServerDrivenCheck ? store.lastRollResult : null);
 
   return {
     phase: state.phase || 'EXPLORATION',

@@ -7,10 +7,7 @@ import { Brain, Zap, Dumbbell, Eye, Skull, Backpack, Gem, Crosshair, Syringe, Us
 import { motion, AnimatePresence } from 'framer-motion';
 import { SKILLS_DB } from '../data/skills';
 
-const AttributeRow: React.FC<{ label: string, current: number, effective: number, max: number, icon: any, isDead: boolean }> = ({ label, current, effective, max, icon: Icon, isDead }) => {
-    const hasBonus = effective > current;
-    const hasPenalty = effective < current;
-
+const AttributeRow: React.FC<{ label: string, current: number, max: number, icon: any, isDead: boolean }> = ({ label, current, max, icon: Icon, isDead }) => {
     return (
       <div className="flex items-center gap-3 mb-3 group">
         <div className={`p-2 rounded-md border transition-colors ${isDead ? 'bg-zinc-900 border-zinc-800' : 'bg-zinc-800 border-zinc-700 group-hover:border-zinc-500'}`}>
@@ -20,22 +17,14 @@ const AttributeRow: React.FC<{ label: string, current: number, effective: number
             <div className="flex justify-between text-xs uppercase tracking-widest text-zinc-500 mb-1">
                 <span className={isDead ? 'text-zinc-700' : ''}>{label}</span>
                 <span className={`font-bold flex items-center gap-1 ${isDead ? 'text-zinc-800' : 'text-zinc-300'}`}>
-                    {effective}
-                    {!isDead && hasBonus && <span className="text-[9px] text-emerald-500">(+{effective - current})</span>}
-                    {!isDead && hasPenalty && <span className="text-[9px] text-red-500">({effective - current})</span>}
+                    {current}
                 </span>
             </div>
             <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden relative">
                 <div 
                     className={`h-full absolute top-0 left-0 transition-all duration-500 ${isDead ? 'bg-zinc-800' : 'bg-zinc-400'}`} 
-                    style={{ width: `${(current / 8) * 100}%` }} 
+                    style={{ width: `${(current / max) * 100}%` }} 
                 />
-                {!isDead && hasBonus && (
-                    <div 
-                        className="h-full absolute top-0 bg-emerald-500/50"
-                        style={{ left: `${(current / 8) * 100}%`, width: `${((effective - current) / 8) * 100}%` }}
-                    />
-                )}
             </div>
         </div>
       </div>
@@ -43,7 +32,7 @@ const AttributeRow: React.FC<{ label: string, current: number, effective: number
 };
 
 const PlayerHUD: React.FC = () => {
-  const { players, playerIds, activePlayerId, logs, toggleInventory, toggleInteractionModal, phase, currentScenario, executeLogicAction, toggleSkillTree, getEffectiveAttributeValue } = useGameStore();
+  const { players, playerIds, activePlayerId, logs, toggleInventory, toggleInteractionModal, phase, currentScenario, executeLogicAction, toggleSkillTree } = useGameStore();
   const player = players[activePlayerId];
   const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
   const [logTab, setLogTab] = useState<'global' | 'personal'>('global');
@@ -244,7 +233,6 @@ const PlayerHUD: React.FC = () => {
         <AttributeRow 
             label="力量" 
             current={player.character.attributes[AttributeName.Might].current} 
-            effective={getEffectiveAttributeValue(player.id, AttributeName.Might)}
             max={8} 
             icon={Dumbbell} 
             isDead={player.isDead} 
@@ -252,7 +240,6 @@ const PlayerHUD: React.FC = () => {
         <AttributeRow 
             label="速度" 
             current={player.character.attributes[AttributeName.Speed].current} 
-            effective={getEffectiveAttributeValue(player.id, AttributeName.Speed)}
             max={8} 
             icon={Zap} 
             isDead={player.isDead} 
@@ -260,7 +247,6 @@ const PlayerHUD: React.FC = () => {
         <AttributeRow 
             label="理智" 
             current={player.character.attributes[AttributeName.Sanity].current} 
-            effective={getEffectiveAttributeValue(player.id, AttributeName.Sanity)}
             max={8} 
             icon={Brain} 
             isDead={player.isDead} 
@@ -268,7 +254,6 @@ const PlayerHUD: React.FC = () => {
         <AttributeRow 
             label="知识" 
             current={player.character.attributes[AttributeName.Knowledge].current} 
-            effective={getEffectiveAttributeValue(player.id, AttributeName.Knowledge)}
             max={8} 
             icon={Eye} 
             isDead={player.isDead} 

@@ -139,3 +139,45 @@ func TestDrawCard_EventPreservesRevealAndPendingAction(t *testing.T) {
 		t.Fatalf("返回的 deck 应为 EVENT, 实际是 %v", result["deck"])
 	}
 }
+
+func TestResolveEventChoice_ClearsLastRollResultAfterAttributeCheck(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	result := 6
+
+	state.ActiveCard = &Card{
+		ID:   "event_test_check",
+		Type: "EVENT",
+		Interaction: &Interaction{
+			Type:       "ATTRIBUTE_CHECK",
+			Attribute:  "sanity",
+			Difficulty: 4,
+			Success:    []Effect{{Type: "LOG", Message: "检定成功"}},
+			Failure:    []Effect{{Type: "LOG", Message: "检定失败"}},
+		},
+	}
+	state.PendingAction = &PendingAction{
+		Type:   "ATTRIBUTE_CHECK",
+		Target: "player_1",
+		Data: map[string]interface{}{
+			"attribute":  "sanity",
+			"difficulty": 4,
+		},
+	}
+	state.LastRollResult = &result
+
+	if err := gm.ResolveEventChoice(roomID, "player_1", 0); err != nil {
+		t.Fatalf("ResolveEventChoice 失败: %v", err)
+	}
+
+	if state.LastRollResult != nil {
+		t.Fatal("事件检定结算后应清除 LastRollResult")
+	}
+	if state.PendingAction != nil {
+		t.Fatal("事件检定结算后应清除 PendingAction")
+	}
+	if state.ActiveCard != nil {
+		t.Fatal("事件检定结算后应清除 ActiveCard")
+	}
+}

@@ -686,6 +686,7 @@ func (g *GameManager) ResolvePendingTileCheck(roomID, playerID string, success b
 	}
 	continuation, _ := pending.Data["continuation"].(map[string]interface{})
 	state.PendingAction = nil
+	g.clearLastRollResultUnlocked(state)
 
 	var selected []Effect
 	if success {

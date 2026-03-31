@@ -159,6 +159,7 @@ data/source/
 |------|------|
 | `generate_assets.js` | 生成资源文件 (已弃用) |
 | `generateDataIndex.js` | 生成数据索引 |
+| `sync_scenarios.cjs` | 从单一 scenario 源生成后端与前端运行时数据 |
 | `sync_data.cjs` | Node.js 数据同步 |
 | `sync_data.py` | Python 数据同步 |
 

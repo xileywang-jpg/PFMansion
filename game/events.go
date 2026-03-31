@@ -50,7 +50,7 @@ func (g *GameManager) DrawCard(roomID, playerID, cardType string) (map[string]in
 		return nil, err
 	}
 	if result == nil {
-		return nil, errors.New(fmt.Sprintf("%s 牌堆已空", deckName))
+		return nil, fmt.Errorf("%s 牌堆已空", deckName)
 	}
 
 	response := map[string]interface{}{
@@ -128,6 +128,7 @@ func (g *GameManager) ResolveEventChoice(roomID, playerID string, choiceIndex in
 	// 清除激活的卡牌和待处理动作
 	state.FullState.ActiveCard = nil
 	state.FullState.PendingAction = nil
+	g.clearLastRollResultUnlocked(state.FullState)
 	state.FullState.TurnPhase = TurnPhaseDone
 
 	return nil
