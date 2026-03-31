@@ -69,16 +69,17 @@ const PlayerHUD: React.FC = () => {
     return allSkillIds.map(id => SKILLS_DB[id]).filter(Boolean);
   }, [player]);
 
+  // 日志列表（必须在所有 hook 之后，条件返回之前）
+  const activeLogs = useMemo(() => {
+    if (logTab === 'global') return logs;
+    return player?.personalLogs || [];
+  }, [logTab, logs, player?.personalLogs]);
+
   if (!player) return null;
 
   const playerColor = PLAYER_COLORS[playerIds.indexOf(activePlayerId)];
   const isHauntPhase = phase === GamePhase.Haunt;
   const isTraitor = player.team === 'TRAITOR';
-  
-  const activeLogs = useMemo(() => {
-    if (logTab === 'global') return logs;
-    return player?.personalLogs || [];
-  }, [logTab, logs, player?.personalLogs]);
 
   return (
     <div className="w-80 h-full bg-zinc-950/90 border-l border-zinc-800 flex flex-col backdrop-blur-sm z-30 shadow-2xl overflow-hidden">
