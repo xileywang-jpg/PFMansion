@@ -12,6 +12,7 @@ import CardResolutionModal from './EventModal';
 import TurnControl from './TurnControl';
 import TileInspector from './TileInspector';
 import HauntRollModal from './HauntRollModal';
+import CardRevealModal from './effects/CardRevealModal';
 import HauntReveal from './HauntReveal';
 import InventoryModal from './InventoryModal';
 import InteractionModal from './InteractionModal';
@@ -147,6 +148,7 @@ const GameScreen: React.FC = () => {
       <CardResolutionModal />
       <HauntRollModal />
       <HauntReveal />
+      <CardRevealModal />
       <InventoryModal />
       <InteractionModal />
       <SkillTreeModal />
