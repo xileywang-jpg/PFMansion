@@ -11,7 +11,6 @@ import PlayerHUD from './PlayerHUD';
 import CardResolutionModal from './EventModal';
 import TurnControl from './TurnControl';
 import TileInspector from './TileInspector';
-import TileInfoBar from './effects/TileInfoBar'; // 底部常驻地块信息栏
 import HauntRollModal from './HauntRollModal';
 import HauntReveal from './HauntReveal';
 import InventoryModal from './InventoryModal';
@@ -135,7 +134,6 @@ const GameScreen: React.FC = () => {
         
         {/* Floating UI Elements */}
         <TileInspector />
-        <TileInfoBar />  {/* 底部常驻地块信息栏 */}
         <TurnControl />
         <FeedbackToast />
       </div>
