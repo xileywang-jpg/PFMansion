@@ -58,6 +58,28 @@ const getEdgeStyle = (edge: string): { bg: string; text: string } => {
   }
 };
 
+/** 将 Effect 对象转换为可读文本 */
+const renderEffectText = (effect: any): string => {
+  if (effect.message) return effect.message;
+  
+  switch (effect.type) {
+    case 'MODIFY_STAT':
+      return `${effect.stat === 'might' ? '力量' : effect.stat === 'speed' ? '速度' : effect.stat === 'sanity' ? '理智' : effect.stat === 'knowledge' ? '知识' : effect.stat} ${effect.amount > 0 ? '+' : ''}${effect.amount}`;
+    case 'DAMAGE':
+      return `受到 ${effect.amount} 点伤害`;
+    case 'HEAL':
+      return `恢复 ${effect.amount} 点生命`;
+    case 'DRAW_CARD':
+      return `抽取 ${effect.count || 1} 张卡牌`;
+    case 'LOG':
+      return effect.message || '记录日志';
+    case 'MOVE_PLAYER':
+      return `移动到 ${effect.location || '指定位置'}`;
+    default:
+      return effect.type || '未知效果';
+  }
+};
+
 /** 获取触发器类型的标签 */
 const getTriggerTypeLabel = (trigger: TileTrigger): string => {
   if (trigger.type === 'ATTRIBUTE_CHECK') {
@@ -267,8 +289,8 @@ const TileInspector: React.FC = () => {
             </div>
           )}
 
-          {/* ==================== 地块效果（onEnter/onLeave/effects） ==================== */}
-          {(def.effects?.length || def.onEnter || def.onLeave) && (
+          {/* ==================== 地块效果（onEnter/onLeave/onEnterEffects/effects） ==================== */}
+          {(def.effects?.length || def.onEnter || def.onLeave || def.onEnterEffects?.length) && (
             <div>
               <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider block mb-2">
                 地块效果
@@ -302,6 +324,26 @@ const TileInspector: React.FC = () => {
                   <p className="text-xs text-amber-300/80 leading-snug">
                     {getTriggerTypeLabel(def.onLeave)}
                   </p>
+                </div>
+              )}
+
+              {/* onEnterEffects 旧版效果（直接生效，可重入） */}
+              {def.onEnterEffects && def.onEnterEffects.length > 0 && (
+                <div className="mb-2 p-2.5 bg-purple-900/20 border border-purple-800/30 rounded-lg">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <ArrowRight size={12} className="text-purple-400" />
+                    <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider">
+                      进入时效果
+                    </span>
+                    <RefreshCw size={10} className="text-purple-600 ml-auto" title="可重入" />
+                  </div>
+                  <div className="space-y-1">
+                    {def.onEnterEffects.map((effect, idx) => (
+                      <div key={idx} className="text-xs text-purple-300/80 leading-snug">
+                        • {renderEffectText(effect)}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

@@ -267,8 +267,9 @@ export interface TileDef {
   icon?: string; 
   effects?: TileEffect[];
   // 扩展字段
-  onEnter?: TileTrigger;
-  onLeave?: TileTrigger;
+  onEnter?: TileTrigger;          // 新版进入触发器（带检定）
+  onEnterEffects?: Effect[];      // 旧版进入效果（直接生效）
+  onLeave?: TileTrigger;          // 离开触发器
   interact?: TileInteraction;
 }
 
