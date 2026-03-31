@@ -158,16 +158,20 @@ func (g *GameManager) nextTurnInternal(room *Room) error {
 	return nil
 }
 
-// processHauntRoll 处理作祟检定
-func (g *GameManager) processHauntRoll(room *Room) error {
+func (g *GameManager) resolveHauntRollUnlocked(room *Room, results []int) (map[string]interface{}, error) {
 	state := room.GameState
 	if state == nil || state.FullState == nil {
-		return errors.New("游戏未开始")
+		return nil, errors.New("游戏未开始")
+	}
+	if state.FullState.Phase != GamePhaseHauntRoll {
+		return nil, errors.New("当前不是作祟检定阶段")
+	}
+	if len(results) == 0 {
+		results = g.RollDice(6)
 	}
 
-	// 6 骰子检定
+	omenCount := state.FullState.OmenCount
 	g.clearLastRollResultUnlocked(state.FullState)
-	results := g.RollDice(6)
 	sum := 0
 	for _, v := range results {
 		sum += v
@@ -179,14 +183,25 @@ func (g *GameManager) processHauntRoll(room *Room) error {
 	state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 		ID:        generateLogID(),
 		Timestamp: time.Now().UnixMilli(),
-		Text:      fmt.Sprintf("作祟检定: %v = %d vs %d", results, sum, state.FullState.OmenCount),
+		Text:      fmt.Sprintf("作祟检定: %v = %d vs %d", results, sum, omenCount),
 		Type:      "alert",
 	})
 
-	if sum < state.FullState.OmenCount {
+	actionResult := map[string]interface{}{
+		"checkType":      "HAUNT_ROLL",
+		"difficulty":     omenCount,
+		"result":         sum,
+		"success":        sum >= omenCount,
+		"hauntTriggered": sum < omenCount,
+	}
+
+	if sum < omenCount {
 		// 作祟爆发
 		state.FullState.Phase = GamePhaseHauntReveal
-		return g.triggerHaunt(room)
+		if err := g.triggerHaunt(room); err != nil {
+			return nil, err
+		}
+		return actionResult, nil
 	} else {
 		// 暂时安全
 		state.FullState.Phase = GamePhaseExploration
@@ -197,8 +212,18 @@ func (g *GameManager) processHauntRoll(room *Room) error {
 			Type:      "info",
 		})
 		// 切换回合
-		return g.nextTurnInternal(room)
+		if err := g.nextTurnInternal(room); err != nil {
+			return nil, err
+		}
+		g.setLastRollResultUnlocked(state.FullState, sum)
+		return actionResult, nil
 	}
+}
+
+// processHauntRoll 处理作祟检定
+func (g *GameManager) processHauntRoll(room *Room) error {
+	_, err := g.resolveHauntRollUnlocked(room, g.RollDice(6))
+	return err
 }
 
 // triggerHaunt 触发作祟（内部使用，不处理预兆卡）
@@ -506,6 +531,19 @@ func (g *GameManager) TriggerHauntRoll(roomID string) error {
 	}
 
 	return g.processHauntRoll(room)
+}
+
+// ResolveHauntRoll 使用指定骰子结果结算作祟检定（供 WebSocket 投骰动画链路使用）
+func (g *GameManager) ResolveHauntRoll(roomID string, results []int) (map[string]interface{}, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return nil, errors.New("房间不存在")
+	}
+
+	return g.resolveHauntRollUnlocked(room, results)
 }
 
 // ForceTriggerHaunt 强制触发作祟（调试用）

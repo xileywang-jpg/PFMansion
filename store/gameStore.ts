@@ -158,6 +158,8 @@ const getOpposite = (dir: Direction): Direction => {
   }
 };
 
+const CONNECTABLE_EDGES = new Set(['OPEN', 'RUBBLE', 'SECRET_DOOR']);
+
 const getRotatedEdges = (edges: DirectionalEdges, rotation: number): DirectionalEdges => {
   const r = ((rotation % 360) + 360) % 360;
   if (r === 0) return edges;
@@ -297,7 +299,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // 获取地图（根据主题）
   getTilesByTheme: (theme: string = 'original'): any[] => {
-    return get().gameData?.tiles?.[theme] ?? [];
+    const themeKey = theme === 'volantis' ? 'volantis' : 'original';
+    return get().gameData?.tiles?.[themeKey] ?? [];
   },
 
   // 根据ID获取地图 (自动识别主题)
@@ -320,7 +323,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // 获取角色（根据主题）
   getCharactersByTheme: (theme: string = 'original'): any[] => {
-    return get().gameData?.characters?.[theme] ?? [];
+    const themeKey = theme === 'volantis' ? 'volantis' : 'original';
+    return get().gameData?.characters?.[themeKey] ?? [];
   },
 
   // 根据ID获取角色
@@ -542,8 +546,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!pendingTile || !pendingTargetPosition || !pendingMoveDirection) return false;
     if (map[`${pendingTargetPosition.x},${pendingTargetPosition.y}`]) return false;
     const rotatedEdges = getRotatedEdges(pendingTile.edges, pendingTileRotation);
-    // 必须精确匹配 'OPEN'，与后端保持一致
-    return rotatedEdges[getOpposite(pendingMoveDirection)] === 'OPEN';
+    return CONNECTABLE_EDGES.has(rotatedEdges[getOpposite(pendingMoveDirection)]);
   },
 
   cancelTilePlacement: () => {
@@ -576,8 +579,32 @@ export const useGameStore = create<GameState>((set, get) => ({
         return;
       }
 
-      network.sendPerformHauntRoll();
-      state.showFeedback("正在执行作祟检定...", "info");
+      if (state.phase !== GamePhase.HauntRoll) {
+        state.showFeedback("当前不在作祟检定阶段", "warning");
+        return;
+      }
+
+      if (state.activeRoll) {
+        return;
+      }
+
+      set({
+        activeRoll: {
+          id: `haunt:${state.activePlayerId}:${state.omenCount}`,
+          rollType: 'HAUNT',
+          attributeName: '作祟',
+          numberOfDice: 6,
+          targetValue: state.omenCount,
+          title: '作祟检定',
+          description: `投掷 6 枚骰子，若结果小于当前预兆数 ${state.omenCount} 则作祟爆发。`,
+          actionLabel: '掷出命运骰子',
+          confirmLabel: '确认结果',
+          onComplete: () => {},
+        },
+        lastRollResult: null,
+        lastCheckSuccess: null,
+      });
+      state.showFeedback("作祟检定开始，掷出六枚命运骰子。", "alert");
   },
 
   startHaunt: () => {

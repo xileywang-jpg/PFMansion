@@ -1,6 +1,7 @@
 package game
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -77,7 +78,7 @@ func TestPickupItem_Success(t *testing.T) {
 
 	// 把物品放在玩家当前位置 (0,0)
 	gm.Rooms[roomID].GameState.FullState.Map["0,0"].DroppedItems = []Card{
-		{ID: "item_flashlight", Type: "ITEM", Title: "手电筒"},
+		{ID: "item_flashlight", Type: "ITEM", Name: "手电筒", Title: "手电筒"},
 	}
 
 	err := gm.PickupItem(roomID, "player_1", "item_flashlight")
@@ -93,6 +94,12 @@ func TestPickupItem_Success(t *testing.T) {
 	tile := gm.Rooms[roomID].GameState.FullState.Map["0,0"]
 	if len(tile.DroppedItems) != 0 {
 		t.Errorf("地面物品未移除")
+	}
+	if len(player.PersonalLogs) == 0 {
+		t.Fatalf("拾取物品后应写入个人日志")
+	}
+	if got := player.PersonalLogs[len(player.PersonalLogs)-1].Text; got != "捡起了 手电筒。" {
+		t.Fatalf("拾取物品个人日志不正确: %s", got)
 	}
 }
 
@@ -275,6 +282,36 @@ func TestProcessMove_ReachObjectiveWinsImmediately(t *testing.T) {
 	}
 	if room.GameState.FullState.Phase != GamePhaseGameOver {
 		t.Fatalf("目标完成后应立即 GAME_OVER, 实际是 %s", room.GameState.FullState.Phase)
+	}
+}
+
+func TestProcessMove_AppendsPersonalLog(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	room := gm.Rooms[roomID]
+	player := room.GameState.FullState.Players["player_1"]
+
+	room.GameState.FullState.TurnPhase = TurnPhaseMoving
+	room.GameState.FullState.Map["1,0"] = &TileInstance{
+		InstanceID:   "library_tile",
+		DefID:        "tile_library",
+		X:            1,
+		Y:            0,
+		Edges:        map[Direction]string{DirectionWest: "OPEN", DirectionNorth: "WALL", DirectionSouth: "WALL", DirectionEast: "WALL"},
+		DroppedItems: []Card{},
+	}
+
+	err := gm.ProcessMove(roomID, "player_1", "E")
+	if err != nil {
+		t.Fatalf("ProcessMove 失败: %v", err)
+	}
+
+	if len(player.PersonalLogs) == 0 {
+		t.Fatal("移动后应写入个人日志")
+	}
+	lastLog := player.PersonalLogs[len(player.PersonalLogs)-1].Text
+	if !strings.HasPrefix(lastLog, "进入了") {
+		t.Fatalf("移动个人日志不正确: %s", lastLog)
 	}
 }
 
@@ -702,6 +739,120 @@ func TestInteractWithWall_DeadPlayer(t *testing.T) {
 	err := gm.InteractWithWall(roomID, "player_1", "N")
 	if err == nil {
 		t.Error("应该失败当玩家已死亡")
+	}
+}
+
+func TestInteractWithWall_AllowsExplorationAndPlacementAcrossRubble(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	room := gm.Rooms[roomID]
+	player := room.GameState.FullState.Players["player_1"]
+	player.Items = []Card{{ID: "item_pickaxe", Type: "ITEM", Title: "镐子"}}
+	room.GameState.FullState.TurnPhase = TurnPhaseMoving
+	room.GameState.FullState.TileDeck = []TileDef{{
+		ID:   "tile_north_room",
+		Name: "North Room",
+		Edges: map[Direction]string{
+			DirectionNorth: "WALL",
+			DirectionEast:  "WALL",
+			DirectionSouth: "OPEN",
+			DirectionWest:  "WALL",
+		},
+	}}
+
+	if err := gm.InteractWithWall(roomID, "player_1", "N"); err != nil {
+		t.Fatalf("InteractWithWall 失败: %v", err)
+	}
+
+	if err := gm.ProcessMove(roomID, "player_1", "N"); err != nil {
+		t.Fatalf("ProcessMove 失败: %v", err)
+	}
+
+	if room.GameState.FullState.PendingTile == nil {
+		t.Fatal("破墙后朝该方向探索应产生 PendingTile")
+	}
+	if room.GameState.FullState.PendingTargetPos == nil || room.GameState.FullState.PendingTargetPos.Y != -1 {
+		t.Fatalf("破墙后探索目标位置错误: %+v", room.GameState.FullState.PendingTargetPos)
+	}
+
+	if err := gm.PlaceTile(roomID, "player_1", "N", 0); err != nil {
+		t.Fatalf("PlaceTile 失败: %v", err)
+	}
+
+	placedTile, ok := room.GameState.FullState.Map["0,-1"]
+	if !ok {
+		t.Fatal("破墙后应能在对应方向成功放置新房间")
+	}
+	if placedTile.DefID != "tile_north_room" {
+		t.Fatalf("放置的房间错误: %+v", placedTile)
+	}
+	if player.Position.X != 0 || player.Position.Y != -1 {
+		t.Fatalf("放置后玩家应移动到新房间, 实际位置: %+v", player.Position)
+	}
+	if room.GameState.FullState.Map["0,0"].Edges[DirectionNorth] != "RUBBLE" {
+		t.Fatal("破坏后的边缘应保持为 RUBBLE 语义")
+	}
+}
+
+func TestProcessMove_AllowsMovementThroughSecretDoor(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	room := gm.Rooms[roomID]
+	room.GameState.FullState.TurnPhase = TurnPhaseMoving
+	room.GameState.FullState.Map["0,0"].Edges[DirectionNorth] = "SECRET_DOOR"
+	room.GameState.FullState.Map["0,-1"] = &TileInstance{
+		InstanceID:   "secret_room",
+		DefID:        "tile_secret_room",
+		X:            0,
+		Y:            -1,
+		Edges:        map[Direction]string{DirectionNorth: "WALL", DirectionEast: "WALL", DirectionSouth: "SECRET_DOOR", DirectionWest: "WALL"},
+		DroppedItems: []Card{},
+	}
+
+	if err := gm.ProcessMove(roomID, "player_1", "N"); err != nil {
+		t.Fatalf("ProcessMove 失败: %v", err)
+	}
+
+	player := room.GameState.FullState.Players["player_1"]
+	if player.Position.X != 0 || player.Position.Y != -1 {
+		t.Fatalf("密门移动后玩家位置错误: %+v", player.Position)
+	}
+	if room.GameState.FullState.MovesRemaining != 3 {
+		t.Fatalf("密门移动后应消耗 1 点移动力, 实际为 %d", room.GameState.FullState.MovesRemaining)
+	}
+}
+
+func TestPlaceTile_AllowsPlacementAcrossSecretDoor(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	room := gm.Rooms[roomID]
+	room.GameState.FullState.TurnPhase = TurnPhaseMoving
+	room.GameState.FullState.Map["0,0"].Edges[DirectionNorth] = "SECRET_DOOR"
+	room.GameState.FullState.TileDeck = []TileDef{{
+		ID:   "tile_secret_destination",
+		Name: "Secret Destination",
+		Edges: map[Direction]string{
+			DirectionNorth: "WALL",
+			DirectionEast:  "WALL",
+			DirectionSouth: "OPEN",
+			DirectionWest:  "WALL",
+		},
+	}}
+
+	if err := gm.ProcessMove(roomID, "player_1", "N"); err != nil {
+		t.Fatalf("ProcessMove 失败: %v", err)
+	}
+
+	if err := gm.PlaceTile(roomID, "player_1", "N", 0); err != nil {
+		t.Fatalf("PlaceTile 失败: %v", err)
+	}
+
+	placedTile, ok := room.GameState.FullState.Map["0,-1"]
+	if !ok {
+		t.Fatal("密门方向应允许放置新房间")
+	}
+	if placedTile.DefID != "tile_secret_destination" {
+		t.Fatalf("密门放置的房间错误: %+v", placedTile)
 	}
 }
 

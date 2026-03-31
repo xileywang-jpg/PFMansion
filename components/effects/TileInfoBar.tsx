@@ -16,27 +16,10 @@ import { STARTING_TILE } from '../../constants';
 import * as Icons from 'lucide-react';
 import { 
   MapPin,        // 当前位置指示
-  Zap,           // buff 效果
-  AlertTriangle, // debuff 效果  
-  Sparkles,      // trigger 效果
-  Package,       // item 效果
   ChevronUp,     // 展开指示
   DoorOpen       // 默认图标
 } from 'lucide-react';
-
-const EFFECT_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  buff: Zap,
-  debuff: AlertTriangle,
-  trigger: Sparkles,
-  item: Package,
-};
-
-const EFFECT_COLOR_MAP: Record<string, string> = {
-  buff: 'text-emerald-400',
-  debuff: 'text-red-400',
-  trigger: 'text-amber-400',
-  item: 'text-indigo-400',
-};
+import { getTileHintEntries } from '../../utils/tileReveal';
 
 const TileInfoBar: React.FC = () => {
   const { 
@@ -118,8 +101,10 @@ const TileInfoBar: React.FC = () => {
     return (Icons as any)[tileDef.icon] || DoorOpen;
   })();
 
-  // 获取效果列表（最多显示 2 个）
-  const displayEffects = tileDef.effects?.slice(0, 2) || [];
+  // 获取效果摘要（最多显示 2 个）
+  const tileHintEntries = getTileHintEntries(tileDef);
+  const displayEffects = tileHintEntries.slice(0, 2);
+  const hiddenEffectsCount = tileHintEntries.length - displayEffects.length;
 
   // 处理点击：聚焦到该地块的详情
   const handleClick = () => {
@@ -209,8 +194,8 @@ const TileInfoBar: React.FC = () => {
           {displayEffects.length > 0 && (
             <div className="flex items-center gap-3">
               {displayEffects.map((effect, idx) => {
-                const EffectIcon = EFFECT_ICON_MAP[effect.type] || Sparkles;
-                const colorClass = EFFECT_COLOR_MAP[effect.type] || 'text-zinc-400';
+                const EffectIcon = effect.icon;
+                const colorClass = effect.colorClassName;
                 
                 return (
                   <div 
@@ -227,15 +212,15 @@ const TileInfoBar: React.FC = () => {
                   >
                     <EffectIcon size={12} className={colorClass} />
                     <span className="text-[10px] text-zinc-300 max-w-[120px] truncate">
-                      {effect.text}
+                      {effect.summaryText}
                     </span>
                   </div>
                 );
               })}
               
-              {tileDef.effects && tileDef.effects.length > 2 && (
+              {hiddenEffectsCount > 0 && (
                 <span className="text-[10px] text-zinc-500">
-                  +{tileDef.effects.length - 2}
+                  +{hiddenEffectsCount}
                 </span>
               )}
             </div>

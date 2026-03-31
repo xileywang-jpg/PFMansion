@@ -1,11 +1,12 @@
 
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { TileInstance, Direction, AttributeName, Player } from '../types';
 import { STARTING_TILE, PLAYER_COLORS } from '../constants';
 import { useGameStore } from '../store/gameStore';
 import * as Icons from 'lucide-react';
-import { Hammer, Ban, Package, Skull } from 'lucide-react';
+import { Hammer, Ban, Package } from 'lucide-react';
+import { getTileRevealPresentation } from '../utils/tileReveal';
 
 interface TileCardProps {
   tile: TileInstance;
@@ -26,6 +27,8 @@ const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) =>
   // 安全获取 icon 组件，不存在的 icon 使用默认的 HelpCircle
   const IconComponent = def.icon && (Icons as any)[def.icon] ? (Icons as any)[def.icon] : Icons.HelpCircle;
   const hasActivePlayer = playersOnTile.some(p => p.id === activePlayerId);
+  const revealPresentation = getTileRevealPresentation(def.cardSymbol);
+  const RevealIcon = revealPresentation?.icon;
 
     // 后端当前只支持“破坏墙壁”这一种墙壁互动。
   const getWallAction = () => {
@@ -209,13 +212,15 @@ const TileCard: React.FC<TileCardProps> = ({ tile, isActive, playersOnTile }) =>
         </div>
       </div>
       
-      {/* 事件指示器 */}
-      {def.cardSymbol && !tile.hasEventTriggered && (
-        <div className="absolute top-1 right-1 flex items-center justify-center z-10">
-           <div className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_rgba(234,179,8,0.5)] ${
-             def.cardSymbol === 'OMEN' ? 'bg-emerald-500' : 
-             def.cardSymbol === 'ITEM' ? 'bg-indigo-500' : 'bg-yellow-600'
-           }`} />
+      {/* 揭示微标记 */}
+      {revealPresentation && RevealIcon && !tile.hasEventTriggered && (
+        <div className="absolute top-1 right-1 flex items-center justify-center z-20">
+          <div className={`flex items-center gap-1 rounded-full px-1.5 py-1 backdrop-blur-sm ${revealPresentation.badgeClassName}`}>
+            <RevealIcon size={9} className={revealPresentation.accentClassName} />
+            <span className={`text-[8px] font-bold uppercase tracking-tight ${revealPresentation.accentClassName}`}>
+              {revealPresentation.shortLabel}
+            </span>
+          </div>
         </div>
       )}
     </motion.div>

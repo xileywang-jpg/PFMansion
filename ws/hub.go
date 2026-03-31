@@ -516,8 +516,33 @@ func (h *Hub) handleGameAction(msg *Message) {
 		err = h.gameManager.CancelTilePlacement(roomID, msg.client.playerID)
 	// ===== 作祟系统 =====
 	case "perform_haunt_roll":
-		// 执行作祟检定
-		err = h.gameManager.TriggerHauntRoll(roomID)
+		state, stateErr := h.gameManager.GetGameState(roomID)
+		if stateErr != nil {
+			err = stateErr
+			break
+		}
+		if state == nil || state.ActivePlayerID != msg.client.playerID {
+			err = errors.New("只有当前玩家可以进行作祟检定")
+			break
+		}
+		results := h.gameManager.RollDice(6)
+		sum := 0
+		for _, v := range results {
+			sum += v
+		}
+		var actionResult map[string]interface{}
+		actionResult, err = h.gameManager.ResolveHauntRoll(roomID, results)
+		if err == nil {
+			h.broadcastToRoom(roomID, map[string]interface{}{
+				"type":         "dice_result",
+				"results":      results,
+				"sum":          sum,
+				"playerId":     msg.client.playerID,
+				"actionResult": actionResult,
+			})
+			h.sendGameState(roomID)
+			return
+		}
 	case "force_haunt":
 		// 强制触发作祟（调试用）
 		err = h.gameManager.ForceTriggerHaunt(roomID)
@@ -546,10 +571,11 @@ func (h *Hub) handleGameAction(msg *Message) {
 			msg.client.send <- data
 			return
 		}
+		isHauntRoll := state.Phase == game.GamePhaseHauntRoll
 
 		// 检查是否有待处理的投骰子动作（属性检定或战斗）
 		// 容忍 pending 为 nil 的情况（防止超时重试或多发请求导致错误）
-		if pending == nil {
+		if pending == nil && !isHauntRoll {
 			resp := map[string]interface{}{
 				"type":      "dice_result",
 				"checkType": "STALE",
@@ -562,7 +588,9 @@ func (h *Hub) handleGameAction(msg *Message) {
 
 		// 处理投骰子（后端生成结果）
 		numDice := 1
-		if pending.Type == "ATTRIBUTE_CHECK" || pending.Type == "TILE_ATTRIBUTE_CHECK" {
+		if isHauntRoll {
+			numDice = 6
+		} else if pending.Type == "ATTRIBUTE_CHECK" || pending.Type == "TILE_ATTRIBUTE_CHECK" {
 			if attrName, ok := pending.Data["attribute"].(string); ok {
 				if player, ok := state.Players[msg.client.playerID]; ok {
 					if attr, ok := player.Character.Attributes[attrName]; ok && attr.Current > 0 {
@@ -579,51 +607,11 @@ func (h *Hub) handleGameAction(msg *Message) {
 			sum += v
 		}
 
-		// Bug Fix: 设置 LastRollResult 以便 state_sync 时前端能同步骰子结果
-		h.gameManager.SetLastRollResult(roomID, sum)
-
 		// 根据待处理动作类型处理结果
 		var actionResult map[string]interface{}
-		switch pending.Type {
-		case "ATTRIBUTE_CHECK":
-			// 属性检定
-			difficulty := 3 // 默认难度
-			if d, ok := pending.Data["difficulty"].(float64); ok {
-				difficulty = int(d)
-			}
-			success := sum >= difficulty
-			actionResult = map[string]interface{}{
-				"checkType":  "ATTRIBUTE_CHECK",
-				"attribute":  pending.Data["attribute"],
-				"difficulty": difficulty,
-				"result":     sum,
-				"success":    success,
-			}
-
-			// 清除待处理动作
-			h.gameManager.ClearPendingAction(roomID)
-
-			// 继续执行事件效果
-			if success {
-				h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, 0) // 0 = success
-			} else {
-				h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, 1) // 1 = failure
-			}
-
-		case "TILE_ATTRIBUTE_CHECK":
-			difficulty := 3
-			if d, ok := pending.Data["difficulty"].(float64); ok {
-				difficulty = int(d)
-			}
-			success := sum >= difficulty
-			actionResult = map[string]interface{}{
-				"checkType":  "TILE_ATTRIBUTE_CHECK",
-				"attribute":  pending.Data["attribute"],
-				"difficulty": difficulty,
-				"result":     sum,
-				"success":    success,
-			}
-			if err := h.gameManager.ResolvePendingTileCheck(roomID, msg.client.playerID, success); err != nil {
+		if isHauntRoll {
+			actionResult, err = h.gameManager.ResolveHauntRoll(roomID, results)
+			if err != nil {
 				resp := map[string]interface{}{
 					"type":    "error",
 					"message": err.Error(),
@@ -632,21 +620,74 @@ func (h *Hub) handleGameAction(msg *Message) {
 				msg.client.send <- data
 				return
 			}
+		} else {
+			// Bug Fix: 设置 LastRollResult 以便 state_sync 时前端能同步骰子结果
+			h.gameManager.SetLastRollResult(roomID, sum)
 
-		case "COMBAT":
-			// 战斗骰子 - 已经由 ResolveCombat 处理
-			actionResult = map[string]interface{}{
-				"checkType": "COMBAT",
-				"result":    sum,
-			}
+			switch pending.Type {
+			case "ATTRIBUTE_CHECK":
+				// 属性检定
+				difficulty := 3 // 默认难度
+				if d, ok := pending.Data["difficulty"].(float64); ok {
+					difficulty = int(d)
+				}
+				success := sum >= difficulty
+				actionResult = map[string]interface{}{
+					"checkType":  "ATTRIBUTE_CHECK",
+					"attribute":  pending.Data["attribute"],
+					"difficulty": difficulty,
+					"result":     sum,
+					"success":    success,
+				}
 
-		default:
-			actionResult = map[string]interface{}{
-				"checkType": "GENERAL",
-				"result":    sum,
+				// 清除待处理动作
+				h.gameManager.ClearPendingAction(roomID)
+
+				// 继续执行事件效果
+				if success {
+					h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, 0) // 0 = success
+				} else {
+					h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, 1) // 1 = failure
+				}
+
+			case "TILE_ATTRIBUTE_CHECK":
+				difficulty := 3
+				if d, ok := pending.Data["difficulty"].(float64); ok {
+					difficulty = int(d)
+				}
+				success := sum >= difficulty
+				actionResult = map[string]interface{}{
+					"checkType":  "TILE_ATTRIBUTE_CHECK",
+					"attribute":  pending.Data["attribute"],
+					"difficulty": difficulty,
+					"result":     sum,
+					"success":    success,
+				}
+				if err := h.gameManager.ResolvePendingTileCheck(roomID, msg.client.playerID, success); err != nil {
+					resp := map[string]interface{}{
+						"type":    "error",
+						"message": err.Error(),
+					}
+					data, _ := json.Marshal(resp)
+					msg.client.send <- data
+					return
+				}
+
+			case "COMBAT":
+				// 战斗骰子 - 已经由 ResolveCombat 处理
+				actionResult = map[string]interface{}{
+					"checkType": "COMBAT",
+					"result":    sum,
+				}
+
+			default:
+				actionResult = map[string]interface{}{
+					"checkType": "GENERAL",
+					"result":    sum,
+				}
+				// 清除待处理动作
+				h.gameManager.ClearPendingAction(roomID)
 			}
-			// 清除待处理动作
-			h.gameManager.ClearPendingAction(roomID)
 		}
 
 		resp := map[string]interface{}{

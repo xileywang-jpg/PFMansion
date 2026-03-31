@@ -31,6 +31,8 @@ export interface WSClient {
   isConnected: () => boolean;
   getRoomId: () => string | null;
   getPlayerId: () => string | null;
+  on: (type: string, handler: (msg: ServerMessage) => void) => void;
+  off: (type: string, handler?: (msg: ServerMessage) => void) => void;
 }
 
 class WebSocketClient implements WSClient {
@@ -40,7 +42,7 @@ class WebSocketClient implements WSClient {
   private reconnectTimer: number | null = null;
   private roomId: string | null = null;
   private playerId: string | null = null;
-  private messageHandlers: Map<string, (msg: ServerMessage) => void> = new Map();
+  private messageHandlers: Map<string, Set<(msg: ServerMessage) => void>> = new Map();
 
   constructor(url: string = '') {
     // 自动构建 WebSocket URL
@@ -187,11 +189,26 @@ class WebSocketClient implements WSClient {
   }
 
   on(type: string, handler: (msg: ServerMessage) => void) {
-    this.messageHandlers.set(type, handler);
+    const handlers = this.messageHandlers.get(type) || new Set<(msg: ServerMessage) => void>();
+    handlers.add(handler);
+    this.messageHandlers.set(type, handlers);
   }
 
-  off(type: string) {
-    this.messageHandlers.delete(type);
+  off(type: string, handler?: (msg: ServerMessage) => void) {
+    if (!handler) {
+      this.messageHandlers.delete(type);
+      return;
+    }
+
+    const handlers = this.messageHandlers.get(type);
+    if (!handlers) {
+      return;
+    }
+
+    handlers.delete(handler);
+    if (handlers.size === 0) {
+      this.messageHandlers.delete(type);
+    }
   }
 
   private handleMessage(msg: ServerMessage) {
@@ -226,15 +243,15 @@ class WebSocketClient implements WSClient {
     }
 
     // 调用注册的处理器
-    const handler = this.messageHandlers.get(msg.type);
-    if (handler) {
-      handler(msg);
+    const handlers = this.messageHandlers.get(msg.type);
+    if (handlers) {
+      handlers.forEach(handler => handler(msg));
     }
 
     // 通用处理器
-    const genericHandler = this.messageHandlers.get('*');
-    if (genericHandler) {
-      genericHandler(msg);
+    const genericHandlers = this.messageHandlers.get('*');
+    if (genericHandlers) {
+      genericHandlers.forEach(handler => handler(msg));
     }
   }
 

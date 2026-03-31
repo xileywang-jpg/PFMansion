@@ -7,6 +7,7 @@ import { EventCard } from '../types';
 // 游戏请求统一发送到后端；页面刷新后从 sessionStorage 恢复房间信息。
 let currentRoomId: string | null = sessionStorage.getItem('roomId');
 let currentPlayerId: string | null = sessionStorage.getItem('playerId');
+let handlersRegistered = false;
 
 // 骰子结果超时管理 - 用于在收到 dice_result 时清除 DiceRoller 设置的超时
 let diceRollTimeoutId: number | null = null;
@@ -44,7 +45,8 @@ function buildPendingActionActiveRoll(pendingAction: any, players: Record<string
 
   if (!isServerDrivenCheck) {
     const isSyncedPendingRoll =
-      existingActiveRoll?.id?.startsWith('tile:') || existingActiveRoll?.id?.startsWith('check:');
+      existingActiveRoll?.rollType !== 'HAUNT' &&
+      (existingActiveRoll?.id?.startsWith('tile:') || existingActiveRoll?.id?.startsWith('check:'));
     return isSyncedPendingRoll ? null : existingActiveRoll;
   }
 
@@ -64,10 +66,47 @@ function buildPendingActionActiveRoll(pendingAction: any, players: Record<string
   const rollId = `${pendingCheckType === 'TILE_ATTRIBUTE_CHECK' ? 'tile' : 'check'}:${pendingAction.target}:${attributeName}:${targetValue ?? 'na'}`;
   return {
     id: rollId,
+    rollType: 'STANDARD',
     attributeName,
     numberOfDice: diceCount,
     targetValue,
+    title: `${attributeName} 检定`,
+    description: `投掷 ${diceCount} 枚骰子${targetValue !== undefined ? `，目标值为 ${targetValue}` : ''}。`,
+    actionLabel: '开始投掷',
+    confirmLabel: '继续',
     onComplete: () => {},
+  };
+}
+
+function buildHauntActiveRoll(state: any, existingActiveRoll: any) {
+  const isExistingHauntRoll = existingActiveRoll?.rollType === 'HAUNT';
+  const isCurrentPlayerHauntRoll = state?.phase === 'HAUNT_ROLL' && state?.activePlayerId === currentPlayerId;
+
+  if (!isCurrentPlayerHauntRoll) {
+    return isExistingHauntRoll ? existingActiveRoll : null;
+  }
+
+  const targetValue = state?.omenCount;
+  const hauntRoll = {
+    id: `haunt:${state.activePlayerId}:${targetValue ?? 0}`,
+    rollType: 'HAUNT' as const,
+    attributeName: '作祟',
+    numberOfDice: 6,
+    targetValue,
+    title: '作祟检定',
+    description: `投掷 6 枚骰子，若结果小于当前预兆数 ${targetValue ?? '?'} 则作祟爆发。`,
+    actionLabel: '掷出命运骰子',
+    confirmLabel: '确认结果',
+    onComplete: () => {},
+  };
+
+  if (!isExistingHauntRoll) {
+    return hauntRoll;
+  }
+
+  return {
+    ...existingActiveRoll,
+    ...hauntRoll,
   };
 }
 
@@ -111,7 +150,9 @@ function buildSyncedStatePatch(state: any, store: ReturnType<typeof useGameStore
     defenderRolls: state.activeCombat.defenderRolls || [],
   } : null;
   const pendingAction = mapPendingAction(state.pendingAction);
-  const syncedActiveRoll = buildPendingActionActiveRoll(pendingAction, mergedPlayers, store.activeRoll);
+  const syncedPendingRoll = buildPendingActionActiveRoll(pendingAction, mergedPlayers, store.activeRoll);
+  const syncedHauntRoll = buildHauntActiveRoll(state, store.activeRoll);
+  const syncedActiveRoll = syncedPendingRoll ?? syncedHauntRoll;
   const serverLastRollResult = state.lastRollResult ?? null;
   const isCurrentPlayerServerDrivenCheck =
     pendingAction?.target === currentPlayerId &&
@@ -176,26 +217,29 @@ export function initNetworkLayer() {
   logger.info('初始化游戏网络层', { url: window.location.href });
   console.log('🌐 初始化游戏网络层');
   
-  // 注册消息处理器
-  wsClient.on('room_created', handleRoomCreated);
-  wsClient.on('room_joined', handleRoomJoined);
-  wsClient.on('player_joined', handlePlayerJoined);
-  wsClient.on('player_left', handlePlayerLeft);
-  wsClient.on('player_ready', handlePlayerReady);
-  wsClient.on('game_started', handleGameStarted);
-  wsClient.on('state_sync', handleStateSync);
-  wsClient.on('dice_result', handleDiceResult);
-  // NPC 战斗消息处理
-  wsClient.on('npc_attack_result', handleNPCAttackResult);
-  wsClient.on('npc_attacked_player', handleNPCAttackedPlayer);
-  // 阶段1新增消息处理
-  wsClient.on('card_drawn', handleCardDrawn);
-  wsClient.on('combat_resolved', handleCombatResolved);
-  wsClient.on('error', handleError);
-  wsClient.on('server_shutdown', handleServerShutdown);
-  // 重连处理
-  wsClient.on('reconnect_success', handleReconnectSuccess);
-  wsClient.on('player_reconnected', handlePlayerReconnected);
+  if (!handlersRegistered) {
+    // 注册消息处理器
+    wsClient.on('room_created', handleRoomCreated);
+    wsClient.on('room_joined', handleRoomJoined);
+    wsClient.on('player_joined', handlePlayerJoined);
+    wsClient.on('player_left', handlePlayerLeft);
+    wsClient.on('player_ready', handlePlayerReady);
+    wsClient.on('game_started', handleGameStarted);
+    wsClient.on('state_sync', handleStateSync);
+    wsClient.on('dice_result', handleDiceResult);
+    // NPC 战斗消息处理
+    wsClient.on('npc_attack_result', handleNPCAttackResult);
+    wsClient.on('npc_attacked_player', handleNPCAttackedPlayer);
+    // 阶段1新增消息处理
+    wsClient.on('card_drawn', handleCardDrawn);
+    wsClient.on('combat_resolved', handleCombatResolved);
+    wsClient.on('error', handleError);
+    wsClient.on('server_shutdown', handleServerShutdown);
+    // 重连处理
+    wsClient.on('reconnect_success', handleReconnectSuccess);
+    wsClient.on('player_reconnected', handlePlayerReconnected);
+    handlersRegistered = true;
+  }
   
   // 连接 WebSocket
   wsClient.connect();
@@ -331,6 +375,7 @@ function handleDiceResult(msg: ServerMessage) {
   // 对于 GENERAL/COMBAT 等，success 未定义，使用骰子结果判断
   let isSuccess: boolean;
   let feedbackType: 'turn' | 'info' | 'alert' | 'success';
+  let successText: string;
   
   if (result?.success !== undefined) {
     // 后端返回了明确的成功/失败判定（属性检定）
@@ -340,6 +385,13 @@ function handleDiceResult(msg: ServerMessage) {
     // 没有后端判定，使用骰子结果（总和 >= 1 为成功，0 为失败/空白）
     isSuccess = sum > 0;
     feedbackType = isSuccess ? 'turn' : 'info';
+  }
+
+  if (result?.checkType === 'HAUNT_ROLL') {
+    feedbackType = isSuccess ? 'success' : 'alert';
+    successText = isSuccess ? '暂时安全' : '作祟爆发';
+  } else {
+    successText = isSuccess ? '成功！' : '失败...';
   }
   
   // Bug Fix: 不在这里清除 activeRoll，让 DiceRoller 组件在 onComplete 调用时自己清除
@@ -351,7 +403,6 @@ function handleDiceResult(msg: ServerMessage) {
   });
   
   // 显示反馈 - 使用后端判定的成功/失败文本
-  const successText = isSuccess ? '成功！' : '失败...';
   store.showFeedback(`🎲 ${results.join(', ')} = ${sum} (${successText})`, feedbackType);
 }
 

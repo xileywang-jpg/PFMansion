@@ -200,6 +200,7 @@ func (g *GameManager) executeDeckDrawUnlocked(roomID, playerID, deckName string)
 		g.applyPassiveEffects(roomID, playerID, card)
 		g.addLog(roomID, fmt.Sprintf("%s 发现了物品：%s！", player.Character.Name, card.Name), "success")
 		g.addLog(roomID, fmt.Sprintf("%s 获得了物品：%s", player.Character.Name, card.Name), "success")
+		g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("发现并收下了 %s。", card.Name), "success")
 		state.ActiveCard = nil
 		if winner := g.updateObjectivesUnlocked(state, "ITEM_COLLECTED", map[string]interface{}{"playerId": playerID, "itemId": card.ID}); winner != "" {
 			return result, nil
@@ -211,6 +212,7 @@ func (g *GameManager) executeDeckDrawUnlocked(roomID, playerID, deckName string)
 		state.OmenCount++
 		state.LastTriggeredOmen = card.ID
 		g.addLog(roomID, fmt.Sprintf("%s 发现了预兆：%s！", player.Character.Name, card.Name), "alert")
+		g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("翻开了预兆 %s。", card.Name), "alert")
 		g.addLog(roomID, fmt.Sprintf("预兆计数：%d。进行作祟检定...", state.OmenCount), "alert")
 		g.clearLastRollResultUnlocked(state)
 		results := g.RollDice(6)
@@ -222,6 +224,7 @@ func (g *GameManager) executeDeckDrawUnlocked(roomID, playerID, deckName string)
 		g.addLog(roomID, fmt.Sprintf("作祟检定: %v = %d vs %d", results, sum, state.OmenCount), "alert")
 		if sum < state.OmenCount {
 			g.addLog(roomID, "作祟爆发！大厦的阴暗面显露无疑...", "alert")
+			g.addPersonalLogUnlocked(state, playerID, "这次预兆引发了作祟。", "alert")
 			state.Phase = GamePhaseHauntReveal
 			state.ActiveCard = nil
 			return result, g.triggerHauntRoom(room, &card)
@@ -230,6 +233,7 @@ func (g *GameManager) executeDeckDrawUnlocked(roomID, playerID, deckName string)
 		player.Items = append(player.Items, card)
 		g.applyPassiveEffects(roomID, playerID, card)
 		g.addLog(roomID, fmt.Sprintf("%s 获得了预兆：%s", player.Character.Name, card.Name), "success")
+		g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("将预兆 %s 留在了身上。", card.Name), "success")
 		state.ActiveCard = nil
 		if winner := g.updateObjectivesUnlocked(state, "ITEM_COLLECTED", map[string]interface{}{"playerId": playerID, "itemId": card.ID}); winner != "" {
 			return result, nil
@@ -239,6 +243,7 @@ func (g *GameManager) executeDeckDrawUnlocked(roomID, playerID, deckName string)
 	case "EVENT":
 		state.ActiveCard = &card
 		g.addLog(roomID, fmt.Sprintf("%s 触发了事件：%s！", player.Character.Name, card.Name), "alert")
+		g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("触发了事件 %s。", card.Name), "alert")
 		if card.Interaction != nil {
 			switch card.Interaction.Type {
 			case "ATTRIBUTE_CHECK":
@@ -338,6 +343,11 @@ func (g *GameManager) triggerTileLeaveUnlocked(roomID, playerID, tileDefID strin
 }
 
 func (g *GameManager) completeMoveToExistingTileUnlocked(roomID, playerID string, state *GameStateFull, player *GamePlayer, existingTile *TileInstance, newX, newY int) error {
+	tileName := existingTile.DefID
+	if tileDef := g.getTileDef(roomID, existingTile.DefID); tileDef != nil && tileDef.Name != "" {
+		tileName = tileDef.Name
+	}
+
 	player.Position.X = newX
 	player.Position.Y = newY
 	state.MovesRemaining--
@@ -348,6 +358,7 @@ func (g *GameManager) completeMoveToExistingTileUnlocked(roomID, playerID string
 		Text:      fmt.Sprintf("%s 进入了 %s", player.Character.Name, existingTile.DefID),
 		Type:      "info",
 	})
+	g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("进入了 %s。", tileName), "info")
 	state.LastTriggeredTile = existingTile.DefID
 	if winner := g.updateObjectivesUnlocked(state, "TILE_REACHED", map[string]interface{}{
 		"playerId": playerID,
@@ -376,6 +387,7 @@ func (g *GameManager) preparePendingTileUnlocked(roomID string, state *GameState
 	state.PendingTargetPos = &Pos{X: newX, Y: newY}
 	state.MovesRemaining--
 	g.addLog(roomID, fmt.Sprintf("%s 探索发现了新区域，请放置房间", player.Character.Name), "info")
+	g.addPersonalLogUnlocked(state, player.ID, fmt.Sprintf("朝 %s 方向发现了一处未揭示区域。", direction), "info")
 	return nil
 }
 
@@ -394,7 +406,7 @@ func (g *GameManager) placePendingTileUnlocked(roomID, playerID string, state *G
 
 	dir := Direction(direction)
 	currentEdge := currentTile.Edges[dir]
-	if currentEdge != "OPEN" {
+	if !isConnectableEdge(currentEdge) {
 		return errors.New("该方向没有开放的门口")
 	}
 
@@ -408,7 +420,7 @@ func (g *GameManager) placePendingTileUnlocked(roomID, playerID string, state *G
 	tileDef := *state.PendingTile
 	rotatedEdges := rotateEdges(tileDef.Edges, rotation)
 	oppositeDir := getOppositeDirection(dir)
-	if rotatedEdges[oppositeDir] != "OPEN" {
+	if !isConnectableEdge(rotatedEdges[oppositeDir]) {
 		return errors.New("该方向无法放置：房间边缘不相通")
 	}
 
@@ -437,6 +449,7 @@ func (g *GameManager) placePendingTileUnlocked(roomID, playerID string, state *G
 		Text:      fmt.Sprintf("%s 探索发现了 %s", player.Character.Name, tileDef.Name),
 		Type:      "success",
 	})
+	g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("探索发现了 %s。", tileDef.Name), "success")
 	state.LastTriggeredTile = tileDef.ID
 	if winner := g.updateObjectivesUnlocked(state, "ROOM_EXPLORED", map[string]interface{}{
 		"playerId": playerID,
@@ -481,19 +494,27 @@ func (g *GameManager) finalizeRelocationUnlocked(roomID, playerID string, state 
 
 	oldX, oldY := player.Position.X, player.Position.Y
 	player.Position = Position{X: finalX, Y: finalY}
+	tileName := targetTile.DefID
+	if tileDef := g.getTileDef(roomID, targetTile.DefID); tileDef != nil && tileDef.Name != "" {
+		tileName = tileDef.Name
+	}
 
 	switch moveType {
 	case "TELEPORT":
 		if fallbackToEntry {
 			g.addLog(roomID, fmt.Sprintf("%s 被传送到了未知区域", player.Character.Name), "alert")
+			g.addPersonalLogUnlocked(state, playerID, "被传送到了未知区域。", "alert")
 		} else {
 			g.addLog(roomID, fmt.Sprintf("%s 被传送到了 %s", player.Character.Name, targetTile.DefID), "success")
+			g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("被传送到了 %s。", tileName), "success")
 		}
 	default:
 		if fallbackToEntry {
 			g.addLog(roomID, fmt.Sprintf("%s 被传送到了未知区域", player.Character.Name), "alert")
+			g.addPersonalLogUnlocked(state, playerID, "被强制移动到了未知区域。", "alert")
 		} else {
 			g.addLog(roomID, fmt.Sprintf("%s 从 (%d,%d) 移动到了 (%d,%d)", player.Character.Name, oldX, oldY, finalX, finalY), "info")
+			g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("从 (%d,%d) 移动到了 %s。", oldX, oldY, tileName), "info")
 		}
 	}
 
@@ -838,7 +859,7 @@ func (g *GameManager) ProcessMove(roomID, playerID, direction string) error {
 	// 检查方向
 	dir := Direction(direction)
 	edge, ok := currentTile.Edges[dir]
-	if !ok || edge == "WALL" {
+	if !ok || !isConnectableEdge(edge) {
 		return errors.New("该方向没有门")
 	}
 
@@ -901,6 +922,15 @@ func rotateEdges(edges map[Direction]string, rotation int) map[Direction]string 
 	return result
 }
 
+func isConnectableEdge(edge string) bool {
+	switch edge {
+	case "OPEN", "RUBBLE", "SECRET_DOOR":
+		return true
+	default:
+		return false
+	}
+}
+
 // PlaceTile 放置新房间
 func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int) error {
 	g.mu.Lock()
@@ -935,7 +965,7 @@ func (g *GameManager) PlaceTile(roomID, playerID, direction string, rotation int
 	// 检查方向
 	dir := Direction(direction)
 	currentEdge := currentTile.Edges[dir]
-	if currentEdge != "OPEN" {
+	if !isConnectableEdge(currentEdge) {
 		return errors.New("该方向没有开放的门口")
 	}
 
@@ -1175,6 +1205,7 @@ func (g *GameManager) PickupItem(roomID, playerID, itemID string) error {
 		Text:      fmt.Sprintf("%s 捡起了 %s", player.Character.Name, item.Name),
 		Type:      "success",
 	})
+	g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("捡起了 %s。", item.Name), "success")
 	state.FullState.ActiveCard = nil
 	state.FullState.PendingAction = nil
 	if len(item.PassiveEffects) > 0 {
@@ -1268,6 +1299,8 @@ func (g *GameManager) GiveItem(roomID, fromPlayerID, toPlayerID, itemID string) 
 		Text:      fmt.Sprintf("%s 将 %s 交给了 %s", fromPlayer.Character.Name, item.Name, toPlayer.Character.Name),
 		Type:      "info",
 	})
+	g.addPersonalLogUnlocked(state.FullState, fromPlayerID, fmt.Sprintf("把 %s 交给了 %s。", item.Name, toPlayer.Character.Name), "info")
+	g.addPersonalLogUnlocked(state.FullState, toPlayerID, fmt.Sprintf("从 %s 那里得到了 %s。", fromPlayer.Character.Name, item.Name), "success")
 
 	return nil
 }
@@ -1325,6 +1358,7 @@ func (g *GameManager) DropItem(roomID, playerID, itemID string) error {
 		Text:      fmt.Sprintf("%s 丢弃了 %s", player.Character.Name, item.Name),
 		Type:      "info",
 	})
+	g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("丢下了 %s。", item.Name), "info")
 
 	return nil
 }
@@ -1417,6 +1451,7 @@ func (g *GameManager) InteractWithWall(roomID, playerID, direction string) error
 			Text:      fmt.Sprintf("%s 强行破坏墙壁，力量 -1", player.Character.Name),
 			Type:      "alert",
 		})
+		g.addPersonalLogUnlocked(state.FullState, playerID, "强行破墙，力量 -1。", "alert")
 	}
 
 	// 记录日志
@@ -1426,6 +1461,7 @@ func (g *GameManager) InteractWithWall(roomID, playerID, direction string) error
 		Text:      fmt.Sprintf("%s 破坏了墙壁", player.Character.Name),
 		Type:      "info",
 	})
+	g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("破坏了 %s 方向的墙壁。", direction), "info")
 
 	return nil
 }

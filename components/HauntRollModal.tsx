@@ -4,9 +4,11 @@ import { useGameStore } from '../store/gameStore';
 import { GamePhase } from '../types';
 import { Dice6, Skull } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { getCurrentPlayerId } from '../ws/network';
 
 const HauntRollModal: React.FC = () => {
-  const { phase, omenCount, performHauntRoll, lastRollResult, activeRoll } = useGameStore();
+  const { phase, omenCount, performHauntRoll, lastRollResult, activeRoll, activePlayerId } = useGameStore();
+  const isCurrentPlayer = getCurrentPlayerId() === activePlayerId;
 
   // 只有在作祟检定阶段且没有 activeRoll 时显示
   // 如果有 activeRoll，说明 DiceRoller 正在处理，交给 DiceRoller 显示
@@ -38,11 +40,17 @@ const HauntRollModal: React.FC = () => {
           </div>
 
           {/* 只有没有投掷结果时才显示按钮 */}
-          {lastRollResult === null && (
+            {lastRollResult === null && isCurrentPlayer && (
               <button onClick={performHauntRoll} className="w-full py-4 rounded font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all bg-zinc-100 hover:bg-white text-black">
                 <Dice6 size={18} /> 挑战命运
               </button>
           )}
+
+            {lastRollResult === null && !isCurrentPlayer && (
+              <div className="w-full py-4 rounded border border-zinc-800 bg-zinc-950/60 text-zinc-500 text-sm text-center uppercase tracking-widest">
+                等待当前玩家进行作祟检定...
+              </div>
+            )}
 
           {/* 如果有了结果但相位没切换（容错显示），增加一个关闭按钮 */}
           {lastRollResult !== null && (

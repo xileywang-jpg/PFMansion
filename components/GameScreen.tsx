@@ -20,6 +20,7 @@ import DiceRoller from './DiceRoller';
 import FeedbackToast from './FeedbackToast';
 import SkillTreeModal from './SkillTreeModal';
 import PlayerInspectionModal from './PlayerInspectionModal';
+import TileInfoBar from './effects/TileInfoBar';
 import { Bug, Skull, LogOut } from 'lucide-react';
 
 const GameScreen: React.FC = () => {
@@ -134,6 +135,7 @@ const GameScreen: React.FC = () => {
         
         {/* Floating UI Elements */}
         <TileInspector />
+        <TileInfoBar />
         <TurnControl />
         <FeedbackToast />
       </div>

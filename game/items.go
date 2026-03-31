@@ -612,6 +612,24 @@ func (g *GameManager) addLog(roomID, text, logType string) {
 	})
 }
 
+func (g *GameManager) addPersonalLogUnlocked(state *GameStateFull, playerID, text, logType string) {
+	if state == nil {
+		return
+	}
+
+	player, ok := state.Players[playerID]
+	if !ok || player == nil {
+		return
+	}
+
+	player.PersonalLogs = append(player.PersonalLogs, PersonalLog{
+		ID:        generateLogID(),
+		Timestamp: time.Now().UnixMilli(),
+		Text:      text,
+		Type:      logType,
+	})
+}
+
 // ==================== 被动效果系统 ====================
 
 // applyPassiveEffects 检查并应用物品/厄运的被动效果

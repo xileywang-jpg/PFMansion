@@ -13,27 +13,11 @@ import { STARTING_TILE } from '../constants';
 import { Direction, TileDef, TileTrigger, Card } from '../types';
 import * as Icons from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  MapPin, Zap, AlertTriangle, Sparkles, Package, 
-  ArrowRight, ArrowLeft, RefreshCw, Clock, 
-  HelpCircle, DoorOpen
+import {
+  MapPin, Sparkles, Clock,
+  HelpCircle, DoorOpen, RefreshCw,
 } from 'lucide-react';
-
-// ==================== 图标映射 ====================
-
-const EFFECT_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  buff: Zap,
-  debuff: AlertTriangle,
-  trigger: Sparkles,
-  item: Package,
-};
-
-const EFFECT_COLOR_MAP: Record<string, string> = {
-  buff: 'text-emerald-400 border-emerald-900/50 bg-emerald-900/10',
-  debuff: 'text-red-400 border-red-900/50 bg-red-900/10',
-  trigger: 'text-amber-400 border-amber-900/50 bg-amber-900/10',
-  item: 'text-indigo-400 border-indigo-900/50 bg-indigo-900/10',
-};
+import { getTileHintEntries, getTileRevealPresentation } from '../utils/tileReveal';
 
 // ==================== 工具函数 ====================
 
@@ -56,62 +40,6 @@ const getEdgeStyle = (edge: string): { bg: string; text: string } => {
     case 'SECRET_DOOR': return { bg: 'bg-indigo-900/50', text: 'text-indigo-500' };
     default: return { bg: 'bg-zinc-900', text: 'text-zinc-700' };
   }
-};
-
-/** 将 Effect 对象转换为可读文本 */
-const renderEffectText = (effect: any): string => {
-  if (effect.message) return effect.message;
-  
-  switch (effect.type) {
-    case 'MODIFY_STAT':
-      return `${effect.stat === 'might' ? '力量' : effect.stat === 'speed' ? '速度' : effect.stat === 'sanity' ? '理智' : effect.stat === 'knowledge' ? '知识' : effect.stat} ${effect.amount > 0 ? '+' : ''}${effect.amount}`;
-    case 'DAMAGE':
-      return `受到 ${effect.amount} 点伤害`;
-    case 'HEAL':
-      return `恢复 ${effect.amount} 点生命`;
-    case 'DRAW_CARD':
-      return `抽取 ${effect.count || 1} 张卡牌`;
-    case 'LOG':
-      return effect.message || '记录日志';
-    case 'MOVE_PLAYER':
-      return `移动到 ${effect.location || '指定位置'}`;
-    default:
-      return effect.type || '未知效果';
-  }
-};
-
-/** 获取触发器类型的标签 */
-const getTriggerTypeLabel = (trigger: TileTrigger): string => {
-  if (trigger.type === 'ATTRIBUTE_CHECK') {
-    return `属性检定 (${trigger.attribute} ${trigger.difficulty || '?'}+)`;
-  }
-  if (trigger.type === 'DRAW_CARD') {
-    return `抽卡 (${trigger.count || 1}张)`;
-  }
-  if (trigger.type === 'RANDOM_EVENT') {
-    return '随机事件';
-  }
-  return trigger.type;
-};
-
-// ==================== 效果渲染 ====================
-
-interface EffectItemProps {
-  text: string;
-  type: 'buff' | 'debuff' | 'trigger' | 'item';
-  index?: number;
-}
-
-const EffectItem: React.FC<EffectItemProps> = ({ text, type, index }) => {
-  const Icon = EFFECT_ICON_MAP[type] || Sparkles;
-  const colorClass = EFFECT_COLOR_MAP[type] || 'text-zinc-400 border-zinc-700';
-  
-  return (
-    <div className={`flex items-start gap-2 p-2.5 rounded-lg border ${colorClass} mb-1.5`}>
-      <Icon size={14} className="mt-0.5 shrink-0" />
-      <span className="text-xs leading-snug opacity-90">{text}</span>
-    </div>
-  );
 };
 
 // ==================== 主组件 ====================
@@ -189,6 +117,10 @@ const TileInspector: React.FC = () => {
 
   // 是否显示边缘信息
   const showEdges = !isPending && instance;
+  const revealPresentation = getTileRevealPresentation(def.cardSymbol);
+  const CardSymbolIcon = revealPresentation?.icon;
+  const tileHintEntries = getTileHintEntries(def);
+  const nonRevealHintEntries = tileHintEntries.filter(entry => entry.kind !== 'reveal');
 
   return (
     <AnimatePresence mode="wait">
@@ -289,73 +221,65 @@ const TileInspector: React.FC = () => {
             </div>
           )}
 
-          {/* ==================== 地块效果（onEnter/onLeave/onEnterEffects/effects） ==================== */}
-          {(def.effects?.length || def.onEnter || def.onLeave || def.onEnterEffects?.length) && (
+          {/* ==================== 抽牌/揭示提示 ==================== */}
+          {revealPresentation && CardSymbolIcon && (
             <div>
               <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider block mb-2">
-                地块效果
+                揭示奖励
               </span>
-              
-              {/* onEnter 效果（可重入） */}
-              {def.onEnter && (
-                <div className="mb-2 p-2.5 bg-cyan-900/20 border border-cyan-800/30 rounded-lg">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <ArrowRight size={12} className="text-cyan-400" />
-                    <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider">
-                      进入时触发
-                    </span>
-                    <RefreshCw size={10} className="text-cyan-600 ml-auto" title="可重入" />
-                  </div>
-                  <p className="text-xs text-cyan-300/80 leading-snug">
-                    {getTriggerTypeLabel(def.onEnter)}
-                  </p>
-                </div>
-              )}
-
-              {/* onLeave 效果 */}
-              {def.onLeave && (
-                <div className="mb-2 p-2.5 bg-amber-900/20 border border-amber-800/30 rounded-lg">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <ArrowLeft size={12} className="text-amber-400" />
-                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
-                      离开时触发
+              <div className={`p-3 rounded-lg border ${revealPresentation.panelClassName}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <CardSymbolIcon size={14} className={revealPresentation.accentClassName} />
+                    <span className={`text-sm font-bold ${revealPresentation.accentClassName}`}>
+                      {revealPresentation.label}
                     </span>
                   </div>
-                  <p className="text-xs text-amber-300/80 leading-snug">
-                    {getTriggerTypeLabel(def.onLeave)}
-                  </p>
-                </div>
-              )}
-
-              {/* onEnterEffects 旧版效果（直接生效，可重入） */}
-              {def.onEnterEffects && def.onEnterEffects.length > 0 && (
-                <div className="mb-2 p-2.5 bg-purple-900/20 border border-purple-800/30 rounded-lg">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <ArrowRight size={12} className="text-purple-400" />
-                    <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider">
-                      进入时效果
+                  {instance?.hasEventTriggered ? (
+                    <span className="flex items-center gap-1 text-[9px] text-zinc-500 font-bold uppercase">
+                      <Clock size={10} />
+                      已触发
                     </span>
-                    <RefreshCw size={10} className="text-purple-600 ml-auto" title="可重入" />
-                  </div>
-                  <div className="space-y-1">
-                    {def.onEnterEffects.map((effect, idx) => (
-                      <div key={idx} className="text-xs text-purple-300/80 leading-snug">
-                        • {renderEffectText(effect)}
-                      </div>
-                    ))}
-                  </div>
+                  ) : (
+                    <span className={`flex items-center gap-1 text-[9px] font-bold uppercase ${revealPresentation.accentClassName} ${isPending ? '' : 'animate-pulse'}`}>
+                      <Sparkles size={10} />
+                      {isPending ? '放置后触发' : '首次进入触发'}
+                    </span>
+                  )}
                 </div>
-              )}
+                <p className="text-xs leading-relaxed">
+                  {isPending ? revealPresentation.pendingDescription : revealPresentation.description}
+                </p>
+              </div>
+            </div>
+          )}
 
-              {/* 静态效果 */}
-              {def.effects?.map((effect, idx) => (
-                <EffectItem 
-                  key={idx}
-                  text={effect.text}
-                  type={effect.type as 'buff' | 'debuff' | 'trigger' | 'item'}
-                  index={idx}
-                />
-              ))}
+          {/* ==================== 地块效果（onEnter/onLeave/onEnterEffects/effects） ==================== */}
+          {nonRevealHintEntries.length > 0 && (
+            <div>
+              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider block mb-2">
+                房间提示
+              </span>
+
+              {nonRevealHintEntries.map(entry => {
+                const EntryIcon = entry.icon;
+                return (
+                  <div key={entry.key} className={`mb-2 p-2.5 border rounded-lg ${entry.containerClassName}`}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <EntryIcon size={12} className={entry.colorClassName} />
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${entry.colorClassName}`}>
+                        {entry.label}
+                      </span>
+                      {entry.repeatable && (
+                        <RefreshCw size={10} className={`${entry.colorClassName} ml-auto opacity-70`} title="可重复触发" />
+                      )}
+                    </div>
+                    <p className={`text-xs leading-snug ${entry.bodyClassName}`}>
+                      {entry.text}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -440,7 +364,7 @@ const TileInspector: React.FC = () => {
           )}
 
           {/* 无事件时提示 */}
-          {!eventDetails && !def.effects?.length && !def.onEnter && !def.onLeave && (
+          {!revealPresentation && !eventDetails && nonRevealHintEntries.length === 0 && (
             <div className="text-center py-4">
               <HelpCircle size={24} className="text-zinc-700 mx-auto mb-2" />
               <span className="text-xs text-zinc-600 italic">无特殊效果</span>

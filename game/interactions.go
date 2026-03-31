@@ -210,6 +210,8 @@ func (g *GameManager) TradeItems(roomID, playerID, targetPlayerID, playerItemID,
 		Text:      fmt.Sprintf("%s 与 %s 完成了交易", player.Character.Name, targetPlayer.Character.Name),
 		Type:      "success",
 	})
+	g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("与 %s 完成了物品交换。", targetPlayer.Character.Name), "success")
+	g.addPersonalLogUnlocked(state.FullState, targetPlayerID, fmt.Sprintf("与 %s 完成了物品交换。", player.Character.Name), "success")
 
 	return nil
 }
@@ -322,6 +324,7 @@ func (g *GameManager) PerformDivination(roomID, playerID, action string) error {
 		Text:      fmt.Sprintf("%s 完成了占卜，并重新安放了下一张事件牌", player.Character.Name),
 		Type:      "info",
 	})
+	g.addPersonalLogUnlocked(state.FullState, playerID, "完成了占卜，并重新安放了下一张事件牌。", "info")
 
 	return nil
 }
@@ -359,22 +362,26 @@ func (g *GameManager) ExecuteTileInteraction(roomID, playerID, interactionType s
 	case "HEAL":
 		g.applyTileInteractionEffectsUnlocked(roomID, playerID, player, interaction.Effects)
 		g.addLog(roomID, fmt.Sprintf("%s 使用了房间互动：%s", player.Character.Name, interaction.Description), "success")
+		g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("使用了房间互动：%s。", interaction.Description), "success")
 		return nil, nil
 
 	case "REVEAL_MAP":
 		g.applyTileInteractionEffectsUnlocked(roomID, playerID, player, append([]Effect{{Type: "REVEAL_MAP"}}, interaction.Effects...))
 		g.addLog(roomID, fmt.Sprintf("%s 揭示了地图上的全部区域", player.Character.Name), "success")
+		g.addPersonalLogUnlocked(state.FullState, playerID, "揭示了地图上的全部区域。", "success")
 		return nil, nil
 
 	case "MIRROR":
 		g.applyTileInteractionEffectsUnlocked(roomID, playerID, player, append([]Effect{{Type: "REVEAL_TRAIL"}}, interaction.Effects...))
 		g.addLog(roomID, fmt.Sprintf("%s 凝视了镜中的命运", player.Character.Name), "alert")
+		g.addPersonalLogUnlocked(state.FullState, playerID, "凝视了镜中的命运。", "alert")
 		return nil, nil
 
 	case "FORGE":
 		weapon := forgedWeapons[rand.Intn(len(forgedWeapons))]
 		player.Items = append(player.Items, weapon)
 		g.addLog(roomID, fmt.Sprintf("%s 在泰坦锻铁炉中打造了 %s", player.Character.Name, weapon.Name), "success")
+		g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("在锻铁炉中打造了 %s。", weapon.Name), "success")
 		return nil, nil
 
 	case "CROSS":
@@ -394,11 +401,13 @@ func (g *GameManager) ExecuteTileInteraction(roomID, playerID, interactionType s
 				g.addLog(roomID, interaction.SuccessMessage, "success")
 			}
 			g.applyTileInteractionEffectsUnlocked(roomID, playerID, player, interaction.Success)
+			g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("通过了 %s 检定（%d/%d）。", interaction.Description, sum, interaction.Difficulty), "success")
 		} else {
 			if interaction.FailureMessage != "" {
 				g.addLog(roomID, interaction.FailureMessage, "alert")
 			}
 			g.applyTileInteractionEffectsUnlocked(roomID, playerID, player, interaction.Failure)
+			g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("未通过 %s 检定（%d/%d）。", interaction.Description, sum, interaction.Difficulty), "alert")
 		}
 		return map[string]interface{}{
 			"results": results,
@@ -420,6 +429,7 @@ func (g *GameManager) ExecuteTileInteraction(roomID, playerID, interactionType s
 		}
 		g.setLastRollResultUnlocked(state.FullState, sum)
 		g.addLog(roomID, fmt.Sprintf("%s 扭动了时间的残响：%v = %d", player.Character.Name, results, sum), "info")
+		g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("聆听了时间残响：%v = %d。", results, sum), "info")
 		return map[string]interface{}{
 			"results": results,
 			"sum":     sum,

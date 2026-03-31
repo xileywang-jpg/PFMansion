@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DIE_FACES } from '../utils/dice';
 import { wsClient } from '../ws/client';
 import * as network from '../ws/network';
-import { Dices } from 'lucide-react';
+import { Dices, ShieldAlert, Skull, Sparkles } from 'lucide-react';
 
 const DiceRoller: React.FC = () => {
   const { activeRoll, cancelActiveRoll, showFeedback } = useGameStore();
@@ -79,11 +79,18 @@ const DiceRoller: React.FC = () => {
     wsClient.on('dice_result', handleDiceResult);
     
     return () => {
-      wsClient.off('dice_result');
+      wsClient.off('dice_result', handleDiceResult);
     };
   }, [handleDiceResult]);
 
   if (!activeRoll) return null;
+
+  const isHauntRoll = activeRoll.rollType === 'HAUNT';
+  const hauntSucceeded = activeRoll.targetValue !== undefined ? finalTotal >= activeRoll.targetValue : false;
+  const title = activeRoll.title || (isHauntRoll ? '作祟检定' : `${activeRoll.attributeName} 检定`);
+  const subtitle = activeRoll.description || (isHauntRoll
+    ? `投掷 ${activeRoll.numberOfDice} 枚命运骰子。若总和不低于预兆数 ${activeRoll.targetValue ?? '?'}，大厦今夜将暂时沉寂。`
+    : `正在投掷 ${activeRoll.numberOfDice} 枚骰子 ${activeRoll.targetValue ? `(目标值为 ${activeRoll.targetValue})` : ''}`);
 
   const handleRoll = () => {
     if (isRolling || hasSentRequest) return;
@@ -118,7 +125,11 @@ const DiceRoller: React.FC = () => {
     }
     
     // 发送请求到后端
-    network.sendRollDice(activeRoll.numberOfDice);
+    if (isHauntRoll) {
+      network.sendPerformHauntRoll();
+    } else {
+      network.sendRollDice(activeRoll.numberOfDice);
+    }
 
     // 设置超时：如果后端 5 秒没响应，停止动画并清理状态
     // 使用共享的超时管理，以便 dice_result 收到时可以清除
@@ -162,30 +173,105 @@ const DiceRoller: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-zinc-950 border border-zinc-800 rounded-2xl p-8 max-w-2xl w-full flex flex-col items-center shadow-2xl relative">
-        <h2 className="text-2xl font-serif-display text-zinc-100 mb-2 uppercase tracking-widest">{activeRoll.attributeName} 检定</h2>
-        <p className="text-zinc-500 mb-8 text-sm">正在投掷 {activeRoll.numberOfDice} 枚骰子 {activeRoll.targetValue ? `(目标值为 ${activeRoll.targetValue})` : ''}</p>
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-sm ${isHauntRoll ? 'bg-black/90' : 'bg-black/80'}`}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className={`rounded-2xl p-8 max-w-2xl w-full flex flex-col items-center shadow-2xl relative overflow-hidden ${
+          isHauntRoll
+            ? 'bg-[radial-gradient(circle_at_top,_rgba(120,23,23,0.28),_rgba(9,9,11,0.98)_58%)] border border-red-950/60'
+            : 'bg-zinc-950 border border-zinc-800'
+        }`}
+      >
+        {isHauntRoll && (
+          <>
+            <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-red-950/20 to-transparent pointer-events-none" />
+            <div className="absolute -top-10 -right-8 opacity-10 pointer-events-none">
+              <Skull size={120} className="text-red-300" />
+            </div>
+          </>
+        )}
+
+        <div className="relative z-10 flex flex-col items-center w-full">
+          <div className={`mb-4 flex items-center gap-2 rounded-full px-4 py-1.5 border ${isHauntRoll ? 'bg-red-950/40 border-red-900/40 text-red-200' : 'bg-zinc-900 border-zinc-800 text-zinc-300'}`}>
+            {isHauntRoll ? <Skull size={14} /> : <Sparkles size={14} />}
+            <span className="text-[11px] font-bold uppercase tracking-[0.25em]">{title}</span>
+          </div>
+
+          <h2 className={`text-2xl font-serif-display mb-2 uppercase tracking-widest ${isHauntRoll ? 'text-red-50' : 'text-zinc-100'}`}>{title}</h2>
+          <p className={`mb-6 text-sm text-center max-w-xl ${isHauntRoll ? 'text-red-100/70' : 'text-zinc-500'}`}>{subtitle}</p>
+
+          {isHauntRoll && activeRoll.targetValue !== undefined && !showResult && (
+            <div className="w-full mb-8 grid grid-cols-2 gap-4">
+              <div className="rounded-xl border border-zinc-800/80 bg-black/30 px-4 py-3 text-center">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">命运骰子</div>
+                <div className="text-3xl font-bold text-zinc-100">{activeRoll.numberOfDice}</div>
+              </div>
+              <div className="rounded-xl border border-red-900/40 bg-red-950/20 px-4 py-3 text-center">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-red-200/60 mb-1">预兆阈值</div>
+                <div className="text-3xl font-bold text-red-200">{activeRoll.targetValue}</div>
+              </div>
+            </div>
+          )}
+
         <div className="flex flex-wrap justify-center gap-4 mb-10">{currentValues.map((val, idx) => renderDie(val, idx))}</div>
         <AnimatePresence mode='wait'>
             {showResult ? (
                 <motion.div key="result" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center w-full">
-                    <div className="text-6xl font-serif-display font-bold text-white mb-2">{finalTotal}</div>
-                    {activeRoll.targetValue !== undefined && (
-                        <div className={`text-sm font-bold uppercase tracking-widest mb-6 px-4 py-1 rounded ${finalTotal >= activeRoll.targetValue ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400'}`}>
-                            {finalTotal >= activeRoll.targetValue ? '成功' : '失败'}
+                    {isHauntRoll ? (
+                      <>
+                        <div className={`mb-4 flex items-center gap-2 rounded-full px-4 py-1.5 border ${hauntSucceeded ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-300' : 'bg-red-950/40 border-red-800/50 text-red-200'}`}>
+                          {hauntSucceeded ? <ShieldAlert size={14} /> : <Skull size={14} />}
+                          <span className="text-[11px] font-bold uppercase tracking-[0.24em]">
+                            {hauntSucceeded ? '黑暗暂退' : '作祟爆发'}
+                          </span>
                         </div>
+
+                        <div className="grid grid-cols-2 gap-4 w-full mb-6">
+                          <div className="rounded-2xl border border-zinc-800/80 bg-black/30 px-5 py-4 text-center">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-2">你的总和</div>
+                            <div className="text-6xl font-serif-display font-bold text-white">{finalTotal}</div>
+                          </div>
+                          <div className={`rounded-2xl border px-5 py-4 text-center ${hauntSucceeded ? 'border-emerald-900/40 bg-emerald-950/20' : 'border-red-900/40 bg-red-950/20'}`}>
+                            <div className={`text-[10px] uppercase tracking-[0.2em] mb-2 ${hauntSucceeded ? 'text-emerald-200/60' : 'text-red-200/60'}`}>预兆阈值</div>
+                            <div className={`text-6xl font-serif-display font-bold ${hauntSucceeded ? 'text-emerald-200' : 'text-red-200'}`}>{activeRoll.targetValue}</div>
+                          </div>
+                        </div>
+
+                        <div className={`w-full rounded-2xl border px-5 py-4 mb-6 ${hauntSucceeded ? 'border-emerald-900/40 bg-emerald-950/20 text-emerald-100' : 'border-red-900/40 bg-red-950/20 text-red-100'}`}>
+                          <div className="text-lg font-serif-display mb-1">{hauntSucceeded ? '大厦暂时沉寂。' : '门后的东西醒来了。'}</div>
+                          <p className={`text-sm leading-relaxed ${hauntSucceeded ? 'text-emerald-100/75' : 'text-red-100/75'}`}>
+                            {hauntSucceeded
+                              ? '你的结果挡住了这一轮作祟。阴影尚未离去，但今晚它还没有完全夺走大厦的控制权。'
+                              : '你的结果低于当前预兆数。作祟已经开始，接下来将揭示真正的剧本与阵营。'}
+                          </p>
+                        </div>
+
+                        <button onClick={cancelActiveRoll} className={`w-full font-bold py-4 rounded uppercase tracking-[0.2em] text-sm transition-colors shadow-lg ${hauntSucceeded ? 'bg-emerald-700 hover:bg-emerald-600 text-white' : 'bg-red-700 hover:bg-red-600 text-white'}`}>
+                          {activeRoll.confirmLabel || '确认结果'}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-6xl font-serif-display font-bold text-white mb-2">{finalTotal}</div>
+                        {activeRoll.targetValue !== undefined && (
+                            <div className={`text-sm font-bold uppercase tracking-widest mb-6 px-4 py-1 rounded ${finalTotal >= activeRoll.targetValue ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400'}`}>
+                                {finalTotal >= activeRoll.targetValue ? '成功' : '失败'}
+                            </div>
+                        )}
+                        <button onClick={cancelActiveRoll} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded uppercase tracking-wider text-sm transition-colors shadow-lg">{activeRoll.confirmLabel || '继续'}</button>
+                      </>
                     )}
-                    <button onClick={cancelActiveRoll} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded uppercase tracking-wider text-sm transition-colors shadow-lg">继续</button>
                 </motion.div>
             ) : (
                 <div key="rolling" className="w-full flex flex-col gap-3">
-                    <button onClick={handleRoll} disabled={isRolling} className="w-full py-4 rounded font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-3 transition-all bg-zinc-100 hover:bg-white text-black disabled:opacity-50">
-                        {isRolling ? '投掷中...' : <><Dices size={20} /> 开始投掷</>}
+                    <button onClick={handleRoll} disabled={isRolling} className={`w-full py-4 rounded font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-3 transition-all disabled:opacity-50 ${isHauntRoll ? 'bg-red-100 hover:bg-white text-black' : 'bg-zinc-100 hover:bg-white text-black'}`}>
+                        {isRolling ? (isHauntRoll ? '命运翻涌中...' : '投掷中...') : <><Dices size={20} /> {activeRoll.actionLabel || (isHauntRoll ? '掷出命运骰子' : '开始投掷')}</>}
                     </button>
                 </div>
             )}
         </AnimatePresence>
+        </div>
       </motion.div>
     </div>
   );

@@ -185,6 +185,37 @@ func TestNextTurnInternal_LogsTurnChange(t *testing.T) {
 	}
 }
 
+func TestResolveHauntRoll_UsesProvidedDiceResults(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.Phase = GamePhaseHauntRoll
+	room.GameState.FullState.OmenCount = 4
+	room.GameState.FullState.ActivePlayerID = "player_1"
+
+	actionResult, err := gm.ResolveHauntRoll(roomID, []int{1, 1, 1, 1, 0, 0})
+	if err != nil {
+		t.Fatalf("ResolveHauntRoll 失败: %v", err)
+	}
+
+	if actionResult["checkType"] != "HAUNT_ROLL" {
+		t.Fatalf("checkType 应为 HAUNT_ROLL, 实际为 %#v", actionResult["checkType"])
+	}
+	if success, ok := actionResult["success"].(bool); !ok || !success {
+		t.Fatalf("sum == omenCount 时应判定为通过, 实际为 %#v", actionResult["success"])
+	}
+	if hauntTriggered, ok := actionResult["hauntTriggered"].(bool); !ok || hauntTriggered {
+		t.Fatalf("通过检定时 hauntTriggered 应为 false, 实际为 %#v", actionResult["hauntTriggered"])
+	}
+	if room.GameState.FullState.LastRollResult == nil || *room.GameState.FullState.LastRollResult != 4 {
+		t.Fatalf("LastRollResult 应记录指定骰子和, 实际为 %#v", room.GameState.FullState.LastRollResult)
+	}
+	if room.GameState.FullState.Phase != GamePhaseExploration {
+		t.Fatalf("作祟检定通过后应回到探索阶段, 实际为 %s", room.GameState.FullState.Phase)
+	}
+}
+
 // ==================== ProcessStatusEffectsOnTurnStart 测试 ====================
 
 func TestProcessStatusEffectsOnTurnStart_DecrementsDuration(t *testing.T) {

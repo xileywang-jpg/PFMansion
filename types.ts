@@ -480,9 +480,14 @@ export interface LogEntry {
 
 export interface ActiveRoll {
   id: string;
+  rollType?: 'STANDARD' | 'HAUNT';
   attributeName: string; 
   numberOfDice: number;
+  title?: string;
+  description?: string;
   targetValue?: number; 
+  actionLabel?: string;
+  confirmLabel?: string;
   isCancellable?: boolean; 
   onComplete: (total: number) => void;
 }

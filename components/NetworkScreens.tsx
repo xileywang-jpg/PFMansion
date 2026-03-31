@@ -126,12 +126,11 @@ export const LobbyScreen: React.FC = () => {
     // 5秒后如果还没连接成功，停止尝试
     setTimeout(() => clearInterval(checkAndListRooms), 5000);
 
-    // 注册消息处理器
-    wsClient.on('room_list', (msg) => {
+    const handleRoomList = (msg: any) => {
       setRooms(msg.rooms || []);
-    });
+    };
 
-    wsClient.on('room_created', (msg) => {
+    const handleRoomCreated = (msg: any) => {
       setIsInRoom(true);
       setIsHost(true);
       setRoomPlayers([{ id: msg.playerId, name: playerName, isHost: true, isReady: true }]);
@@ -139,9 +138,9 @@ export const LobbyScreen: React.FC = () => {
       if (msg.theme) {
         localStorage.setItem('gameTheme', msg.theme);
       }
-    });
+    };
 
-    wsClient.on('room_joined', (msg) => {
+    const handleRoomJoined = (msg: any) => {
       setIsInRoom(true);
       setIsHost(false);
       // 解析玩家列表
@@ -151,26 +150,26 @@ export const LobbyScreen: React.FC = () => {
       if (msg.theme && !localStorage.getItem('gameTheme')) {
         localStorage.setItem('gameTheme', msg.theme);
       }
-    });
+    };
 
-    wsClient.on('player_joined', (msg) => {
+    const handlePlayerJoined = (msg: any) => {
       const players = Object.values(msg.players || {}) as any[];
       setRoomPlayers(players);
       setError('');
-    });
+    };
 
-    wsClient.on('player_left', (msg) => {
+    const handlePlayerLeft = (_msg: any) => {
       // 刷新玩家列表
       network.getState();
-    });
+    };
 
-    wsClient.on('player_ready', (msg) => {
+    const handlePlayerReady = (msg: any) => {
       setRoomPlayers(prev => prev.map(p => 
         p.id === msg.playerId ? { ...p, isReady: msg.ready } : p
       ));
-    });
+    };
 
-    wsClient.on('game_started', (msg: any) => {
+    const handleGameStarted = (_msg: any) => {
       // 游戏开始，使用 React Router 跳转到游戏页面，而不是刷新页面
       // 保存房间信息到 sessionStorage，以便 GameScreen 可以直接请求状态
       const roomId = wsClient.getRoomId();
@@ -182,19 +181,28 @@ export const LobbyScreen: React.FC = () => {
       }
       console.log('🎮 游戏开始，切换到游戏页面...');
       navigate('/game/mansion-protocol');
-    });
+    };
+
+    // 注册消息处理器
+    wsClient.on('room_list', handleRoomList);
+    wsClient.on('room_created', handleRoomCreated);
+    wsClient.on('room_joined', handleRoomJoined);
+    wsClient.on('player_joined', handlePlayerJoined);
+    wsClient.on('player_left', handlePlayerLeft);
+    wsClient.on('player_ready', handlePlayerReady);
+    wsClient.on('game_started', handleGameStarted);
 
     // 获取房间列表
     network.listRooms();
 
     return () => {
-      wsClient.off('room_list');
-      wsClient.off('room_created');
-      wsClient.off('room_joined');
-      wsClient.off('player_joined');
-      wsClient.off('player_left');
-      wsClient.off('player_ready');
-      wsClient.off('game_started');
+      wsClient.off('room_list', handleRoomList);
+      wsClient.off('room_created', handleRoomCreated);
+      wsClient.off('room_joined', handleRoomJoined);
+      wsClient.off('player_joined', handlePlayerJoined);
+      wsClient.off('player_left', handlePlayerLeft);
+      wsClient.off('player_ready', handlePlayerReady);
+      wsClient.off('game_started', handleGameStarted);
     };
   }, [playerName]);
 
