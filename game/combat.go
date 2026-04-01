@@ -88,6 +88,7 @@ func (g *GameManager) StartCombat(roomID, attackerID, defenderID, attribute stri
 	defenderDiceCount := defenderAttr.Current
 
 	g.clearLastRollResultUnlocked(state.FullState)
+	state.FullState.CombatResult = nil
 	// 设置战斗状态
 	state.FullState.ActiveCombat = &CombatState{
 		AttackerID:    attackerID,
@@ -320,8 +321,36 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 
 	// 清除战斗状态
 	state.FullState.ActiveCombat = nil
+	state.FullState.CombatResult = result
 
 	return result, nil
+}
+
+func (g *GameManager) ClearCombatResult(roomID, playerID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	room, ok := g.Rooms[roomID]
+	if !ok {
+		return errors.New("房间不存在")
+	}
+
+	state := room.GameState
+	if state == nil || state.FullState == nil {
+		return errors.New("游戏未开始")
+	}
+
+	result := state.FullState.CombatResult
+	if result == nil {
+		return nil
+	}
+
+	if playerID != result.AttackerID && playerID != state.FullState.ActivePlayerID {
+		return errors.New("只有攻击方可以关闭战斗结果")
+	}
+
+	state.FullState.CombatResult = nil
+	return nil
 }
 
 // GetCombatState 获取当前战斗状态

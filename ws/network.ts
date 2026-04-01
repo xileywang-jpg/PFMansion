@@ -2,7 +2,16 @@
 import { wsClient, ServerMessage } from './client';
 import { useGameStore } from '../store/gameStore';
 import { logger, trackAction } from './logger';
-import { EventCard } from '../types';
+import {
+  buildGameActionRequest,
+  buildSyncedStatePatch,
+  CardDrawnMessageDTO,
+  CombatResolvedMessageDTO,
+  DiceResultMessageDTO,
+  GameActionPayload,
+  normalizeActiveEventCard,
+  StateSyncMessageDTO,
+} from './protocol';
 
 // 游戏请求统一发送到后端；页面刷新后从 sessionStorage 恢复房间信息。
 let currentRoomId: string | null = sessionStorage.getItem('roomId');
@@ -21,181 +30,6 @@ export function clearDiceRollTimeout() {
     clearTimeout(diceRollTimeoutId);
     diceRollTimeoutId = null;
   }
-}
-
-function mapPendingAction(rawPendingAction: any) {
-  if (!rawPendingAction) {
-    return null;
-  }
-
-  return {
-    type: rawPendingAction.type,
-    target: rawPendingAction.target,
-    data: rawPendingAction.data,
-    cardId: rawPendingAction.cardId || undefined,
-    message: rawPendingAction.message || undefined,
-  };
-}
-
-function buildPendingActionActiveRoll(pendingAction: any, players: Record<string, any>, existingActiveRoll: any) {
-  const pendingCheckType = pendingAction?.type;
-  const isServerDrivenCheck =
-    (pendingCheckType === 'TILE_ATTRIBUTE_CHECK' || pendingCheckType === 'ATTRIBUTE_CHECK') &&
-    pendingAction.target === currentPlayerId;
-
-  if (!isServerDrivenCheck) {
-    const isSyncedPendingRoll =
-      existingActiveRoll?.rollType !== 'HAUNT' &&
-      (existingActiveRoll?.id?.startsWith('tile:') || existingActiveRoll?.id?.startsWith('check:'));
-    return isSyncedPendingRoll ? null : existingActiveRoll;
-  }
-
-  const attributeName = String(pendingAction?.data?.attribute || '属性');
-  const rawDifficulty = pendingAction?.data?.difficulty;
-  const targetValue = typeof rawDifficulty === 'number' ? rawDifficulty : undefined;
-  const diceCount = players[pendingAction.target]?.character?.attributes?.[attributeName]?.current || 1;
-  if (
-    existingActiveRoll &&
-    existingActiveRoll.attributeName === attributeName &&
-    existingActiveRoll.targetValue === targetValue &&
-    existingActiveRoll.numberOfDice === diceCount
-  ) {
-    return existingActiveRoll;
-  }
-
-  const rollId = `${pendingCheckType === 'TILE_ATTRIBUTE_CHECK' ? 'tile' : 'check'}:${pendingAction.target}:${attributeName}:${targetValue ?? 'na'}`;
-  return {
-    id: rollId,
-    rollType: 'STANDARD',
-    attributeName,
-    numberOfDice: diceCount,
-    targetValue,
-    title: `${attributeName} 检定`,
-    description: `投掷 ${diceCount} 枚骰子${targetValue !== undefined ? `，目标值为 ${targetValue}` : ''}。`,
-    actionLabel: '开始投掷',
-    confirmLabel: '继续',
-    onComplete: () => {},
-  };
-}
-
-function buildHauntActiveRoll(state: any, existingActiveRoll: any) {
-  const isExistingHauntRoll = existingActiveRoll?.rollType === 'HAUNT';
-  const isCurrentPlayerHauntRoll = state?.phase === 'HAUNT_ROLL' && state?.activePlayerId === currentPlayerId;
-
-  if (!isCurrentPlayerHauntRoll) {
-    return isExistingHauntRoll ? existingActiveRoll : null;
-  }
-
-  const targetValue = state?.omenCount;
-  const hauntRoll = {
-    id: `haunt:${state.activePlayerId}:${targetValue ?? 0}`,
-    rollType: 'HAUNT' as const,
-    attributeName: '作祟',
-    numberOfDice: 6,
-    targetValue,
-    title: '作祟检定',
-    description: `投掷 6 枚骰子，若结果小于当前预兆数 ${targetValue ?? '?'} 则作祟爆发。`,
-    actionLabel: '掷出命运骰子',
-    confirmLabel: '确认结果',
-    onComplete: () => {},
-  };
-
-  if (!isExistingHauntRoll) {
-    return hauntRoll;
-  }
-
-  return {
-    ...existingActiveRoll,
-    ...hauntRoll,
-  };
-}
-
-function normalizeActiveEventCard(rawCard: any): EventCard | null {
-  if (!rawCard || rawCard.type !== 'EVENT') {
-    return null;
-  }
-
-  return rawCard as EventCard;
-}
-
-function mergePlayersWithLocalLogs(incomingPlayers: Record<string, any>, existingPlayers: Record<string, any>) {
-  const mergedPlayers = { ...incomingPlayers };
-
-  Object.keys(mergedPlayers).forEach(playerId => {
-    if (!mergedPlayers[playerId] || !existingPlayers[playerId]) {
-      return;
-    }
-
-    const existingLogIds = new Set((mergedPlayers[playerId].personalLogs || []).map((entry: any) => entry.id));
-    mergedPlayers[playerId] = {
-      ...mergedPlayers[playerId],
-      personalLogs: [
-        ...(mergedPlayers[playerId].personalLogs || []),
-        ...(existingPlayers[playerId].personalLogs || []).filter((entry: any) => !existingLogIds.has(entry.id)),
-      ],
-    };
-  });
-
-  return mergedPlayers;
-}
-
-function buildSyncedStatePatch(state: any, store: ReturnType<typeof useGameStore.getState>, options?: { resetCombatResult?: boolean }) {
-  const mergedPlayers = mergePlayersWithLocalLogs(state.players || {}, store.players || {});
-  const activeCombat = state.activeCombat ? {
-    attackerId: state.activeCombat.attackerId,
-    defenderId: state.activeCombat.defenderId,
-    attribute: state.activeCombat.attribute,
-    phase: state.activeCombat.phase,
-    attackerRolls: state.activeCombat.attackerRolls || [],
-    defenderRolls: state.activeCombat.defenderRolls || [],
-  } : null;
-  const pendingAction = mapPendingAction(state.pendingAction);
-  const syncedPendingRoll = buildPendingActionActiveRoll(pendingAction, mergedPlayers, store.activeRoll);
-  const syncedHauntRoll = buildHauntActiveRoll(state, store.activeRoll);
-  const syncedActiveRoll = syncedPendingRoll ?? syncedHauntRoll;
-  const serverLastRollResult = state.lastRollResult ?? null;
-  const isCurrentPlayerServerDrivenCheck =
-    pendingAction?.target === currentPlayerId &&
-    (pendingAction?.type === 'TILE_ATTRIBUTE_CHECK' || pendingAction?.type === 'ATTRIBUTE_CHECK');
-  const lastRollResult =
-    serverLastRollResult ??
-    (store.activeRoll !== null && !isCurrentPlayerServerDrivenCheck ? store.lastRollResult : null);
-
-  return {
-    phase: state.phase || 'EXPLORATION',
-    turnPhase: state.turnPhase || 'MOVING',
-    turnIndex: state.turnIndex || 1,
-    players: mergedPlayers,
-    playerIds: state.playerIds || [],
-    activePlayerId: state.activePlayerId || '',
-    map: state.map || {},
-    tileDeck: state.tileDeck || [],
-    movesRemaining: state.movesRemaining ?? 3,
-    omenCount: state.omenCount ?? 0,
-    isHauntActive: state.isHauntActive ?? false,
-    traitorId: state.traitorId || null,
-    activeCard: normalizeActiveEventCard(state.activeCard),
-    decks: state.decks || { EVENT: [], ITEM: [], OMEN: [] },
-    lastRollResult,
-    lastCheckSuccess: lastRollResult === null ? null : store.lastCheckSuccess,
-    activeRoll: syncedActiveRoll,
-    activeCombat,
-    combatResult: options?.resetCombatResult ? null : (activeCombat ? null : store.combatResult),
-    npcs: state.npcs || {},
-    pendingAction,
-    currentScenario: state.currentScenario || null,
-    lastTriggeredOmen: state.lastTriggeredOmen || null,
-    lastTriggeredTile: state.lastTriggeredTile || null,
-    logs: state.logs || [],
-    heroObjectives: state.heroObjectives || {},
-    traitorObjectives: state.traitorObjectives || {},
-    turnsSinceHaunt: state.turnsSinceHaunt ?? 0,
-    gameWinner: state.gameWinner || null,
-    pendingTile: state.pendingTile || null,
-    pendingTileRotation: state.pendingTile ? store.pendingTileRotation : 0,
-    pendingTargetPosition: state.pendingTargetPos ? { x: state.pendingTargetPos.x, y: state.pendingTargetPos.y } : null,
-    pendingMoveDirection: state.pendingMoveDirection || null,
-  };
 }
 
 // 导出房间和玩家ID，供外部组件访问
@@ -255,6 +89,25 @@ export function isInNetworkMode(): boolean {
   const connected = isConnectedToServer();
   console.log('[isInNetworkMode] wsClient.isConnected():', wsClient.isConnected(), 'currentRoomId:', currentRoomId);
   return connected;
+}
+
+function requireRoomId(): string | null {
+  const roomId = wsClient.getRoomId();
+  if (!roomId) {
+    console.error('房间未创建');
+    return null;
+  }
+  return roomId;
+}
+
+function sendGameAction(action: GameActionPayload): boolean {
+  const roomId = requireRoomId();
+  if (!roomId) {
+    return false;
+  }
+
+  wsClient.send(buildGameActionRequest(roomId, action));
+  return true;
 }
 
 // ==================== 消息处理 ====================
@@ -326,7 +179,7 @@ function handleStateSync(msg: ServerMessage) {
   logger.debug('状态同步', { version: msg.version, timestamp: msg.timestamp });
   console.log('🔄 状态同步:', msg.state, 'version:', msg.version);
   
-  const state = msg.state as any;
+  const { state, version, timestamp } = msg as ServerMessage & StateSyncMessageDTO;
   const store = useGameStore.getState();
   
   // 防御性检查
@@ -336,11 +189,11 @@ function handleStateSync(msg: ServerMessage) {
   }
   
   // Phase 1: 验证版本号 (可选，用于检测过期状态)
-  if (msg.version) {
-    console.log('📊 状态版本:', msg.version, '时间戳:', msg.timestamp);
+  if (version) {
+    console.log('📊 状态版本:', version, '时间戳:', timestamp);
   }
   
-  store.setState(buildSyncedStatePatch(state, store));
+  store.setState(buildSyncedStatePatch(state, store, currentPlayerId));
   
   // 显示同步提示（仅首次同步）
   // store.showFeedback('游戏状态已同步', 'info');
@@ -348,9 +201,10 @@ function handleStateSync(msg: ServerMessage) {
 
 function handleDiceResult(msg: ServerMessage) {
   console.log('🎲 骰子结果:', msg);
+  const diceMsg = msg as ServerMessage & DiceResultMessageDTO;
 
   // 容忍过期请求（后端返回 STALE 类型时不处理）
-  if ((msg as any).checkType === 'STALE') {
+  if (diceMsg.checkType === 'STALE') {
     console.warn('骰子请求已过期，忽略');
     // 清除可能存在的超时
     clearDiceRollTimeout();
@@ -366,9 +220,9 @@ function handleDiceResult(msg: ServerMessage) {
   clearDiceRollTimeout();
   
   // 设置骰子结果和检定结果
-  const result = (msg as any).actionResult;
-  const sum = msg.sum as number;
-  const results = msg.results as number[];
+  const result = diceMsg.actionResult;
+  const sum = diceMsg.sum ?? 0;
+  const results = diceMsg.results ?? [];
   
   // Bug Fix: 正确使用后端返回的 actionResult.success
   // 对于 ATTRIBUTE_CHECK，后端返回的 success 表示检定是否成功
@@ -457,7 +311,7 @@ function handleCardDrawn(msg: ServerMessage) {
   console.log('🃏 抽卡结果:', msg);
 
   const store = useGameStore.getState();
-  const { card, deck } = msg as any;
+  const { card, deck } = msg as ServerMessage & CardDrawnMessageDTO;
 
   // OMEN 或 ITEM 类型，使用揭示弹窗
   if (deck === 'OMEN' || deck === 'ITEM') {
@@ -479,13 +333,8 @@ function handleCombatResolved(msg: ServerMessage) {
   console.log('⚔️ 战斗结算:', msg);
   
   const store = useGameStore.getState();
-  const result = msg.result as any;
+  const result = (msg as ServerMessage & CombatResolvedMessageDTO).result;
   if (result) {
-    store.setState({
-      activeCombat: null,
-      combatResult: result,
-    });
-
     if (result.draw) {
       store.showFeedback('⚔️ 战斗平局！双方无伤', 'info');
     } else if (result.loser) {
@@ -561,7 +410,7 @@ function handleReconnectSuccess(msg: ServerMessage) {
   
   // 如果服务器返回了状态，直接使用
   if (msg.state) {
-    store.setState(buildSyncedStatePatch(msg.state, store, { resetCombatResult: true }));
+    store.setState(buildSyncedStatePatch(msg.state, store, currentPlayerId, { resetCombatResult: true }));
     store.showFeedback('已恢复游戏状态', 'info');
   } else {
     // 请求完整状态
@@ -667,443 +516,153 @@ export function getState() {
 
 // 玩家移动
 export function sendMove(direction: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'move',
-      direction
-    }
-  });
+  sendGameAction({ actionType: 'move', direction });
 }
 
 // 放置房间
 export function sendPlaceTile(direction: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
   // 从 gameStore 读取当前选择的旋转角度
   const { pendingTileRotation } = useGameStore.getState();
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'place_tile',
-      direction,
-      rotation: pendingTileRotation
-    }
+  sendGameAction({
+    actionType: 'place_tile',
+    direction,
+    rotation: pendingTileRotation,
   });
 }
 
 // 取消房间放置
 export function sendCancelTilePlacement() {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'cancel_tile_placement'
-    }
-  });
+  sendGameAction({ actionType: 'cancel_tile_placement' });
 }
 
 // 结束回合
 export function sendEndTurn() {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'end_turn'
-    }
-  });
+  sendGameAction({ actionType: 'end_turn' });
 }
 
 // 投骰子
 export function sendRollDice(numDice: number = 1) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'roll_dice',
-      numDice
-    }
-  });
+  sendGameAction({ actionType: 'roll_dice', numDice });
 }
 
 // 修改属性 (仅用于调试/GM)
 export function sendModifyStat(attribute: string, amount: number) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'modify_stat',
-      attribute,
-      amount
-    }
-  });
+  sendGameAction({ actionType: 'modify_stat', attribute, amount });
 }
 
 // ==================== 阶段1新增：游戏逻辑操作 ====================
 
 // 抽卡
 export function sendDrawCard(cardType: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'draw_card',
-      cardType
-    }
-  });
+  sendGameAction({ actionType: 'draw_card', cardType });
 }
 
 // 解决事件选择
 export function sendResolveEvent(choiceIndex: number) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'resolve_event',
-      choiceIndex
-    }
-  });
+  sendGameAction({ actionType: 'resolve_event', choiceIndex });
 }
 
 // 开始战斗
 export function sendStartCombat(defenderId: string, attribute: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'start_combat',
-      defenderId,
-      attribute
-    }
-  });
+  sendGameAction({ actionType: 'start_combat', defenderId, attribute });
 }
 
 // 战斗结算 - 后端统一生成骰子结果
 export function sendResolveCombat() {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'resolve_combat'
-      // 🔒 后端统一生成骰子结果，不接受前端传入
-    }
+  sendGameAction({
+    actionType: 'resolve_combat',
+    // 🔒 后端统一生成骰子结果，不接受前端传入
   });
+}
+
+export function sendDismissCombatResult() {
+  sendGameAction({ actionType: 'dismiss_combat_result' });
 }
 
 // 使用物品
 export function sendUseItem(itemId: string, targetId?: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'use_item',
-      itemId,
-      targetId: targetId || ''
-    }
-  });
+  sendGameAction({ actionType: 'use_item', itemId, targetId: targetId || '' });
 }
 
 // 执行技能
 export function sendExecuteSkill(skillId: string, targetId?: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'execute_skill',
-      skillId,
-      targetId: targetId || ''
-    }
-  });
+  sendGameAction({ actionType: 'execute_skill', skillId, targetId: targetId || '' });
 }
 
 // 解锁技能树节点
 export function sendUnlockSkillNode(nodeId: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'unlock_skill_node',
-      nodeId,
-    }
-  });
+  sendGameAction({ actionType: 'unlock_skill_node', nodeId });
 }
 
 // 触发条件buff (攻击时、回合结束时、进入房间时)
 export function sendTriggerBuff(trigger: 'ATTACK' | 'END_TURN' | 'ENTER_ROOM') {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'trigger_buff',
-      trigger
-    }
-  });
+  sendGameAction({ actionType: 'trigger_buff', trigger });
 }
 
 // ==================== 作祟系统 ====================
 
 // 执行作祟检定
 export function sendPerformHauntRoll() {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'perform_haunt_roll',
-    }
-  });
+  sendGameAction({ actionType: 'perform_haunt_roll' });
 }
 
 // 强制触发作祟（调试用）
 export function sendForceHaunt() {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'force_haunt',
-    }
-  });
+  sendGameAction({ actionType: 'force_haunt' });
 }
 
 // ==================== Phase 2: 物品与互动操作 ====================
 
 // 捡起物品
 export function sendPickupItem(itemId: string) {
-  const roomId = wsClient.getRoomId();
+  const roomId = requireRoomId();
   // ===== DEBUG: 发送拾取物品动作 =====
   logger.debug('sendPickupItem', { itemId, roomId, isConnected: wsClient.isConnected() });
   console.log(`📤 [sendPickupItem] itemId=${itemId} roomId=${roomId} connected=${wsClient.isConnected()}`);
   
   if (!roomId) {
-    console.error('房间未创建');
     logger.error('sendPickupItem失败', { reason: '房间未创建' });
     return;
   }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'pickup_item',
-      itemId
-    }
-  });
+  wsClient.send(buildGameActionRequest(roomId, { actionType: 'pickup_item', itemId }));
   logger.debug('sendPickupItem 消息已发送', { itemId, roomId });
 }
 
 // 给予物品
 export function sendGiveItem(toPlayerId: string, itemId: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'give_item',
-      targetId: toPlayerId,
-      itemId
-    }
-  });
+  sendGameAction({ actionType: 'give_item', targetId: toPlayerId, itemId });
 }
 
 // 交换物品
 export function sendTradeItems(targetId: string, itemId: string, targetItemId: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId,
-    action: {
-      actionType: 'trade_items',
-      targetId,
-      itemId,
-      targetItemId,
-    }
-  });
+  sendGameAction({ actionType: 'trade_items', targetId, itemId, targetItemId });
 }
 
 // 丢弃物品
 export function sendDropItem(itemId: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'drop_item',
-      itemId
-    }
-  });
+  sendGameAction({ actionType: 'drop_item', itemId });
 }
 
 // 破坏墙壁/互动
 export function sendInteractWithWall(direction: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'interact_wall',
-      direction
-    }
-  });
+  sendGameAction({ actionType: 'interact_wall', direction });
 }
 
 export function sendTeleportToTile(x: number, y: number) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId,
-    action: {
-      actionType: 'teleport_to_tile',
-      x,
-      y,
-    }
-  });
+  sendGameAction({ actionType: 'teleport_to_tile', x, y });
 }
 
 export function sendDivination(action: 'toTop' | 'toBottom') {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId,
-    action: {
-      actionType: 'divination',
-      action,
-    }
-  });
+  sendGameAction({ actionType: 'divination', action });
 }
 
 export function sendExecuteTileInteraction(interactionType: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId,
-    action: {
-      actionType: 'execute_tile_interaction',
-      interactionType,
-    }
-  });
+  sendGameAction({ actionType: 'execute_tile_interaction', interactionType });
 }
 
 // ==================== Phase X: NPC 战斗系统 ====================
 
 // 攻击 NPC
 export function sendAttackNPC(npcInstanceId: string) {
-  const roomId = wsClient.getRoomId();
-  if (!roomId) {
-    console.error('房间未创建');
-    return;
-  }
-  wsClient.send({
-    type: 'game_action',
-    roomId: roomId,
-    action: {
-      actionType: 'attack_npc',
-      npcInstanceId
-    }
-  });
+  sendGameAction({ actionType: 'attack_npc', npcInstanceId });
 }

@@ -7,7 +7,7 @@ import { SKILL_TREES } from '../data/source/skillTrees';
 import { SkillNode } from '../types';
 
 const SkillTreeModal: React.FC = () => {
-  const { isSkillTreeOpen, toggleSkillTree, players, activePlayerId, unlockSkillNode } = useGameStore();
+    const { ui, toggleSkillTree, players, activePlayerId, unlockSkillNode } = useGameStore();
   const player = players[activePlayerId];
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
@@ -20,7 +20,7 @@ const SkillTreeModal: React.FC = () => {
      return null;
   }, [selectedNodeId]);
 
-  if (!isSkillTreeOpen || !player) return null;
+    if (!ui.isSkillTreeOpen || !player) return null;
 
   const getIcon = (iconName: string, size = 20) => {
     switch (iconName) {

@@ -4,7 +4,8 @@ import {
   Player, TileInstance, TileDef, GamePhase, Direction, 
   CardDef, CardSymbol, LogEntry, AttributeName, TurnPhase, ScriptAction, Item, ActiveRoll, DirectionalEdges, EventCard,
   CombatState, CombatResult,
-  Scenario, GameNPC
+  Scenario, GameNPC, PendingAction, GameUiState, FeedbackType, CardRevealState, InteractionState,
+  RoomInteractionDialogState, TileInteraction
 } from '../types';
 import { ActionDefinition } from '../types/Logic';
 import { GameDataBundle } from '../src/services/gameData';
@@ -14,6 +15,22 @@ import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
 import { addStatusEffect, decrementStatusEffects, applyStatusEffectOnTurnStart } from '../utils/statusEffects';
 import { generateId } from '../utils/idGenerator';
 import * as network from '../ws/network';
+import {
+  getAllEvents as readAllEvents,
+  getAllItems as readAllItems,
+  getAllOmens as readAllOmens,
+  getAllSkills as readAllSkills,
+  getCharacterById as readCharacterById,
+  getCharactersByTheme as readCharactersByTheme,
+  getEventById as readEventById,
+  getItemById as readItemById,
+  getOmenById as readOmenById,
+  getScenarioById as readScenarioById,
+  getScenarios as readScenarios,
+  getSkillById as readSkillById,
+  getTileById as readTileById,
+  getTilesByTheme as readTilesByTheme,
+} from './gameDataCatalog';
 
 interface GameState {
   phase: GamePhase;
@@ -61,30 +78,15 @@ interface GameState {
   gameWinner: string | null;
 
   // Phase 1: 待处理动作 (网络同步)
-  pendingAction: { type: string; target: string; data?: Record<string, unknown>; cardId?: string; message?: string } | null;
+  pendingAction: PendingAction | null;
+  interactionState: InteractionState | null;
 
   pendingTile: TileDef | null;
   pendingTileRotation: number;
   pendingTargetPosition: { x: number, y: number } | null;
   pendingMoveDirection: Direction | null;
 
-  hoveredTileId: string | null;
-  isInventoryOpen: boolean;
-  isInteractionModalOpen: boolean;
-  isSkillTreeOpen: boolean; 
-  inspectPlayerId: string | null;
-  
-  // 卡牌揭示弹窗
-  cardRevealModal: {
-    card: any;
-    deck: 'OMEN' | 'ITEM' | 'EVENT';
-    onConfirmAction?: any;
-  } | null;
-  
-  // 预知/互动待执行效果
-  pendingInteractionEffects: any[] | null;
-
-  activeFeedback: { message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' | 'alert' | 'success' } | null;
+  ui: GameUiState;
 
   // 游戏静态数据（从后端 API 获取）
   gameData: GameDataBundle | null;
@@ -135,10 +137,14 @@ interface GameState {
   unlockSkillNode: (nodeId: string) => void; 
 
   setState: (partial: Partial<GameState> | ((state: GameState) => Partial<GameState>)) => void;
+  patchUi: (partial: Partial<GameUiState> | ((ui: GameUiState) => Partial<GameUiState>)) => void;
 
   inventoryOpen: () => void; 
   toggleInventory: () => void;
-  toggleInteractionModal: () => void;
+  openTradeInteraction: () => void;
+  openTileInteraction: (interaction: TileInteraction, tileId?: string | null) => void;
+  setRoomInteractionDialog: (dialog: RoomInteractionDialogState) => void;
+  closeRoomInteraction: () => void;
   toggleSkillTree: () => void; 
   
   openInspection: (playerId: string) => void;
@@ -150,11 +156,24 @@ interface GameState {
   interactWithWall: (direction: Direction) => void;
   cancelActiveRoll: () => void;
   dismissCombatResult: () => void;
+  showCardReveal: (card: CardRevealState['card'], deck: CardRevealState['deck'], onConfirmAction?: () => void) => void;
+  closeCardReveal: () => void;
 
   isPlacementValid: () => boolean;
   // 兼容展示层调用，当前直接返回后端同步后的权威属性值。
   getEffectiveAttributeValue: (playerId: string, attribute: AttributeName) => number;
 }
+
+const initialUiState: GameUiState = {
+  hoveredTileId: null,
+  isInventoryOpen: false,
+  roomInteractionDialog: { kind: 'CLOSED' },
+  isSkillTreeOpen: false,
+  inspectPlayerId: null,
+  pendingInteractionEffects: null,
+  cardRevealModal: null,
+  activeFeedback: null,
+};
 
 const getOpposite = (dir: Direction): Direction => {
   switch (dir) {
@@ -219,30 +238,24 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameWinner: null,
   // Phase 1: 待处理动作
   pendingAction: null,
+  interactionState: null,
   pendingTile: null,
   pendingTileRotation: 0,
   pendingTargetPosition: null,
   pendingMoveDirection: null,
-  hoveredTileId: null,
-  isInventoryOpen: false,
-  isInteractionModalOpen: false,
-  isSkillTreeOpen: false,
-  inspectPlayerId: null,
-  pendingInteractionEffects: null,
-  cardRevealModal: null,
-  activeFeedback: null,
+  ui: initialUiState,
 
   // 游戏静态数据
   gameData: null,
   dataLoaded: false,
   setGameData: (data: GameDataBundle) => set({ gameData: data, dataLoaded: true }),
 
-  showFeedback: (message: string, type: 'error' | 'info' | 'warning' | 'turn' | 'death' | 'alert' | 'success' = 'error') => {
-    set({ activeFeedback: { message, type } });
+  showFeedback: (message: string, type: FeedbackType = 'error') => {
+    set(s => ({ ui: { ...s.ui, activeFeedback: { message, type } } }));
     const duration = (type === 'turn' || type === 'death') ? 2500 : 2000;
     setTimeout(() => {
-      if (get().activeFeedback?.message === message) {
-        set({ activeFeedback: null });
+      if (get().ui.activeFeedback?.message === message) {
+        set(s => ({ ui: { ...s.ui, activeFeedback: null } }));
       }
     }, duration);
   },
@@ -256,89 +269,72 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // 获取所有物品
   getAllItems: (): any[] => {
-    return get().gameData?.items ?? [];
+    return readAllItems(get().gameData);
   },
 
   // 根据ID获取物品
   getItemById: (id: string): any | undefined => {
-    return get().gameData?.items?.find(item => item.id === id);
+    return readItemById(get().gameData, id);
   },
 
   // 获取所有厄运
   getAllOmens: (): any[] => {
-    return get().gameData?.omens ?? [];
+    return readAllOmens(get().gameData);
   },
 
   // 根据ID获取厄运
   getOmenById: (id: string): any | undefined => {
-    return get().gameData?.omens?.find(omen => omen.id === id);
+    return readOmenById(get().gameData, id);
   },
 
   // 获取所有事件
   getAllEvents: (): any[] => {
-    return get().gameData?.events ?? [];
+    return readAllEvents(get().gameData);
   },
 
   // 根据ID获取事件
   getEventById: (id: string): any | undefined => {
-    return get().gameData?.events?.find(event => event.id === id);
+    return readEventById(get().gameData, id);
   },
 
   // 获取所有技能
   getAllSkills: (): any[] => {
-    return get().gameData?.skills ?? [];
+    return readAllSkills(get().gameData);
   },
 
   // 根据ID获取技能
   getSkillById: (id: string): any | undefined => {
-    return get().gameData?.skills?.find(skill => skill.id === id);
+    return readSkillById(get().gameData, id);
   },
 
   // 获取剧本
   getScenarios: (): Record<string, any> => {
-    return get().gameData?.scenarios ?? {};
+    return readScenarios(get().gameData);
   },
 
   // 根据ID获取剧本
   getScenarioById: (id: string): any | undefined => {
-    const scenarios = get().getScenarios();
-    return scenarios[id];
+    return readScenarioById(get().gameData, id);
   },
 
   // 获取地图（根据主题）
   getTilesByTheme: (theme: string = 'original'): any[] => {
-    const themeKey = theme === 'volantis' ? 'volantis' : 'original';
-    return get().gameData?.tiles?.[themeKey] ?? [];
+    return readTilesByTheme(get().gameData, theme);
   },
 
   // 根据ID获取地图 (自动识别主题)
   getTileById: (id: string, theme?: string): any | undefined => {
-    // 根据ID前缀自动判断主题
-    const autoTheme = theme || (id.startsWith('vol_') ? 'volantis' : 'original');
-    const tiles = get().getTilesByTheme(autoTheme);
-    const tile = tiles.find(tile => tile.id === id);
-    if (!tile) {
-      // 尝试在另一个主题中查找
-      const fallbackTheme = autoTheme === 'volantis' ? 'original' : 'volantis';
-      const fallbackTiles = get().getTilesByTheme(fallbackTheme);
-      const fallbackTile = fallbackTiles.find(t => t.id === id);
-      if (fallbackTile) {
-        return fallbackTile;
-      }
-    }
-    return tile;
+    return readTileById(get().gameData, id, theme);
   },
 
   // 获取角色（根据主题）
   getCharactersByTheme: (theme: string = 'original'): any[] => {
-    const themeKey = theme === 'volantis' ? 'volantis' : 'original';
-    return get().gameData?.characters?.[themeKey] ?? [];
+    return readCharactersByTheme(get().gameData, theme);
   },
 
   // 根据ID获取角色
   getCharacterById: (id: string, theme: string = 'original'): any | undefined => {
-    const characters = get().getCharactersByTheme(theme);
-    return characters.find(char => char.id === id);
+    return readCharacterById(get().gameData, id, theme);
   },
 
   addLog: (text, type = 'info') => {
@@ -388,7 +384,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     
     // 前置检查（与后端一致）
-    if (state.activeCard || state.pendingTile || state.activeRoll || state.phase === GamePhase.HauntRoll || state.activeCombat) {
+    if (state.activeCard || state.interactionState) {
         state.showFeedback("等待当前交互完成", "warning");
         return;
     }
@@ -535,6 +531,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
     
+    if (state.interactionState?.type !== 'TILE_PLACEMENT') {
+      state.showFeedback("当前没有可放置的房间", "warning");
+      return;
+    }
+
     if (!state.isPlacementValid()) {
         state.showFeedback("门必须相连", "error");
         return;
@@ -559,7 +560,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   cancelTilePlacement: () => {
     const state = get();
-    if (!state.pendingTile) return;
+    if (state.interactionState?.type !== 'TILE_PLACEMENT' || !state.pendingTile) return;
 
     if (network.isInNetworkMode()) {
       state.showFeedback("正在取消放置...", "info");
@@ -587,7 +588,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         return;
       }
 
-      if (state.phase !== GamePhase.HauntRoll) {
+      if (state.interactionState?.type !== 'HAUNT_ROLL' && state.phase !== GamePhase.HauntRoll) {
         state.showFeedback("当前不在作祟检定阶段", "warning");
         return;
       }
@@ -619,32 +620,67 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().performHauntRoll();
   },
 
-  setHoveredTileId: (id) => set({ hoveredTileId: id }),
-
   setState: (fn) => set(fn),
-  inventoryOpen: () => set({ isInventoryOpen: true }),
-  toggleInventory: () => set(s => ({ isInventoryOpen: !s.isInventoryOpen })),
-  toggleInteractionModal: () => set(s => ({ isInteractionModalOpen: !s.isInteractionModalOpen })),
-  toggleSkillTree: () => set(s => ({ isSkillTreeOpen: !s.isSkillTreeOpen })),
+  patchUi: (partial) => set(s => ({
+    ui: {
+      ...s.ui,
+      ...(typeof partial === 'function' ? partial(s.ui) : partial),
+    },
+  })),
+  setHoveredTileId: (id) => set(s => ({ ui: { ...s.ui, hoveredTileId: id } })),
+  inventoryOpen: () => set(s => ({ ui: { ...s.ui, isInventoryOpen: true } })),
+  toggleInventory: () => set(s => ({ ui: { ...s.ui, isInventoryOpen: !s.ui.isInventoryOpen } })),
+  openTradeInteraction: () => set(s => ({
+    ui: {
+      ...s.ui,
+      roomInteractionDialog: { kind: 'TRADE' },
+    },
+  })),
+  openTileInteraction: (interaction, tileId) => set(s => ({
+    ui: {
+      ...s.ui,
+      roomInteractionDialog: {
+        kind: 'PROMPT',
+        interaction,
+        tileId: tileId ?? null,
+      },
+    },
+  })),
+  setRoomInteractionDialog: (dialog) => set(s => ({
+    ui: {
+      ...s.ui,
+      roomInteractionDialog: dialog,
+    },
+  })),
+  closeRoomInteraction: () => set(s => ({
+    ui: {
+      ...s.ui,
+      roomInteractionDialog: { kind: 'CLOSED' },
+      pendingInteractionEffects: null,
+    },
+  })),
+  toggleSkillTree: () => set(s => ({ ui: { ...s.ui, isSkillTreeOpen: !s.ui.isSkillTreeOpen } })),
   
-  openInspection: (playerId) => set({ inspectPlayerId: playerId }),
-  closeInspection: () => set({ inspectPlayerId: null }),
+  openInspection: (playerId) => set(s => ({ ui: { ...s.ui, inspectPlayerId: playerId } })),
+  closeInspection: () => set(s => ({ ui: { ...s.ui, inspectPlayerId: null } })),
 
   // 卡牌揭示弹窗
-  showCardReveal: (card: any, deck: 'OMEN' | 'ITEM' | 'EVENT', onConfirmAction?: any) => {
-    set({ 
-      cardRevealModal: { card, deck, onConfirmAction },
-      // 确保日志不会遮挡
-      activeFeedback: null 
-    });
+  showCardReveal: (card, deck, onConfirmAction) => {
+    set(s => ({ 
+      ui: {
+        ...s.ui,
+        cardRevealModal: { card, deck, onConfirmAction },
+        activeFeedback: null,
+      },
+    }));
   },
   closeCardReveal: () => {
     const state = get();
     // 如果有确认动作，先执行它
-    if (state.cardRevealModal?.onConfirmAction) {
+    if (state.ui.cardRevealModal?.onConfirmAction) {
       // onConfirmAction 会在组件中被调用
     }
-    set({ cardRevealModal: null });
+    set(s => ({ ui: { ...s.ui, cardRevealModal: null } }));
   },
 
   useItem: (itemId: string, targetId?: string) => {
@@ -679,16 +715,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       state.showFeedback("正在破坏墙壁...", "info");
   },
 
-  dismissCombatResult: () => set({ combatResult: null }),
+  dismissCombatResult: () => {
+    const state = get();
+
+    if (network.isInNetworkMode()) {
+      network.sendDismissCombatResult();
+      return;
+    }
+
+    set({ combatResult: null });
+  },
   
   cancelActiveRoll: () => {
     const state = get();
-    // If we are in active combat and cancel the roll, we should likely cancel the combat state too
-    if (state.activeCombat) {
-        set({ activeRoll: null, activeCombat: null });
-        state.addLog("已取消战斗行动。", "info");
-    } else {
-        set({ activeRoll: null });
+
+    set({ activeRoll: null });
+
+    if (state.interactionState?.type === 'COMBAT') {
+      state.addLog("已关闭本地投掷界面，等待服务器继续同步战斗状态。", "info");
     }
   }
 }));

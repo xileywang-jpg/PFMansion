@@ -6,29 +6,35 @@ import { Swords, Heart, X, User, AlertTriangle } from 'lucide-react';
 import { PLAYER_COLORS } from '../constants';
 
 const CombatResolution: React.FC = () => {
-  const { activeCombat, combatResult, players, playerIds, showFeedback, dismissCombatResult } = useGameStore();
+  const { interactionState, players, playerIds, activePlayerId, showFeedback, dismissCombatResult } = useGameStore();
+  const localPlayerId = network.getCurrentPlayerId();
 
-  if (!activeCombat && !combatResult) return null;
+  const combatInteraction = interactionState?.type === 'COMBAT' ? interactionState : null;
 
-  const attackerId = combatResult?.attackerId || activeCombat?.attackerId;
-  const defenderId = combatResult?.defenderId || activeCombat?.defenderId;
+  if (!combatInteraction) return null;
+
+  const attackerId = combatInteraction.attackerId;
+  const defenderId = combatInteraction.defenderId;
   if (!attackerId || !defenderId) return null;
 
   const attacker = players[attackerId];
   const defender = players[defenderId];
   if (!attacker || !defender) return null;
 
-  const isResolutionView = !!combatResult;
-  const attackerRolls = combatResult?.attackerRolls || activeCombat?.attackerRolls || [];
-  const defenderRolls = combatResult?.defenderRolls || activeCombat?.defenderRolls || [];
-  const attackerSum = combatResult?.attackerSum ?? attackerRolls.reduce((sum, value) => sum + value, 0);
-  const defenderSum = combatResult?.defenderSum ?? defenderRolls.reduce((sum, value) => sum + value, 0);
-  const damage = combatResult?.damage ?? 0;
-  const isDraw = combatResult?.draw ?? false;
-  const loser = combatResult?.loser;
-  const winner = combatResult && !combatResult.draw
-    ? (combatResult.loser === attacker.id ? defender.id : attacker.id)
+  const interactionPhase = combatInteraction.combatPhase;
+  const isResolutionView = interactionPhase === 'RESULT';
+  const attackerRolls = combatInteraction.attackerRolls || [];
+  const defenderRolls = combatInteraction.defenderRolls || [];
+  const attackerSum = combatInteraction.attackerSum ?? attackerRolls.reduce((sum, value) => sum + value, 0);
+  const defenderSum = combatInteraction.defenderSum ?? defenderRolls.reduce((sum, value) => sum + value, 0);
+  const damage = combatInteraction.damage ?? 0;
+  const isDraw = combatInteraction.draw ?? false;
+  const loser = combatInteraction.loser;
+  const winner = loser && !isDraw
+    ? (loser === attacker.id ? defender.id : attacker.id)
     : null;
+  const canResolveCombat = !isResolutionView && localPlayerId === attackerId;
+  const canDismissResult = isResolutionView && (localPlayerId === attackerId || localPlayerId === activePlayerId);
 
   const attackerColor = PLAYER_COLORS[playerIds.indexOf(attacker.id) % PLAYER_COLORS.length];
   const defenderColor = PLAYER_COLORS[playerIds.indexOf(defender.id) % PLAYER_COLORS.length];
@@ -131,7 +137,7 @@ const CombatResolution: React.FC = () => {
                   <div className="text-sm uppercase tracking-[0.2em] text-indigo-400 font-bold mb-2">等待结算</div>
                   <div className="text-4xl font-serif-display text-white mb-4">服务器将进行权威战斗检定</div>
                   <div className="text-xs text-zinc-500 max-w-xs mx-auto italic">
-                    点击下方按钮后，由后端统一掷骰、计算修正、应用伤害并广播最终结果。
+                    {combatInteraction.message || `当前交互已进入战斗阶段，等待 ${attacker.character.name} 发起服务器结算。`}
                   </div>
                 </>
               ) : isDraw ? (
@@ -162,22 +168,24 @@ const CombatResolution: React.FC = () => {
             {isResolutionView ? (
               <button 
                 onClick={handleCloseResult}
-                className="w-full bg-zinc-100 hover:bg-white text-black py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-lg"
+                disabled={!canDismissResult}
+                className="w-full bg-zinc-100 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-500 text-black py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-lg"
               >
-                <X size={18} /> 关闭结果
+                <X size={18} /> {canDismissResult ? '关闭结果' : '等待攻击方确认'}
               </button>
             ) : (
               <button 
                 onClick={handleResolveCombat}
-                className="w-full bg-red-600 hover:bg-red-500 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-lg shadow-red-900/20"
+                disabled={!canResolveCombat}
+                className="w-full bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-3 transition-all shadow-lg shadow-red-900/20"
               >
-                <Heart size={18} /> 请求服务器结算
+                <Heart size={18} /> {canResolveCombat ? '请求服务器结算' : '等待攻击方结算'}
               </button>
             )}
           </div>
 
           <div className="p-4 bg-zinc-950/80 border-t border-zinc-900 text-[10px] text-zinc-600 text-center font-mono">
-             {isResolutionView ? '战斗结果已由后端应用到游戏状态。' : '正式战斗结果以后端 combat_resolved 广播为准。'}
+             {isResolutionView ? '战斗结果已进入显式交互状态，等待权威关闭。' : '正式战斗结果以后端权威同步状态为准。'}
           </div>
         </motion.div>
       </motion.div>

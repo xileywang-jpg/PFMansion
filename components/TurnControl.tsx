@@ -11,13 +11,33 @@ const TurnControl: React.FC = () => {
     turnPhase, 
     players, 
     activePlayerId,
-    activeCard 
+    activeCard,
+    interactionState,
   } = useGameStore();
   
   const activePlayer = players[activePlayerId];
   if (!activePlayer) return null;
 
   const maxMoves = activePlayer.character.attributes.speed.current;
+
+  const isBusy = turnPhase === 'EVENT_RESOLVING' || !!activeCard || !!interactionState;
+  const phaseLabel = interactionState?.type === 'TILE_PLACEMENT'
+    ? '等待放置房间'
+    : interactionState?.type === 'ATTRIBUTE_CHECK' || interactionState?.type === 'TILE_ATTRIBUTE_CHECK'
+      ? '等待检定'
+      : interactionState?.type === 'CHOICE'
+        ? '等待选择'
+        : interactionState?.type === 'COMBAT'
+          ? interactionState.combatPhase === 'RESULT'
+            ? '等待确认战斗结果'
+            : '等待战斗结算'
+          : interactionState?.type === 'HAUNT_ROLL'
+            ? '作祟检定'
+            : turnPhase === 'EVENT_RESOLVING'
+              ? '事件结算中'
+              : turnPhase === 'DONE'
+                ? '回合已结束'
+                : '行动阶段';
 
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-4">
@@ -33,12 +53,11 @@ const TurnControl: React.FC = () => {
         </span>
         <span className="text-zinc-600">|</span>
         <span className={`text-xs font-bold uppercase tracking-wider ${
-          turnPhase === 'EVENT_RESOLVING' ? 'text-red-400' :
+          isBusy ? 'text-red-400' :
           turnPhase === 'DONE' ? 'text-zinc-500' : 
           'text-indigo-400'
         }`}>
-          {turnPhase === 'EVENT_RESOLVING' ? '事件结算中' : 
-           turnPhase === 'DONE' ? '回合已结束' : '行动阶段'}
+          {phaseLabel}
         </span>
       </motion.div>
 
@@ -66,10 +85,10 @@ const TurnControl: React.FC = () => {
 
         <button
           onClick={nextTurn}
-          disabled={turnPhase === 'EVENT_RESOLVING' || !!activeCard}
+          disabled={isBusy}
           className={`
             group relative px-6 py-3 rounded-lg font-bold uppercase tracking-wider text-sm flex items-center gap-2 transition-all
-            ${turnPhase === 'EVENT_RESOLVING' || !!activeCard
+            ${isBusy
                 ? 'bg-zinc-900 text-zinc-600 cursor-not-allowed' 
                 : 'bg-zinc-100 hover:bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)]'
             }

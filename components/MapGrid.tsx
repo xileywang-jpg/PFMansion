@@ -20,14 +20,17 @@ const MapGrid: React.FC = () => {
   const {
     map, players, npcs, activePlayerId, movePlayer, activeCard,
     pendingTile, pendingTargetPosition, pendingTileRotation, rotatePendingTile, confirmTilePlacement, isPlacementValid,
-    setHoveredTileId, cancelTilePlacement
+    setHoveredTileId, cancelTilePlacement, interactionState
   } = useGameStore();
 
   const activePlayer = players[activePlayerId];
+  const isTilePlacementInteraction = interactionState?.type === 'TILE_PLACEMENT' && !!pendingTile;
+  const tilePlacementTarget = interactionState?.type === 'TILE_PLACEMENT' ? interactionState.targetPos : null;
+  const tilePlacementDirection = interactionState?.type === 'TILE_PLACEMENT' ? interactionState.direction : null;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (pendingTile) {
+      if (isTilePlacementInteraction) {
         if (e.key.toLowerCase() === 'r') rotatePendingTile();
         if (e.key === 'Enter' || e.key === ' ') {
             if (isPlacementValid()) confirmTilePlacement();
@@ -37,7 +40,7 @@ const MapGrid: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pendingTile, rotatePendingTile, confirmTilePlacement, isPlacementValid, activeCard, cancelTilePlacement]);
+  }, [isTilePlacementInteraction, rotatePendingTile, confirmTilePlacement, isPlacementValid, activeCard, cancelTilePlacement]);
 
   const ghostTileInstance: TileInstance | null = useMemo(() => {
     if (!pendingTile || !pendingTargetPosition) return null;
@@ -70,6 +73,7 @@ const MapGrid: React.FC = () => {
   }, [pendingTile, pendingTargetPosition, pendingTileRotation]);
 
   const isValid = isPlacementValid();
+  const isInteractionBlockingMovement = !!interactionState;
   if (!activePlayer) return <div className="relative w-full h-full bg-[#0c0c0e] flex items-center justify-center text-zinc-500 uppercase tracking-widest animate-pulse">协议启动中...</div>;
 
   return (
@@ -134,7 +138,7 @@ const MapGrid: React.FC = () => {
           );
         })}
 
-        {!activeCard && !pendingTile && (
+        {!activeCard && !isInteractionBlockingMovement && (
             <div className="absolute z-20 w-32 h-32 pointer-events-none" style={{ left: activePlayer.position.x * TILE_SIZE, top: activePlayer.position.y * TILE_SIZE }}>
                 <button onClick={() => movePlayer(Direction.North)} className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto border border-zinc-600"><ArrowUp size={16} /></button>
                 <button onClick={() => movePlayer(Direction.South)} className="absolute -bottom-12 left-1/2 -translate-x-1/2 bg-zinc-800/80 p-2 rounded-full hover:bg-zinc-700 pointer-events-auto border border-zinc-600"><ArrowDown size={16} /></button>
@@ -144,12 +148,20 @@ const MapGrid: React.FC = () => {
         )}
       </div>
 
-      {pendingTile && (
+        {isTilePlacementInteraction && pendingTile && (
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-zinc-900/90 p-3 rounded-lg border border-zinc-700 backdrop-blur shadow-2xl z-50">
             <div className="flex flex-col items-center mr-2">
                 <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-wider mb-1">旋转</span>
                 <button onClick={rotatePendingTile} className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-200 border border-zinc-600 transition-colors" title="旋转 (R)"><RotateCw size={20} /></button>
             </div>
+          <div className="flex flex-col items-start justify-center min-w-[180px] px-2">
+            <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-wider mb-1">当前交互</span>
+            <span className="text-sm font-semibold text-zinc-100">等待放置房间</span>
+            <span className="text-[11px] text-zinc-400">
+              {tilePlacementDirection ? `方向 ${tilePlacementDirection}` : '方向未知'}
+              {tilePlacementTarget ? ` · 目标 (${tilePlacementTarget.x}, ${tilePlacementTarget.y})` : ''}
+            </span>
+          </div>
             <div className="w-px h-10 bg-zinc-700 mx-2" />
             <div className="flex flex-col items-center">
                 <span className="text-[10px] uppercase text-zinc-500 font-bold tracking-wider mb-1">确认</span>

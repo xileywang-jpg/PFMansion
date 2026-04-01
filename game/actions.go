@@ -248,27 +248,13 @@ func (g *GameManager) executeDeckDrawUnlocked(roomID, playerID, deckName string)
 			switch card.Interaction.Type {
 			case "ATTRIBUTE_CHECK":
 				g.clearLastRollResultUnlocked(state)
-				state.PendingAction = &PendingAction{
-					Type:   "ATTRIBUTE_CHECK",
-					Target: playerID,
-					Data: map[string]interface{}{
-						"attribute":  card.Interaction.Attribute,
-						"difficulty": card.Interaction.Difficulty,
-						"eventID":    card.ID,
-					},
-				}
+				state.PendingAction = NewPendingAttributeCheck(playerID, card.Interaction.Attribute, card.Interaction.Difficulty, map[string]interface{}{"eventID": card.ID})
 				result.Wait = true
 				result.Reveal = true
 				return result, nil
 			case "CHOICE":
 				g.clearLastRollResultUnlocked(state)
-				state.PendingAction = &PendingAction{
-					Type:   "CHOICE",
-					Target: playerID,
-					Data: map[string]interface{}{
-						"eventID": card.ID,
-					},
-				}
+				state.PendingAction = NewPendingChoice(playerID, map[string]interface{}{"eventID": card.ID})
 				result.Wait = true
 				result.Reveal = true
 				return result, nil
@@ -313,10 +299,7 @@ func (g *GameManager) attachPendingContinuationUnlocked(state *GameStateFull, co
 	if state == nil || state.PendingAction == nil || continuation == nil {
 		return
 	}
-	if state.PendingAction.Data == nil {
-		state.PendingAction.Data = map[string]interface{}{}
-	}
-	state.PendingAction.Data["continuation"] = continuation
+	state.PendingAction.SetContinuation(continuation)
 }
 
 func (g *GameManager) triggerTileLeaveUnlocked(roomID, playerID, tileDefID string, continuation map[string]interface{}) (bool, error) {
@@ -623,17 +606,7 @@ func (g *GameManager) executeTileTriggerUnlocked(roomID, playerID string, trigge
 
 	case "ATTRIBUTE_CHECK":
 		g.clearLastRollResultUnlocked(state)
-		state.PendingAction = &PendingAction{
-			Type:   "TILE_ATTRIBUTE_CHECK",
-			Target: playerID,
-			Data: map[string]interface{}{
-				"attribute":      trigger.Attribute,
-				"difficulty":     trigger.Difficulty,
-				"successEffects": trigger.Success,
-				"failureEffects": trigger.Failure,
-			},
-			Message: trigger.Message,
-		}
+		state.PendingAction = NewPendingTileAttributeCheck(playerID, trigger.Attribute, trigger.Difficulty, trigger.Success, trigger.Failure, trigger.Message)
 		if trigger.Message != "" {
 			g.addLog(roomID, trigger.Message, "alert")
 		} else {
@@ -699,25 +672,21 @@ func (g *GameManager) ResolvePendingTileCheck(roomID, playerID string, success b
 	}
 	state := room.GameState.FullState
 	pending := state.PendingAction
-	if pending == nil || pending.Type != "TILE_ATTRIBUTE_CHECK" {
+	if pending == nil || pending.Type != PendingActionTypeTileAttributeCheck {
 		return errors.New("没有待处理的地块检定")
 	}
 	if pending.Target != playerID {
 		return errors.New("当前不是你的地块检定")
 	}
-	continuation, _ := pending.Data["continuation"].(map[string]interface{})
+	continuation := pending.ContinuationData()
 	state.PendingAction = nil
 	g.clearLastRollResultUnlocked(state)
 
 	var selected []Effect
 	if success {
-		if effects, ok := pending.Data["successEffects"].([]Effect); ok {
-			selected = effects
-		}
+		selected = pending.SuccessEffectList()
 	} else {
-		if effects, ok := pending.Data["failureEffects"].([]Effect); ok {
-			selected = effects
-		}
+		selected = pending.FailureEffectList()
 	}
 	for _, effect := range selected {
 		g.applyEffect(roomID, playerID, effect)
@@ -768,15 +737,7 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 				case "ATTRIBUTE_CHECK":
 					g.clearLastRollResultUnlocked(state.FullState)
 					// 设置待处理动作，让玩家投骰子
-					state.FullState.PendingAction = &PendingAction{
-						Type:   "ATTRIBUTE_CHECK",
-						Target: playerID,
-						Data: map[string]interface{}{
-							"attribute":  event.Interaction.Attribute,
-							"difficulty": event.Interaction.Difficulty,
-							"eventID":    event.ID,
-						},
-					}
+					state.FullState.PendingAction = NewPendingAttributeCheck(playerID, event.Interaction.Attribute, event.Interaction.Difficulty, map[string]interface{}{"eventID": event.ID})
 					g.addLog(roomID, fmt.Sprintf("%s 触发了事件: %s - 需要进行 %s 检定",
 						player.Character.Name, event.Name, event.Interaction.Attribute), "alert")
 					return nil // 等待玩家投骰子
@@ -784,13 +745,7 @@ func (g *GameManager) TriggerRoomEvent(roomID, playerID, tileDefID string) error
 				case "CHOICE":
 					g.clearLastRollResultUnlocked(state.FullState)
 					// 设置待处理动作，让玩家选择
-					state.FullState.PendingAction = &PendingAction{
-						Type:   "CHOICE",
-						Target: playerID,
-						Data: map[string]interface{}{
-							"eventID": event.ID,
-						},
-					}
+					state.FullState.PendingAction = NewPendingChoice(playerID, map[string]interface{}{"eventID": event.ID})
 					g.addLog(roomID, fmt.Sprintf("%s 触发了事件: %s - 请做出选择",
 						player.Character.Name, event.Name), "alert")
 					return nil // 等待玩家选择

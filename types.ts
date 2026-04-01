@@ -478,6 +478,113 @@ export interface LogEntry {
   type: 'info' | 'alert' | 'narrative' | 'success' | 'failure' | 'warning';
 }
 
+export type FeedbackType = 'error' | 'info' | 'warning' | 'turn' | 'death' | 'alert' | 'success';
+
+export interface FeedbackState {
+  message: string;
+  type: FeedbackType;
+}
+
+export interface CardRevealState {
+  card: CardDef | Item | EventCard;
+  deck: 'OMEN' | 'ITEM' | 'EVENT';
+  onConfirmAction?: () => void;
+}
+
+export interface AttributeCheckPendingActionData {
+  attribute?: string;
+  difficulty?: number;
+  continuation?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface ChoicePendingActionData {
+  options?: Choice[];
+  [key: string]: unknown;
+}
+
+export interface CombatPendingActionData {
+  attribute?: string;
+  defenderId?: string;
+  [key: string]: unknown;
+}
+
+export interface HauntRollPendingActionData {
+  omenCount?: number;
+  [key: string]: unknown;
+}
+
+export interface PendingActionBase<TType extends string = string, TData extends Record<string, unknown> = Record<string, unknown>> {
+  type: TType;
+  target: string;
+  data?: TData;
+  cardId?: string;
+  message?: string;
+  attribute?: string;
+  difficulty?: number;
+  eventId?: string;
+  continuation?: Record<string, unknown>;
+  successEffects?: unknown[];
+  failureEffects?: unknown[];
+}
+
+export type InteractionStateType = 'ATTRIBUTE_CHECK' | 'TILE_ATTRIBUTE_CHECK' | 'CHOICE' | 'COMBAT' | 'HAUNT_ROLL' | 'TILE_PLACEMENT';
+
+export type CombatInteractionPhase = 'ATTACKING' | 'RESULT';
+
+export interface InteractionState {
+  type: InteractionStateType;
+  playerId: string;
+  message?: string;
+  attribute?: string;
+  difficulty?: number;
+  eventId?: string;
+  cardId?: string;
+  omenCount?: number;
+  attackerId?: string;
+  defenderId?: string;
+  combatPhase?: CombatInteractionPhase;
+  attackerRolls?: number[];
+  defenderRolls?: number[];
+  attackerSum?: number;
+  defenderSum?: number;
+  damage?: number;
+  loser?: string;
+  draw?: boolean;
+  attackerDied?: boolean;
+  defenderDied?: boolean;
+  tileId?: string;
+  direction?: string;
+  rotation?: number;
+  targetPos?: { x: number; y: number } | null;
+}
+
+export type RoomInteractionDialogState =
+  | { kind: 'CLOSED' }
+  | { kind: 'TRADE' }
+  | { kind: 'PROMPT'; interaction: TileInteraction; tileId?: string | null }
+  | { kind: 'TELEPORT'; interaction: TileInteraction; tileId?: string | null }
+  | { kind: 'DIVINATION'; interaction: TileInteraction; tileId?: string | null };
+
+export type PendingAction =
+  | PendingActionBase<'ATTRIBUTE_CHECK', AttributeCheckPendingActionData>
+  | PendingActionBase<'TILE_ATTRIBUTE_CHECK', AttributeCheckPendingActionData>
+  | PendingActionBase<'CHOICE', ChoicePendingActionData>
+  | PendingActionBase<'COMBAT', CombatPendingActionData>
+  | PendingActionBase<'HAUNT_ROLL', HauntRollPendingActionData>
+  | PendingActionBase<string, Record<string, unknown>>;
+
+export interface GameUiState {
+  hoveredTileId: string | null;
+  isInventoryOpen: boolean;
+  roomInteractionDialog: RoomInteractionDialogState;
+  isSkillTreeOpen: boolean;
+  inspectPlayerId: string | null;
+  cardRevealModal: CardRevealState | null;
+  pendingInteractionEffects: ScriptAction[] | null;
+  activeFeedback: FeedbackState | null;
+}
+
 export interface ActiveRoll {
   id: string;
   rollType?: 'STANDARD' | 'HAUNT';

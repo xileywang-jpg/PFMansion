@@ -32,7 +32,7 @@ const AttributeRow: React.FC<{ label: string, current: number, max: number, icon
 };
 
 const PlayerHUD: React.FC = () => {
-  const { players, playerIds, activePlayerId, logs, toggleInventory, toggleInteractionModal, phase, currentScenario, executeLogicAction, toggleSkillTree, getEffectiveAttributeValue, openInspection } = useGameStore();
+  const { players, playerIds, activePlayerId, logs, toggleInventory, openTradeInteraction, phase, currentScenario, executeLogicAction, toggleSkillTree, getEffectiveAttributeValue, openInspection, interactionState, activeCard, ui } = useGameStore();
   const player = players[activePlayerId];
   const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
   const [logTab, setLogTab] = useState<'global' | 'personal'>('global');
@@ -54,6 +54,8 @@ const PlayerHUD: React.FC = () => {
       p.position.y === player.position.y
     );
   }, [players, player, activePlayerId]);
+
+  const isTradeInteractionBlocked = !!interactionState || !!activeCard || ui.roomInteractionDialog.kind !== 'CLOSED';
 
   const availableSkills = useMemo(() => {
     if (!player) return [];
@@ -245,11 +247,12 @@ const PlayerHUD: React.FC = () => {
             {/* Interaction Button */}
             {!player.isDead && otherPlayersInRoom.length > 0 && (
                 <button 
-                  onClick={toggleInteractionModal}
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-bold uppercase transition-all shadow-lg animate-pulse"
+                  onClick={openTradeInteraction}
+                  disabled={isTradeInteractionBlocked}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 disabled:bg-zinc-900/60 disabled:text-zinc-600 text-indigo-400 border border-indigo-500/30 disabled:border-zinc-800 rounded text-[10px] font-bold uppercase transition-all shadow-lg animate-pulse disabled:animate-none"
                 >
                   <Users size={12} />
-                  交互
+                  {isTradeInteractionBlocked ? '等待中' : '交互'}
                 </button>
             )}
         </div>

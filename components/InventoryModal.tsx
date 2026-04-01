@@ -6,10 +6,10 @@ import { X, Backpack, Crosshair, Syringe, Gem, Skull, Zap, Trash2, ArrowUpCircle
 import { Item } from '../types';
 
 const InventoryModal: React.FC = () => {
-  const { isInventoryOpen, toggleInventory, players, activePlayerId, useItem, dropItem } = useGameStore();
+    const { ui, toggleInventory, players, activePlayerId, useItem, dropItem } = useGameStore();
   const player = players[activePlayerId];
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
-  if (!isInventoryOpen || !player) return null;
+    if (!ui.isInventoryOpen || !player) return null;
   const selectedItem = selectedItemIndex !== null ? player.items[selectedItemIndex] : null;
 
   const getItemIcon = (item: Item, size: number = 24) => {

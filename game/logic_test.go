@@ -133,11 +133,7 @@ func TestNextTurnInternal_ClearsPendingAction(t *testing.T) {
 	room := gm.Rooms[roomID]
 
 	room.GameState.FullState.ActivePlayerID = "player_1"
-	room.GameState.FullState.PendingAction = &PendingAction{
-		Type:   "ATTRIBUTE_CHECK",
-		Target: "player_1",
-		Data:   map[string]interface{}{"attribute": "might", "difficulty": 3},
-	}
+	room.GameState.FullState.PendingAction = NewPendingAttributeCheck("player_1", "might", 3, nil)
 
 	err := gm.nextTurnInternal(room)
 	if err != nil {
@@ -199,7 +195,7 @@ func TestResolveHauntRoll_UsesProvidedDiceResults(t *testing.T) {
 		t.Fatalf("ResolveHauntRoll 失败: %v", err)
 	}
 
-	if actionResult["checkType"] != "HAUNT_ROLL" {
+	if actionResult["checkType"] != string(PendingActionTypeHauntRoll) {
 		t.Fatalf("checkType 应为 HAUNT_ROLL, 实际为 %#v", actionResult["checkType"])
 	}
 	if success, ok := actionResult["success"].(bool); !ok || !success {
@@ -213,6 +209,175 @@ func TestResolveHauntRoll_UsesProvidedDiceResults(t *testing.T) {
 	}
 	if room.GameState.FullState.Phase != GamePhaseExploration {
 		t.Fatalf("作祟检定通过后应回到探索阶段, 实际为 %s", room.GameState.FullState.Phase)
+	}
+}
+
+func TestBuildInteractionState_FromPendingAction(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	state.PendingAction = NewPendingAttributeCheck("player_1", "knowledge", 5, map[string]interface{}{"eventId": "event_test"})
+
+	interaction := state.BuildInteractionState()
+	if interaction == nil {
+		t.Fatal("PendingAction 存在时应派生 interactionState")
+	}
+	if interaction.Type != InteractionStateTypeAttributeCheck {
+		t.Fatalf("interactionState 类型错误: %s", interaction.Type)
+	}
+	if interaction.PlayerID != "player_1" {
+		t.Fatalf("interactionState playerId 错误: %s", interaction.PlayerID)
+	}
+	if interaction.Attribute != "knowledge" {
+		t.Fatalf("interactionState attribute 错误: %s", interaction.Attribute)
+	}
+	if interaction.Difficulty != 5 {
+		t.Fatalf("interactionState difficulty 错误: %d", interaction.Difficulty)
+	}
+	if interaction.EventID != "event_test" {
+		t.Fatalf("interactionState eventId 错误: %s", interaction.EventID)
+	}
+}
+
+func TestBuildInteractionState_FromActiveCombat(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	state.ActiveCombat = &CombatState{
+		AttackerID: "player_1",
+		DefenderID: "player_2",
+		Attribute:  "might",
+		Phase:      "ATTACKING",
+	}
+
+	interaction := state.BuildInteractionState()
+	if interaction == nil {
+		t.Fatal("ActiveCombat 存在时应派生 interactionState")
+	}
+	if interaction.Type != InteractionStateTypeCombat {
+		t.Fatalf("interactionState 类型错误: %s", interaction.Type)
+	}
+	if interaction.PlayerID != "player_1" {
+		t.Fatalf("interactionState playerId 错误: %s", interaction.PlayerID)
+	}
+	if interaction.AttackerID != "player_1" || interaction.DefenderID != "player_2" {
+		t.Fatalf("interactionState 战斗参与者错误: %+v", interaction)
+	}
+	if interaction.Attribute != "might" {
+		t.Fatalf("interactionState 战斗属性错误: %s", interaction.Attribute)
+	}
+	if interaction.CombatPhase != "ATTACKING" {
+		t.Fatalf("interactionState 战斗阶段错误: %s", interaction.CombatPhase)
+	}
+}
+
+func TestBuildInteractionState_FromCombatResult(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	state.CombatResult = &CombatResult{
+		AttackerID:    "player_1",
+		DefenderID:    "player_2",
+		AttackerRolls: []int{2, 1, 0},
+		AttackerSum:   3,
+		DefenderRolls: []int{1, 0, 0},
+		DefenderSum:   1,
+		Damage:        2,
+		Loser:         "player_2",
+		Draw:          false,
+		Attribute:     "might",
+	}
+
+	interaction := state.BuildInteractionState()
+	if interaction == nil {
+		t.Fatal("CombatResult 存在时应派生 interactionState")
+	}
+	if interaction.Type != InteractionStateTypeCombat {
+		t.Fatalf("interactionState 类型错误: %s", interaction.Type)
+	}
+	if interaction.CombatPhase != "RESULT" {
+		t.Fatalf("interactionState 战斗结果阶段错误: %s", interaction.CombatPhase)
+	}
+	if interaction.Damage != 2 {
+		t.Fatalf("interactionState damage 错误: %d", interaction.Damage)
+	}
+	if interaction.Loser != "player_2" {
+		t.Fatalf("interactionState loser 错误: %s", interaction.Loser)
+	}
+	if interaction.AttackerSum != 3 || interaction.DefenderSum != 1 {
+		t.Fatalf("interactionState 战斗点数错误: %+v", interaction)
+	}
+}
+
+func TestClearCombatResult_RemovesStoredResult(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	state.ActivePlayerID = "player_1"
+	state.CombatResult = &CombatResult{AttackerID: "player_1", DefenderID: "player_2", Attribute: "might"}
+
+	if err := gm.ClearCombatResult(roomID, "player_1"); err != nil {
+		t.Fatalf("ClearCombatResult 失败: %v", err)
+	}
+	if state.CombatResult != nil {
+		t.Fatal("ClearCombatResult 后 CombatResult 应被清除")
+	}
+}
+
+func TestBuildInteractionState_FromHauntRollPhase(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	state.Phase = GamePhaseHauntRoll
+	state.ActivePlayerID = "player_2"
+	state.OmenCount = 6
+
+	interaction := state.BuildInteractionState()
+	if interaction == nil {
+		t.Fatal("HAUNT_ROLL 阶段应派生 interactionState")
+	}
+	if interaction.Type != InteractionStateTypeHauntRoll {
+		t.Fatalf("interactionState 类型错误: %s", interaction.Type)
+	}
+	if interaction.PlayerID != "player_2" {
+		t.Fatalf("interactionState playerId 错误: %s", interaction.PlayerID)
+	}
+	if interaction.OmenCount != 6 {
+		t.Fatalf("interactionState omenCount 错误: %d", interaction.OmenCount)
+	}
+}
+
+func TestBuildInteractionState_FromPendingTilePlacement(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	state.ActivePlayerID = "player_1"
+	state.PendingTile = &TileDef{ID: "tile_library", Name: "图书馆"}
+	state.PendingMoveDirection = "E"
+	state.PendingTileRotation = 90
+	state.PendingTargetPos = &Pos{X: 1, Y: 0}
+
+	interaction := state.BuildInteractionState()
+	if interaction == nil {
+		t.Fatal("PendingTile 存在时应派生 interactionState")
+	}
+	if interaction.Type != InteractionStateTypeTilePlacement {
+		t.Fatalf("interactionState 类型错误: %s", interaction.Type)
+	}
+	if interaction.PlayerID != "player_1" {
+		t.Fatalf("interactionState playerId 错误: %s", interaction.PlayerID)
+	}
+	if interaction.TileID != "tile_library" {
+		t.Fatalf("interactionState tileId 错误: %s", interaction.TileID)
+	}
+	if interaction.Direction != "E" {
+		t.Fatalf("interactionState direction 错误: %s", interaction.Direction)
+	}
+	if interaction.Rotation != 90 {
+		t.Fatalf("interactionState rotation 错误: %d", interaction.Rotation)
+	}
+	if interaction.TargetPos == nil || interaction.TargetPos.X != 1 || interaction.TargetPos.Y != 0 {
+		t.Fatalf("interactionState targetPos 错误: %+v", interaction.TargetPos)
 	}
 }
 
@@ -304,7 +469,7 @@ func TestSetPendingAction_Success(t *testing.T) {
 	roomID := createTestRoomForLogic(gm)
 
 	action := &PendingAction{
-		Type:   "ATTRIBUTE_CHECK",
+		Type:   PendingActionTypeAttributeCheck,
 		Target: "player_1",
 		Data:   map[string]interface{}{"attribute": "might", "difficulty": 3},
 	}
@@ -318,7 +483,7 @@ func TestSetPendingAction_Success(t *testing.T) {
 	if room.GameState.FullState.PendingAction == nil {
 		t.Fatal("PendingAction 应该被设置")
 	}
-	if room.GameState.FullState.PendingAction.Type != "ATTRIBUTE_CHECK" {
+	if room.GameState.FullState.PendingAction.Type != PendingActionTypeAttributeCheck {
 		t.Errorf("PendingAction 类型应该是 ATTRIBUTE_CHECK, 实际是 %s", room.GameState.FullState.PendingAction.Type)
 	}
 }
@@ -331,7 +496,7 @@ func TestSetPendingAction_ClearsLastRollResult(t *testing.T) {
 	room.GameState.FullState.LastRollResult = &result
 
 	action := &PendingAction{
-		Type:   "ATTRIBUTE_CHECK",
+		Type:   PendingActionTypeAttributeCheck,
 		Target: "player_1",
 		Data:   map[string]interface{}{"attribute": "might", "difficulty": 3},
 	}
@@ -349,7 +514,7 @@ func TestSetPendingAction_ClearsLastRollResult(t *testing.T) {
 func TestSetPendingAction_RoomNotFound(t *testing.T) {
 	gm := &GameManager{Rooms: make(map[string]*Room)}
 
-	err := gm.SetPendingAction("nonexistent_room", &PendingAction{Type: "TEST"})
+	err := gm.SetPendingAction("nonexistent_room", &PendingAction{Type: PendingActionType("TEST")})
 	if err == nil {
 		t.Error("应该返回错误当房间不存在")
 	}
@@ -359,7 +524,7 @@ func TestClearPendingAction_Success(t *testing.T) {
 	gm := &GameManager{Rooms: make(map[string]*Room)}
 	roomID := createTestRoomForLogic(gm)
 
-	gm.Rooms[roomID].GameState.FullState.PendingAction = &PendingAction{Type: "ATTRIBUTE_CHECK"}
+	gm.Rooms[roomID].GameState.FullState.PendingAction = &PendingAction{Type: PendingActionTypeAttributeCheck}
 
 	err := gm.ClearPendingAction(roomID)
 	if err != nil {
@@ -376,7 +541,7 @@ func TestCheckPendingAction_ReturnsAction(t *testing.T) {
 	roomID := createTestRoomForLogic(gm)
 
 	expectedAction := &PendingAction{
-		Type:   "CHOICE",
+		Type:   PendingActionTypeChoice,
 		Target: "player_1",
 		Data:   map[string]interface{}{"eventID": "event_1"},
 	}
@@ -390,7 +555,7 @@ func TestCheckPendingAction_ReturnsAction(t *testing.T) {
 	if action == nil {
 		t.Fatal("CheckPendingAction 应该返回 PendingAction")
 	}
-	if action.Type != "CHOICE" {
+	if action.Type != PendingActionTypeChoice {
 		t.Errorf("PendingAction 类型应该是 CHOICE, 实际是 %s", action.Type)
 	}
 }

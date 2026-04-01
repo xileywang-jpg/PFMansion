@@ -29,7 +29,7 @@ func TestTriggerRoomEvent_OnEnterAttributeCheckCreatesPendingAction(t *testing.T
 	if pending == nil {
 		t.Fatal("应创建地块属性检定 PendingAction")
 	}
-	if pending.Type != "TILE_ATTRIBUTE_CHECK" {
+	if pending.Type != PendingActionTypeTileAttributeCheck {
 		t.Fatalf("PendingAction 类型错误: %s", pending.Type)
 	}
 	if pending.Target != "player_1" {
@@ -37,6 +37,12 @@ func TestTriggerRoomEvent_OnEnterAttributeCheckCreatesPendingAction(t *testing.T
 	}
 	if pending.Message != "你感到墙壁在低语。" {
 		t.Fatalf("PendingAction message 未同步: %s", pending.Message)
+	}
+	if pending.Attribute != "knowledge" {
+		t.Fatalf("结构化 attribute 错误: %s", pending.Attribute)
+	}
+	if pending.Difficulty != 5 {
+		t.Fatalf("结构化 difficulty 错误: %d", pending.Difficulty)
 	}
 	attribute, ok := pending.Data["attribute"].(string)
 	if !ok || attribute != "knowledge" {
@@ -138,8 +144,11 @@ func TestProcessMove_OnLeaveCheckWaitsAndResumes(t *testing.T) {
 	if room.GameState.FullState.MovesRemaining != 4 {
 		t.Fatalf("离场检定等待时不应提前扣步数, 实际为 %d", room.GameState.FullState.MovesRemaining)
 	}
-	if room.GameState.FullState.PendingAction == nil || room.GameState.FullState.PendingAction.Type != "TILE_ATTRIBUTE_CHECK" {
+	if room.GameState.FullState.PendingAction == nil || room.GameState.FullState.PendingAction.Type != PendingActionTypeTileAttributeCheck {
 		t.Fatal("移动前 onLeave 应创建地块检定 PendingAction")
+	}
+	if room.GameState.FullState.PendingAction.Continuation == nil {
+		t.Fatal("移动前 onLeave 应写入结构化 continuation")
 	}
 
 	if err := gm.ResolvePendingTileCheck(roomID, "player_1", false); err != nil {
@@ -198,7 +207,7 @@ func TestPlaceTile_OnLeaveCheckWaitsAndResumes(t *testing.T) {
 	if err := gm.PlaceTile(roomID, "player_1", "E", 0); err != nil {
 		t.Fatalf("PlaceTile 失败: %v", err)
 	}
-	if room.GameState.FullState.PendingAction == nil || room.GameState.FullState.PendingAction.Type != "TILE_ATTRIBUTE_CHECK" {
+	if room.GameState.FullState.PendingAction == nil || room.GameState.FullState.PendingAction.Type != PendingActionTypeTileAttributeCheck {
 		t.Fatal("放置前 onLeave 应创建地块检定 PendingAction")
 	}
 	if room.GameState.FullState.PendingTile == nil {
@@ -272,7 +281,7 @@ func TestTeleportPlayer_OnLeaveCheckWaitsAndResumes(t *testing.T) {
 	if player.Position.X != 0 || player.Position.Y != 0 {
 		t.Fatalf("离场检定等待时不应提前传送, 实际位置: %+v", player.Position)
 	}
-	if room.GameState.FullState.PendingAction == nil || room.GameState.FullState.PendingAction.Type != "TILE_ATTRIBUTE_CHECK" {
+	if room.GameState.FullState.PendingAction == nil || room.GameState.FullState.PendingAction.Type != PendingActionTypeTileAttributeCheck {
 		t.Fatal("传送前 onLeave 应创建地块检定 PendingAction")
 	}
 
@@ -335,8 +344,11 @@ func TestApplyEffect_MovePlayerOnLeaveResumesAndTriggersOnEnter(t *testing.T) {
 		t.Fatalf("强制位移等待离场检定时不应提前移动, 实际位置: %+v", player.Position)
 	}
 	pending := room.GameState.FullState.PendingAction
-	if pending == nil || pending.Type != "TILE_ATTRIBUTE_CHECK" {
+	if pending == nil || pending.Type != PendingActionTypeTileAttributeCheck {
 		t.Fatal("强制位移前 onLeave 应创建地块检定 PendingAction")
+	}
+	if pending.Continuation == nil {
+		t.Fatal("强制位移前 onLeave 应写入结构化 continuation")
 	}
 	if pending.Data["attribute"] != "speed" {
 		t.Fatalf("离场检定属性错误: %#v", pending.Data["attribute"])
@@ -350,7 +362,7 @@ func TestApplyEffect_MovePlayerOnLeaveResumesAndTriggersOnEnter(t *testing.T) {
 		t.Fatalf("离场检定完成后应继续强制位移, 实际位置: %+v", player.Position)
 	}
 	pending = room.GameState.FullState.PendingAction
-	if pending == nil || pending.Type != "TILE_ATTRIBUTE_CHECK" {
+	if pending == nil || pending.Type != PendingActionTypeTileAttributeCheck {
 		t.Fatal("进入目标房间后 onEnter 应创建新的地块检定")
 	}
 	if pending.Data["attribute"] != "knowledge" {

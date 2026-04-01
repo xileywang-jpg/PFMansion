@@ -136,7 +136,8 @@ const FlipCard: React.FC<FlipCardProps> = ({ card, cardType, isRevealed }) => {
 // ==================== 主组件 ====================
 
 const CardRevealModal: React.FC = () => {
-  const { cardRevealModal, closeCardReveal } = useGameStore();
+  const { ui, closeCardReveal } = useGameStore();
+  const cardRevealModal = ui.cardRevealModal;
   const [isRevealed, setIsRevealed] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 

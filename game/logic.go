@@ -188,7 +188,7 @@ func (g *GameManager) resolveHauntRollUnlocked(room *Room, results []int) (map[s
 	})
 
 	actionResult := map[string]interface{}{
-		"checkType":      "HAUNT_ROLL",
+		"checkType":      string(PendingActionTypeHauntRoll),
 		"difficulty":     omenCount,
 		"result":         sum,
 		"success":        sum >= omenCount,

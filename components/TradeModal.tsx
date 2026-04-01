@@ -21,7 +21,14 @@ export const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose }) => {
 
   // 其他玩家（排除自己）
   const otherPlayers = playerIds
-    .filter(id => id !== activePlayerId && !players[id]?.isDead)
+    .filter(id => {
+      const candidate = players[id];
+      return !!candidate
+        && id !== activePlayerId
+        && !candidate.isDead
+        && candidate.position.x === currentPlayer?.position.x
+        && candidate.position.y === currentPlayer?.position.y;
+    })
     .map(id => players[id])
     .filter(Boolean);
 

@@ -6,7 +6,8 @@ import { AlertCircle, Info, AlertTriangle, User, Skull } from 'lucide-react';
 import { PLAYER_COLORS } from '../constants';
 
 const FeedbackToast: React.FC = () => {
-  const { activeFeedback, playerIds, activePlayerId } = useGameStore();
+  const { ui, playerIds, activePlayerId } = useGameStore();
+  const activeFeedback = ui.activeFeedback;
 
   if (activeFeedback?.type === 'turn' || activeFeedback?.type === 'death') {
     const isDeath = activeFeedback.type === 'death';

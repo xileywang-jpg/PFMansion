@@ -15,7 +15,7 @@ import * as Icons from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin, Sparkles, Clock,
-  HelpCircle, DoorOpen, RefreshCw,
+  HelpCircle, DoorOpen, RefreshCw, Hand,
 } from 'lucide-react';
 import { getTileHintEntries, getTileRevealPresentation } from '../utils/tileReveal';
 
@@ -46,13 +46,16 @@ const getEdgeStyle = (edge: string): { bg: string; text: string } => {
 
 const TileInspector: React.FC = () => {
   const { 
-    hoveredTileId, 
+    ui,
     map, 
     players, 
     activePlayerId, 
     pendingTile, 
     getTileById,
-    gameData 
+    gameData,
+    openTileInteraction,
+    interactionState,
+    activeCard,
   } = useGameStore();
   
   const activePlayer = players[activePlayerId];
@@ -71,8 +74,8 @@ const TileInspector: React.FC = () => {
 
     // 其次 hoveredTileId（悬停的地块）
     // 如果没有 hover，则显示当前玩家所在的地块
-    const activeTileId = hoveredTileId 
-      ? hoveredTileId 
+    const activeTileId = ui.hoveredTileId 
+      ? ui.hoveredTileId 
       : (activePlayer ? `${activePlayer.position.x},${activePlayer.position.y}` : null);
 
     if (!activeTileId) return null;
@@ -91,11 +94,11 @@ const TileInspector: React.FC = () => {
       instance,
       label: `坐标: ${instance.x}, ${instance.y}`,
       isPending: false,
-      isCurrentPlayer: !hoveredTileId && activePlayer && 
+      isCurrentPlayer: !ui.hoveredTileId && activePlayer && 
         activePlayer.position.x === instance.x && 
         activePlayer.position.y === instance.y,
     };
-  }, [hoveredTileId, map, activePlayer, pendingTile, getTileById]);
+  }, [ui.hoveredTileId, map, activePlayer, pendingTile, getTileById]);
 
   // 获取关联的事件详情
   const eventDetails = useMemo(() => {
@@ -121,6 +124,7 @@ const TileInspector: React.FC = () => {
   const CardSymbolIcon = revealPresentation?.icon;
   const tileHintEntries = getTileHintEntries(def);
   const nonRevealHintEntries = tileHintEntries.filter(entry => entry.kind !== 'reveal');
+  const isRoomInteractionBlocked = !!interactionState || !!activeCard || ui.roomInteractionDialog.kind !== 'CLOSED';
 
   return (
     <AnimatePresence mode="wait">
@@ -280,6 +284,34 @@ const TileInspector: React.FC = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {def.interact && isCurrentPlayer && !isPending && (
+            <div>
+              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider block mb-2">
+                房间互动
+              </span>
+              <div className="p-3 rounded-lg border bg-indigo-950/20 border-indigo-800/40">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-bold text-indigo-300 flex items-center gap-2">
+                      <Hand size={14} />
+                      {def.interact.type}
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                      {def.interact.description}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => openTileInteraction(def.interact!, def.id)}
+                    disabled={isRoomInteractionBlocked}
+                    className="shrink-0 px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-800 disabled:text-zinc-500 text-white text-xs font-bold uppercase tracking-wider transition-colors"
+                  >
+                    {isRoomInteractionBlocked ? '等待中' : '执行'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

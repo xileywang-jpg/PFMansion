@@ -468,26 +468,116 @@ func (h *Hub) handleStartGame(msg *Message) {
 	h.sendGameState(msg.client.roomID)
 }
 
+type gameActionRequest struct {
+	Type   string                 `json:"type"`
+	RoomId string                 `json:"roomId,omitempty"`
+	Action map[string]interface{} `json:"action"`
+}
+
+type gameActionContext struct {
+	message    *Message
+	roomID     string
+	actionType string
+	action     map[string]interface{}
+}
+
+type gameActionHandler func(*Hub, *gameActionContext) (bool, error)
+
+var gameActionHandlers = map[string]gameActionHandler{
+	"move":                     handleMoveGameAction,
+	"end_turn":                 handleEndTurnGameAction,
+	"cancel_tile_placement":    handleCancelTilePlacementGameAction,
+	"perform_haunt_roll":       handlePerformHauntRollGameAction,
+	"force_haunt":              handleForceHauntGameAction,
+	"roll_dice":                handleRollDiceGameAction,
+	"place_tile":               handlePlaceTileGameAction,
+	"modify_stat":              handleModifyStatGameAction,
+	"draw_card":                handleDrawCardGameAction,
+	"resolve_event":            handleResolveEventGameAction,
+	"start_combat":             handleStartCombatGameAction,
+	"resolve_combat":           handleResolveCombatGameAction,
+	"dismiss_combat_result":    handleDismissCombatResultGameAction,
+	"use_item":                 handleUseItemGameAction,
+	"execute_skill":            handleExecuteSkillGameAction,
+	"unlock_skill_node":        handleUnlockSkillNodeGameAction,
+	"trigger_buff":             handleTriggerBuffGameAction,
+	"pickup_item":              handlePickupItemGameAction,
+	"give_item":                handleGiveItemGameAction,
+	"trade_items":              handleTradeItemsGameAction,
+	"drop_item":                handleDropItemGameAction,
+	"interact_wall":            handleInteractWallGameAction,
+	"teleport_to_tile":         handleTeleportToTileGameAction,
+	"divination":               handleDivinationGameAction,
+	"execute_tile_interaction": handleExecuteTileInteractionGameAction,
+	"attack_npc":               handleAttackNPCGameAction,
+	"npc_attack_player":        handleNPCAttackPlayerGameAction,
+}
+
+func (ctx *gameActionContext) playerID() string {
+	return ctx.message.client.playerID
+}
+
+func (ctx *gameActionContext) stringField(key string) string {
+	value, _ := ctx.action[key].(string)
+	return value
+}
+
+func (ctx *gameActionContext) requiredStringField(key, errMsg string) (string, error) {
+	value := ctx.stringField(key)
+	if value == "" {
+		return "", errors.New(errMsg)
+	}
+	return value, nil
+}
+
+func (ctx *gameActionContext) intField(key string) (int, bool) {
+	value, ok := ctx.action[key].(float64)
+	if !ok {
+		return 0, false
+	}
+	return int(value), true
+}
+
+func (h *Hub) sendClientMessage(client *Client, payload interface{}) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		logger.Warn("序列化客户端消息失败", map[string]interface{}{"error": err.Error()})
+		return
+	}
+	client.send <- data
+}
+
+func (h *Hub) sendClientError(client *Client, err error) {
+	if err == nil {
+		return
+	}
+	h.sendClientMessage(client, map[string]interface{}{
+		"type":    "error",
+		"message": err.Error(),
+	})
+}
+
+func (h *Hub) dispatchGameAction(ctx *gameActionContext) (bool, error) {
+	handler, ok := gameActionHandlers[ctx.actionType]
+	if !ok {
+		return false, errors.New("未知操作类型")
+	}
+	return handler(h, ctx)
+}
+
 func (h *Hub) handleGameAction(msg *Message) {
-	// ===== DEBUG: 收到游戏动作 =====
 	logger.Debug("收到game_action", map[string]interface{}{
 		"playerId": msg.client.playerID,
 		"roomID":   msg.client.roomID,
 		"data":     string(msg.data),
 	})
 
-	var req struct {
-		Type   string                 `json:"type"`
-		RoomId string                 `json:"roomId,omitempty"`
-		Action map[string]interface{} `json:"action"`
-	}
-
+	var req gameActionRequest
 	if err := json.Unmarshal(msg.data, &req); err != nil {
 		logger.Warn("解析game_action失败", map[string]interface{}{"error": err.Error()})
 		return
 	}
 
-	// 优先使用消息中的 roomId，否则使用客户端保存的
 	roomID := req.RoomId
 	if roomID == "" {
 		roomID = msg.client.roomID
@@ -501,458 +591,437 @@ func (h *Hub) handleGameAction(msg *Message) {
 		"fullAction": req.Action,
 	})
 
-	var err error
-
-	switch actionType {
-	case "move":
-		dir, _ := req.Action["direction"].(string)
-		logger.Debug("执行ProcessMove", map[string]interface{}{"direction": dir})
-		err = h.gameManager.ProcessMove(roomID, msg.client.playerID, dir)
-	case "end_turn":
-		logger.Debug("执行EndTurn", nil)
-		err = h.gameManager.EndTurn(roomID, msg.client.playerID)
-	case "cancel_tile_placement":
-		logger.Debug("执行CancelTilePlacement", nil)
-		err = h.gameManager.CancelTilePlacement(roomID, msg.client.playerID)
-	// ===== 作祟系统 =====
-	case "perform_haunt_roll":
-		state, stateErr := h.gameManager.GetGameState(roomID)
-		if stateErr != nil {
-			err = stateErr
-			break
-		}
-		if state == nil || state.ActivePlayerID != msg.client.playerID {
-			err = errors.New("只有当前玩家可以进行作祟检定")
-			break
-		}
-		results := h.gameManager.RollDice(6)
-		sum := 0
-		for _, v := range results {
-			sum += v
-		}
-		var actionResult map[string]interface{}
-		actionResult, err = h.gameManager.ResolveHauntRoll(roomID, results)
-		if err == nil {
-			h.broadcastToRoom(roomID, map[string]interface{}{
-				"type":         "dice_result",
-				"results":      results,
-				"sum":          sum,
-				"playerId":     msg.client.playerID,
-				"actionResult": actionResult,
-			})
-			h.sendGameState(roomID)
-			return
-		}
-	case "force_haunt":
-		// 强制触发作祟（调试用）
-		err = h.gameManager.ForceTriggerHaunt(roomID)
-	case "roll_dice":
-		// 🔒 安全修复：验证是否是当前玩家，且有待处理的投骰子动作
-		roomID := msg.client.roomID
-		pending, err := h.gameManager.CheckPendingAction(roomID)
-		if err != nil {
-			resp := map[string]interface{}{
-				"type":    "error",
-				"message": err.Error(),
-			}
-			data, _ := json.Marshal(resp)
-			msg.client.send <- data
-			return
-		}
-
-		// 检查是否是当前玩家
-		state, _ := h.gameManager.GetGameState(roomID)
-		if state == nil || state.ActivePlayerID != msg.client.playerID {
-			resp := map[string]interface{}{
-				"type":    "error",
-				"message": "只有当前玩家可以投骰子",
-			}
-			data, _ := json.Marshal(resp)
-			msg.client.send <- data
-			return
-		}
-		isHauntRoll := state.Phase == game.GamePhaseHauntRoll
-
-		// 检查是否有待处理的投骰子动作（属性检定或战斗）
-		// 容忍 pending 为 nil 的情况（防止超时重试或多发请求导致错误）
-		if pending == nil && !isHauntRoll {
-			resp := map[string]interface{}{
-				"type":      "dice_result",
-				"checkType": "STALE",
-				"message":   "骰子结果已过期，请刷新状态",
-			}
-			data, _ := json.Marshal(resp)
-			msg.client.send <- data
-			return
-		}
-
-		// 处理投骰子（后端生成结果）
-		numDice := 1
-		if isHauntRoll {
-			numDice = 6
-		} else if pending.Type == "ATTRIBUTE_CHECK" || pending.Type == "TILE_ATTRIBUTE_CHECK" {
-			if attrName, ok := pending.Data["attribute"].(string); ok {
-				if player, ok := state.Players[msg.client.playerID]; ok {
-					if attr, ok := player.Character.Attributes[attrName]; ok && attr.Current > 0 {
-						numDice = attr.Current
-					}
-				}
-			}
-		} else if nd, ok := req.Action["numDice"].(float64); ok {
-			numDice = int(nd)
-		}
-		results := h.gameManager.RollDice(numDice)
-		sum := 0
-		for _, v := range results {
-			sum += v
-		}
-
-		// 根据待处理动作类型处理结果
-		var actionResult map[string]interface{}
-		if isHauntRoll {
-			actionResult, err = h.gameManager.ResolveHauntRoll(roomID, results)
-			if err != nil {
-				resp := map[string]interface{}{
-					"type":    "error",
-					"message": err.Error(),
-				}
-				data, _ := json.Marshal(resp)
-				msg.client.send <- data
-				return
-			}
-		} else {
-			// Bug Fix: 设置 LastRollResult 以便 state_sync 时前端能同步骰子结果
-			h.gameManager.SetLastRollResult(roomID, sum)
-
-			switch pending.Type {
-			case "ATTRIBUTE_CHECK":
-				// 属性检定
-				difficulty := 3 // 默认难度
-				if d, ok := pending.Data["difficulty"].(float64); ok {
-					difficulty = int(d)
-				}
-				success := sum >= difficulty
-				actionResult = map[string]interface{}{
-					"checkType":  "ATTRIBUTE_CHECK",
-					"attribute":  pending.Data["attribute"],
-					"difficulty": difficulty,
-					"result":     sum,
-					"success":    success,
-				}
-
-				// 清除待处理动作
-				h.gameManager.ClearPendingAction(roomID)
-
-				// 继续执行事件效果
-				if success {
-					h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, 0) // 0 = success
-				} else {
-					h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, 1) // 1 = failure
-				}
-
-			case "TILE_ATTRIBUTE_CHECK":
-				difficulty := 3
-				if d, ok := pending.Data["difficulty"].(float64); ok {
-					difficulty = int(d)
-				}
-				success := sum >= difficulty
-				actionResult = map[string]interface{}{
-					"checkType":  "TILE_ATTRIBUTE_CHECK",
-					"attribute":  pending.Data["attribute"],
-					"difficulty": difficulty,
-					"result":     sum,
-					"success":    success,
-				}
-				if err := h.gameManager.ResolvePendingTileCheck(roomID, msg.client.playerID, success); err != nil {
-					resp := map[string]interface{}{
-						"type":    "error",
-						"message": err.Error(),
-					}
-					data, _ := json.Marshal(resp)
-					msg.client.send <- data
-					return
-				}
-
-			case "COMBAT":
-				// 战斗骰子 - 已经由 ResolveCombat 处理
-				actionResult = map[string]interface{}{
-					"checkType": "COMBAT",
-					"result":    sum,
-				}
-
-			default:
-				actionResult = map[string]interface{}{
-					"checkType": "GENERAL",
-					"result":    sum,
-				}
-				// 清除待处理动作
-				h.gameManager.ClearPendingAction(roomID)
-			}
-		}
-
-		resp := map[string]interface{}{
-			"type":         "dice_result",
-			"results":      results,
-			"sum":          sum,
-			"playerId":     msg.client.playerID,
-			"actionResult": actionResult,
-		}
-		h.broadcastToRoom(roomID, resp)
-		h.sendGameState(roomID)
-		return
-	case "place_tile":
-		// 放置新房间
-		dir, _ := req.Action["direction"].(string)
-		rotation, _ := req.Action["rotation"].(float64)
-		err = h.gameManager.PlaceTile(roomID, msg.client.playerID, dir, int(rotation))
-		// 如果有错误，立即返回错误，不发送状态同步（避免清除前端的 pendingTile）
-		if err != nil {
-			resp := map[string]interface{}{
-				"type":    "error",
-				"message": err.Error(),
-			}
-			data, _ := json.Marshal(resp)
-			msg.client.send <- data
-			return
-		}
-		// 放置成功后发送状态更新
-		h.sendGameState(roomID)
-		return
-	case "modify_stat":
-		// 修改属性
-		attr, _ := req.Action["attribute"].(string)
-		amount, _ := req.Action["amount"].(float64)
-		err = h.gameManager.ModifyStat(roomID, msg.client.playerID, attr, int(amount))
-	// ===== 阶段1新增：事件系统 =====
-	case "draw_card":
-		cardType, _ := req.Action["cardType"].(string)
-		result, err := h.gameManager.DrawCard(roomID, msg.client.playerID, cardType)
-		if err != nil {
-			resp := map[string]interface{}{
-				"type":    "error",
-				"message": err.Error(),
-			}
-			data, _ := json.Marshal(resp)
-			msg.client.send <- data
-			return
-		}
-		if result != nil {
-			if card, ok := result["card"]; ok && card != nil {
-				h.broadcastToRoom(roomID, map[string]interface{}{
-					"type":     "card_drawn",
-					"card":     card,
-					"deck":     result["deck"],
-					"playerId": msg.client.playerID,
-				})
-			}
-		}
-		// 发送状态更新
-		h.sendGameState(roomID)
-		return
-	case "resolve_event":
-		choiceIndex, _ := req.Action["choiceIndex"].(float64)
-		err = h.gameManager.ResolveEventChoice(roomID, msg.client.playerID, int(choiceIndex))
-		if err == nil {
-			h.sendGameState(roomID)
-		}
-	// ===== 阶段1新增：战斗系统 =====
-	case "start_combat":
-		defenderID, _ := req.Action["defenderId"].(string)
-		attribute, _ := req.Action["attribute"].(string)
-		err = h.gameManager.StartCombat(roomID, msg.client.playerID, defenderID, attribute)
-	case "resolve_combat":
-		// 🔒 安全修复：后端统一生成骰子结果，不接受前端传入
-		result, err := h.gameManager.ResolveCombat(roomID, msg.client.playerID)
-		if err == nil {
-			h.broadcastToRoom(roomID, map[string]interface{}{
-				"type":     "combat_resolved",
-				"result":   result,
-				"playerId": msg.client.playerID,
-			})
-			h.sendGameState(roomID)
-			return
-		}
-	// ===== 阶段1新增：物品系统 =====
-	case "use_item":
-		itemID, _ := req.Action["itemId"].(string)
-		targetID, _ := req.Action["targetId"].(string)
-		err = h.gameManager.UseItem(roomID, msg.client.playerID, itemID, targetID)
-	// ===== 阶段1新增：技能系统 =====
-	case "execute_skill":
-		skillID, _ := req.Action["skillId"].(string)
-		targetID, _ := req.Action["targetId"].(string)
-		err = h.gameManager.ExecuteSkill(roomID, msg.client.playerID, skillID, targetID)
-	case "unlock_skill_node":
-		nodeID, _ := req.Action["nodeId"].(string)
-		if nodeID == "" {
-			err = errors.New("未指定节点ID")
-		} else {
-			err = h.gameManager.UnlockSkillNode(roomID, msg.client.playerID, nodeID)
-		}
-	// ===== 条件触发buff =====
-	case "trigger_buff":
-		trigger, _ := req.Action["trigger"].(string)
-		if trigger == "" {
-			err = errors.New("未指定触发类型")
-		} else {
-			// 应用条件触发的buff
-			h.gameManager.ApplyConditionalBuffs(roomID, msg.client.playerID, trigger)
-		}
-	// ===== Phase 2: 物品与互动操作 =====
-	case "pickup_item":
-		itemID, _ := req.Action["itemId"].(string)
-		logger.Debug("执行PickupItem", map[string]interface{}{
-			"itemId":   itemID,
-			"playerId": msg.client.playerID,
-			"roomId":   roomID,
-		})
-		if itemID == "" {
-			err = errors.New("未指定物品ID")
-		} else {
-			err = h.gameManager.PickupItem(roomID, msg.client.playerID, itemID)
-		}
-		if err != nil {
-			logger.Warn("PickupItem失败", map[string]interface{}{
-				"error":    err.Error(),
-				"itemId":   itemID,
-				"playerId": msg.client.playerID,
-			})
-		}
-	case "give_item":
-		targetID, _ := req.Action["targetId"].(string)
-		itemID, _ := req.Action["itemId"].(string)
-		logger.Debug("执行GiveItem", map[string]interface{}{
-			"itemId":   itemID,
-			"targetId": targetID,
-			"playerId": msg.client.playerID,
-		})
-		if targetID == "" || itemID == "" {
-			err = errors.New("未指定目标或物品")
-		} else {
-			err = h.gameManager.GiveItem(roomID, msg.client.playerID, targetID, itemID)
-		}
-	case "trade_items":
-		targetID, _ := req.Action["targetId"].(string)
-		itemID, _ := req.Action["itemId"].(string)
-		targetItemID, _ := req.Action["targetItemId"].(string)
-		if targetID == "" || itemID == "" || targetItemID == "" {
-			err = errors.New("未指定完整的交易物品")
-		} else {
-			err = h.gameManager.TradeItems(roomID, msg.client.playerID, targetID, itemID, targetItemID)
-		}
-	case "drop_item":
-		itemID, _ := req.Action["itemId"].(string)
-		logger.Debug("执行DropItem", map[string]interface{}{
-			"itemId":   itemID,
-			"playerId": msg.client.playerID,
-		})
-		if itemID == "" {
-			err = errors.New("未指定物品ID")
-		} else {
-			err = h.gameManager.DropItem(roomID, msg.client.playerID, itemID)
-		}
-	case "interact_wall":
-		dir, _ := req.Action["direction"].(string)
-		if dir == "" {
-			err = errors.New("未指定方向")
-		} else {
-			err = h.gameManager.InteractWithWall(roomID, msg.client.playerID, dir)
-		}
-	case "teleport_to_tile":
-		x, xOk := req.Action["x"].(float64)
-		y, yOk := req.Action["y"].(float64)
-		if !xOk || !yOk {
-			err = errors.New("未指定有效的传送目标")
-		} else {
-			err = h.gameManager.TeleportPlayer(roomID, msg.client.playerID, int(x), int(y))
-		}
-	case "divination":
-		action, _ := req.Action["action"].(string)
-		if action == "" {
-			err = errors.New("未指定占卜操作")
-		} else {
-			err = h.gameManager.PerformDivination(roomID, msg.client.playerID, action)
-		}
-	case "execute_tile_interaction":
-		interactionType, _ := req.Action["interactionType"].(string)
-		if interactionType == "" {
-			err = errors.New("未指定互动类型")
-		} else {
-			result, interactionErr := h.gameManager.ExecuteTileInteraction(roomID, msg.client.playerID, interactionType)
-			if interactionErr != nil {
-				err = interactionErr
-			} else if result != nil {
-				h.broadcastToRoom(roomID, map[string]interface{}{
-					"type":         "dice_result",
-					"results":      result["results"],
-					"sum":          result["sum"],
-					"playerId":     msg.client.playerID,
-					"actionResult": result["actionResult"],
-				})
-			}
-		}
-	// ===== Phase X: NPC 战斗系统 =====
-	case "attack_npc":
-		npcInstanceID, _ := req.Action["npcInstanceId"].(string)
-		if npcInstanceID == "" {
-			err = errors.New("未指定 NPC ID")
-		} else {
-			result, attackErr := h.gameManager.AttackNPC(roomID, msg.client.playerID, npcInstanceID)
-			if attackErr != nil {
-				err = attackErr
-			} else {
-				// 广播攻击结果
-				h.broadcastToRoom(roomID, map[string]interface{}{
-					"type":     "npc_attack_result",
-					"result":   result,
-					"playerId": msg.client.playerID,
-				})
-				// 状态会在下面 sendGameState 同步
-			}
-		}
-	case "npc_attack_player":
-		npcInstanceID, _ := req.Action["npcInstanceId"].(string)
-		if npcInstanceID == "" {
-			err = errors.New("未指定 NPC ID")
-		} else {
-			result, attackErr := h.gameManager.NPCAttackPlayer(roomID, npcInstanceID, msg.client.playerID)
-			if attackErr != nil {
-				err = attackErr
-			} else {
-				// 广播 NPC 攻击结果
-				h.broadcastToRoom(roomID, map[string]interface{}{
-					"type":     "npc_attacked_player",
-					"result":   result,
-					"playerId": msg.client.playerID,
-				})
-			}
-		}
-	default:
-		// 未知操作
-		err = errors.New("未知操作类型")
+	ctx := &gameActionContext{
+		message:    msg,
+		roomID:     roomID,
+		actionType: actionType,
+		action:     req.Action,
 	}
 
+	handled, err := h.dispatchGameAction(ctx)
 	if err != nil {
 		logger.Warn("game_action执行失败", map[string]interface{}{
 			"actionType": actionType,
 			"error":      err.Error(),
 			"playerId":   msg.client.playerID,
 		})
-		resp := map[string]interface{}{
-			"type":    "error",
-			"message": err.Error(),
-		}
-		data, _ := json.Marshal(resp)
-		msg.client.send <- data
+		h.sendClientError(msg.client, err)
 		return
 	}
 
-	// 广播更新后的游戏状态
+	if handled {
+		return
+	}
+
 	logger.Debug("action执行成功，准备发送state_sync", map[string]interface{}{
 		"actionType": actionType,
 		"roomId":     roomID,
 	})
 	h.sendGameState(roomID)
+}
+
+func handleMoveGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	direction := ctx.stringField("direction")
+	logger.Debug("执行ProcessMove", map[string]interface{}{"direction": direction})
+	return false, h.gameManager.ProcessMove(ctx.roomID, ctx.playerID(), direction)
+}
+
+func handleEndTurnGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	logger.Debug("执行EndTurn", nil)
+	return false, h.gameManager.EndTurn(ctx.roomID, ctx.playerID())
+}
+
+func handleCancelTilePlacementGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	logger.Debug("执行CancelTilePlacement", nil)
+	return false, h.gameManager.CancelTilePlacement(ctx.roomID, ctx.playerID())
+}
+
+func handlePerformHauntRollGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	state, err := h.gameManager.GetGameState(ctx.roomID)
+	if err != nil {
+		return true, err
+	}
+	if state == nil || state.ActivePlayerID != ctx.playerID() {
+		return true, errors.New("只有当前玩家可以进行作祟检定")
+	}
+
+	results := h.gameManager.RollDice(6)
+	sum := 0
+	for _, value := range results {
+		sum += value
+	}
+
+	actionResult, err := h.gameManager.ResolveHauntRoll(ctx.roomID, results)
+	if err != nil {
+		return true, err
+	}
+
+	h.broadcastToRoom(ctx.roomID, map[string]interface{}{
+		"type":         "dice_result",
+		"results":      results,
+		"sum":          sum,
+		"playerId":     ctx.playerID(),
+		"actionResult": actionResult,
+	})
+	h.sendGameState(ctx.roomID)
+	return true, nil
+}
+
+func handleForceHauntGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	return false, h.gameManager.ForceTriggerHaunt(ctx.roomID)
+}
+
+func handleRollDiceGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	pending, err := h.gameManager.CheckPendingAction(ctx.roomID)
+	if err != nil {
+		return true, err
+	}
+
+	state, err := h.gameManager.GetGameState(ctx.roomID)
+	if err != nil {
+		return true, err
+	}
+	if state == nil || state.ActivePlayerID != ctx.playerID() {
+		return true, errors.New("只有当前玩家可以投骰子")
+	}
+
+	isHauntRoll := state.Phase == game.GamePhaseHauntRoll
+	if pending == nil && !isHauntRoll {
+		h.sendClientMessage(ctx.message.client, map[string]interface{}{
+			"type":      "dice_result",
+			"checkType": "STALE",
+			"message":   "骰子结果已过期，请刷新状态",
+		})
+		return true, nil
+	}
+
+	numDice := 1
+	if isHauntRoll {
+		numDice = 6
+	} else if pending.Type == game.PendingActionTypeAttributeCheck || pending.Type == game.PendingActionTypeTileAttributeCheck {
+		if attrName := pending.AttributeName(); attrName != "" {
+			if player, ok := state.Players[ctx.playerID()]; ok {
+				if attr, ok := player.Character.Attributes[attrName]; ok && attr.Current > 0 {
+					numDice = attr.Current
+				}
+			}
+		}
+	} else if actionNumDice, ok := ctx.intField("numDice"); ok {
+		numDice = actionNumDice
+	}
+
+	results := h.gameManager.RollDice(numDice)
+	sum := 0
+	for _, value := range results {
+		sum += value
+	}
+
+	var actionResult map[string]interface{}
+	if isHauntRoll {
+		actionResult, err = h.gameManager.ResolveHauntRoll(ctx.roomID, results)
+		if err != nil {
+			return true, err
+		}
+	} else {
+		h.gameManager.SetLastRollResult(ctx.roomID, sum)
+
+		switch pending.Type {
+		case game.PendingActionTypeAttributeCheck:
+			difficulty := pending.DifficultyValue(3)
+			success := sum >= difficulty
+			actionResult = map[string]interface{}{
+				"checkType":  string(game.PendingActionTypeAttributeCheck),
+				"attribute":  pending.AttributeName(),
+				"difficulty": difficulty,
+				"result":     sum,
+				"success":    success,
+			}
+
+			h.gameManager.ClearPendingAction(ctx.roomID)
+			if success {
+				h.gameManager.ResolveEventChoice(ctx.roomID, ctx.playerID(), 0)
+			} else {
+				h.gameManager.ResolveEventChoice(ctx.roomID, ctx.playerID(), 1)
+			}
+
+		case game.PendingActionTypeTileAttributeCheck:
+			difficulty := pending.DifficultyValue(3)
+			success := sum >= difficulty
+			actionResult = map[string]interface{}{
+				"checkType":  string(game.PendingActionTypeTileAttributeCheck),
+				"attribute":  pending.AttributeName(),
+				"difficulty": difficulty,
+				"result":     sum,
+				"success":    success,
+			}
+			if err := h.gameManager.ResolvePendingTileCheck(ctx.roomID, ctx.playerID(), success); err != nil {
+				return true, err
+			}
+
+		case game.PendingActionTypeCombat:
+			actionResult = map[string]interface{}{
+				"checkType": string(game.PendingActionTypeCombat),
+				"result":    sum,
+			}
+
+		default:
+			actionResult = map[string]interface{}{
+				"checkType": "GENERAL",
+				"result":    sum,
+			}
+			h.gameManager.ClearPendingAction(ctx.roomID)
+		}
+	}
+
+	h.broadcastToRoom(ctx.roomID, map[string]interface{}{
+		"type":         "dice_result",
+		"results":      results,
+		"sum":          sum,
+		"playerId":     ctx.playerID(),
+		"actionResult": actionResult,
+	})
+	h.sendGameState(ctx.roomID)
+	return true, nil
+}
+
+func handlePlaceTileGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	direction := ctx.stringField("direction")
+	rotation, _ := ctx.intField("rotation")
+	err := h.gameManager.PlaceTile(ctx.roomID, ctx.playerID(), direction, rotation)
+	if err != nil {
+		return true, err
+	}
+	h.sendGameState(ctx.roomID)
+	return true, nil
+}
+
+func handleModifyStatGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	attribute := ctx.stringField("attribute")
+	amount, _ := ctx.intField("amount")
+	return false, h.gameManager.ModifyStat(ctx.roomID, ctx.playerID(), attribute, amount)
+}
+
+func handleDrawCardGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	cardType := ctx.stringField("cardType")
+	result, err := h.gameManager.DrawCard(ctx.roomID, ctx.playerID(), cardType)
+	if err != nil {
+		return true, err
+	}
+	if result != nil {
+		if card, ok := result["card"]; ok && card != nil {
+			h.broadcastToRoom(ctx.roomID, map[string]interface{}{
+				"type":     "card_drawn",
+				"card":     card,
+				"deck":     result["deck"],
+				"playerId": ctx.playerID(),
+			})
+		}
+	}
+	h.sendGameState(ctx.roomID)
+	return true, nil
+}
+
+func handleResolveEventGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	choiceIndex, _ := ctx.intField("choiceIndex")
+	err := h.gameManager.ResolveEventChoice(ctx.roomID, ctx.playerID(), choiceIndex)
+	if err != nil {
+		return true, err
+	}
+	h.sendGameState(ctx.roomID)
+	return true, nil
+}
+
+func handleStartCombatGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	defenderID := ctx.stringField("defenderId")
+	attribute := ctx.stringField("attribute")
+	return false, h.gameManager.StartCombat(ctx.roomID, ctx.playerID(), defenderID, attribute)
+}
+
+func handleResolveCombatGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	result, err := h.gameManager.ResolveCombat(ctx.roomID, ctx.playerID())
+	if err != nil {
+		return true, err
+	}
+	h.broadcastToRoom(ctx.roomID, map[string]interface{}{
+		"type":     "combat_resolved",
+		"result":   result,
+		"playerId": ctx.playerID(),
+	})
+	h.sendGameState(ctx.roomID)
+	return true, nil
+}
+
+func handleDismissCombatResultGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	if err := h.gameManager.ClearCombatResult(ctx.roomID, ctx.playerID()); err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+func handleUseItemGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	itemID := ctx.stringField("itemId")
+	targetID := ctx.stringField("targetId")
+	return false, h.gameManager.UseItem(ctx.roomID, ctx.playerID(), itemID, targetID)
+}
+
+func handleExecuteSkillGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	skillID := ctx.stringField("skillId")
+	targetID := ctx.stringField("targetId")
+	return false, h.gameManager.ExecuteSkill(ctx.roomID, ctx.playerID(), skillID, targetID)
+}
+
+func handleUnlockSkillNodeGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	nodeID, err := ctx.requiredStringField("nodeId", "未指定节点ID")
+	if err != nil {
+		return false, err
+	}
+	return false, h.gameManager.UnlockSkillNode(ctx.roomID, ctx.playerID(), nodeID)
+}
+
+func handleTriggerBuffGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	trigger, err := ctx.requiredStringField("trigger", "未指定触发类型")
+	if err != nil {
+		return false, err
+	}
+	h.gameManager.ApplyConditionalBuffs(ctx.roomID, ctx.playerID(), trigger)
+	return false, nil
+}
+
+func handlePickupItemGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	itemID := ctx.stringField("itemId")
+	logger.Debug("执行PickupItem", map[string]interface{}{
+		"itemId":   itemID,
+		"playerId": ctx.playerID(),
+		"roomId":   ctx.roomID,
+	})
+	if itemID == "" {
+		return false, errors.New("未指定物品ID")
+	}
+	err := h.gameManager.PickupItem(ctx.roomID, ctx.playerID(), itemID)
+	if err != nil {
+		logger.Warn("PickupItem失败", map[string]interface{}{
+			"error":    err.Error(),
+			"itemId":   itemID,
+			"playerId": ctx.playerID(),
+		})
+	}
+	return false, err
+}
+
+func handleGiveItemGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	targetID := ctx.stringField("targetId")
+	itemID := ctx.stringField("itemId")
+	logger.Debug("执行GiveItem", map[string]interface{}{
+		"itemId":   itemID,
+		"targetId": targetID,
+		"playerId": ctx.playerID(),
+	})
+	if targetID == "" || itemID == "" {
+		return false, errors.New("未指定目标或物品")
+	}
+	return false, h.gameManager.GiveItem(ctx.roomID, ctx.playerID(), targetID, itemID)
+}
+
+func handleTradeItemsGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	targetID := ctx.stringField("targetId")
+	itemID := ctx.stringField("itemId")
+	targetItemID := ctx.stringField("targetItemId")
+	if targetID == "" || itemID == "" || targetItemID == "" {
+		return false, errors.New("未指定完整的交易物品")
+	}
+	return false, h.gameManager.TradeItems(ctx.roomID, ctx.playerID(), targetID, itemID, targetItemID)
+}
+
+func handleDropItemGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	itemID := ctx.stringField("itemId")
+	logger.Debug("执行DropItem", map[string]interface{}{
+		"itemId":   itemID,
+		"playerId": ctx.playerID(),
+	})
+	if itemID == "" {
+		return false, errors.New("未指定物品ID")
+	}
+	return false, h.gameManager.DropItem(ctx.roomID, ctx.playerID(), itemID)
+}
+
+func handleInteractWallGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	direction, err := ctx.requiredStringField("direction", "未指定方向")
+	if err != nil {
+		return false, err
+	}
+	return false, h.gameManager.InteractWithWall(ctx.roomID, ctx.playerID(), direction)
+}
+
+func handleTeleportToTileGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	x, xOK := ctx.intField("x")
+	y, yOK := ctx.intField("y")
+	if !xOK || !yOK {
+		return false, errors.New("未指定有效的传送目标")
+	}
+	return false, h.gameManager.TeleportPlayer(ctx.roomID, ctx.playerID(), x, y)
+}
+
+func handleDivinationGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	action, err := ctx.requiredStringField("action", "未指定占卜操作")
+	if err != nil {
+		return false, err
+	}
+	return false, h.gameManager.PerformDivination(ctx.roomID, ctx.playerID(), action)
+}
+
+func handleExecuteTileInteractionGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	interactionType, err := ctx.requiredStringField("interactionType", "未指定互动类型")
+	if err != nil {
+		return false, err
+	}
+	result, err := h.gameManager.ExecuteTileInteraction(ctx.roomID, ctx.playerID(), interactionType)
+	if err != nil {
+		return false, err
+	}
+	if result != nil {
+		h.broadcastToRoom(ctx.roomID, map[string]interface{}{
+			"type":         "dice_result",
+			"results":      result["results"],
+			"sum":          result["sum"],
+			"playerId":     ctx.playerID(),
+			"actionResult": result["actionResult"],
+		})
+	}
+	return false, nil
+}
+
+func handleAttackNPCGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	npcInstanceID, err := ctx.requiredStringField("npcInstanceId", "未指定 NPC ID")
+	if err != nil {
+		return false, err
+	}
+	result, err := h.gameManager.AttackNPC(ctx.roomID, ctx.playerID(), npcInstanceID)
+	if err != nil {
+		return false, err
+	}
+	h.broadcastToRoom(ctx.roomID, map[string]interface{}{
+		"type":     "npc_attack_result",
+		"result":   result,
+		"playerId": ctx.playerID(),
+	})
+	return false, nil
+}
+
+func handleNPCAttackPlayerGameAction(h *Hub, ctx *gameActionContext) (bool, error) {
+	npcInstanceID, err := ctx.requiredStringField("npcInstanceId", "未指定 NPC ID")
+	if err != nil {
+		return false, err
+	}
+	result, err := h.gameManager.NPCAttackPlayer(ctx.roomID, npcInstanceID, ctx.playerID())
+	if err != nil {
+		return false, err
+	}
+	h.broadcastToRoom(ctx.roomID, map[string]interface{}{
+		"type":     "npc_attacked_player",
+		"result":   result,
+		"playerId": ctx.playerID(),
+	})
+	return false, nil
 }
 
 func (h *Hub) handleGetState(msg *Message) {

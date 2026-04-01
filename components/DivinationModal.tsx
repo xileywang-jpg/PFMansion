@@ -10,7 +10,7 @@ interface DivinationModalProps {
 }
 
 export const DivinationModal: React.FC<DivinationModalProps> = ({ isOpen, onClose }) => {
-  const { decks, addLog, showFeedback, setState } = useGameStore();
+  const { decks, addLog, showFeedback } = useGameStore();
   const [selectedAction, setSelectedAction] = useState<'toTop' | 'toBottom' | null>(null);
 
   // 获取事件堆顶的牌
@@ -31,15 +31,10 @@ export const DivinationModal: React.FC<DivinationModalProps> = ({ isOpen, onClos
         : '你把预知的卡牌放到了堆底',
       'info'
     );
-
-    // 清空待执行效果
-    setState({ pendingInteractionEffects: null });
     onClose();
   };
 
   const handleClose = () => {
-    // 如果没有确认选择就关闭，清空待执行效果
-    setState({ pendingInteractionEffects: null });
     onClose();
   };
 

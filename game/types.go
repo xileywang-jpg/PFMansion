@@ -68,11 +68,65 @@ const (
 
 // PendingAction 待处理动作（用于状态控制）
 type PendingAction struct {
-	Type    string                 `json:"type"`              // "ATTRIBUTE_CHECK", "TILE_ATTRIBUTE_CHECK", "CHOICE", "COMBAT"
-	Target  string                 `json:"target"`            // 等待哪个玩家输入
-	Data    map[string]interface{} `json:"data"`              // 额外数据（attribute, difficulty, eventID 等）
-	CardID  string                 `json:"cardId,omitempty"`  // 关联的卡牌ID
-	Message string                 `json:"message,omitempty"` // 显示给玩家的提示
+	Type           PendingActionType      `json:"type"`                     // ATTRIBUTE_CHECK, TILE_ATTRIBUTE_CHECK, CHOICE, COMBAT, HAUNT_ROLL
+	Target         string                 `json:"target"`                   // 等待哪个玩家输入
+	Data           map[string]interface{} `json:"data"`                     // 兼容旧结构的额外数据
+	CardID         string                 `json:"cardId,omitempty"`         // 关联的卡牌ID
+	Message        string                 `json:"message,omitempty"`        // 显示给玩家的提示
+	Attribute      string                 `json:"attribute,omitempty"`      // 高优先级结构化字段
+	Difficulty     int                    `json:"difficulty,omitempty"`     // 高优先级结构化字段
+	EventID        string                 `json:"eventId,omitempty"`        // 结构化事件来源
+	Continuation   map[string]interface{} `json:"continuation,omitempty"`   // 结构化续行动作
+	SuccessEffects []Effect               `json:"successEffects,omitempty"` // 地块检定成功效果
+	FailureEffects []Effect               `json:"failureEffects,omitempty"` // 地块检定失败效果
+}
+
+type PendingActionType string
+
+const (
+	PendingActionTypeAttributeCheck     PendingActionType = "ATTRIBUTE_CHECK"
+	PendingActionTypeTileAttributeCheck PendingActionType = "TILE_ATTRIBUTE_CHECK"
+	PendingActionTypeChoice             PendingActionType = "CHOICE"
+	PendingActionTypeCombat             PendingActionType = "COMBAT"
+	PendingActionTypeHauntRoll          PendingActionType = "HAUNT_ROLL"
+)
+
+type InteractionStateType string
+
+const (
+	InteractionStateTypeAttributeCheck     InteractionStateType = "ATTRIBUTE_CHECK"
+	InteractionStateTypeTileAttributeCheck InteractionStateType = "TILE_ATTRIBUTE_CHECK"
+	InteractionStateTypeChoice             InteractionStateType = "CHOICE"
+	InteractionStateTypeCombat             InteractionStateType = "COMBAT"
+	InteractionStateTypeHauntRoll          InteractionStateType = "HAUNT_ROLL"
+	InteractionStateTypeTilePlacement      InteractionStateType = "TILE_PLACEMENT"
+)
+
+type InteractionState struct {
+	Type          InteractionStateType `json:"type"`
+	PlayerID      string               `json:"playerId"`
+	Message       string               `json:"message,omitempty"`
+	Attribute     string               `json:"attribute,omitempty"`
+	Difficulty    int                  `json:"difficulty,omitempty"`
+	EventID       string               `json:"eventId,omitempty"`
+	CardID        string               `json:"cardId,omitempty"`
+	OmenCount     int                  `json:"omenCount,omitempty"`
+	AttackerID    string               `json:"attackerId,omitempty"`
+	DefenderID    string               `json:"defenderId,omitempty"`
+	CombatPhase   string               `json:"combatPhase,omitempty"`
+	AttackerRolls []int                `json:"attackerRolls,omitempty"`
+	DefenderRolls []int                `json:"defenderRolls,omitempty"`
+	AttackerSum   int                  `json:"attackerSum,omitempty"`
+	DefenderSum   int                  `json:"defenderSum,omitempty"`
+	Damage        int                  `json:"damage,omitempty"`
+	Loser         string               `json:"loser,omitempty"`
+	Draw          bool                 `json:"draw,omitempty"`
+	AttackerDied  bool                 `json:"attackerDied,omitempty"`
+	DefenderDied  bool                 `json:"defenderDied,omitempty"`
+	TileID        string               `json:"tileId,omitempty"`
+	Direction     string               `json:"direction,omitempty"`
+	Rotation      int                  `json:"rotation,omitempty"`
+	TargetPos     *Pos                 `json:"targetPos,omitempty"`
 }
 
 // AttributeName 属性类型
@@ -394,8 +448,10 @@ type GameStateFull struct {
 	Logs []LogEntry `json:"logs"`
 
 	// 战斗
-	LastRollResult *int         `json:"lastRollResult,omitempty"`
-	ActiveCombat   *CombatState `json:"activeCombat,omitempty"`
+	LastRollResult *int              `json:"lastRollResult,omitempty"`
+	ActiveCombat   *CombatState      `json:"activeCombat,omitempty"`
+	CombatResult   *CombatResult     `json:"combatResult,omitempty"`
+	Interaction    *InteractionState `json:"interactionState,omitempty"`
 
 	// Phase X: NPC/怪物系统
 	NPCs map[string]*GameNPC `json:"npcs"` // NPC 实例 map，key 是 InstanceID
@@ -426,7 +482,83 @@ type Pos struct {
 func (g *GameStateFull) ToSyncState() *GameStateFull {
 	g.Version = time.Now().UnixMilli()
 	g.Timestamp = time.Now().UnixMilli()
+	g.Interaction = g.BuildInteractionState()
 	return g
+}
+
+func (g *GameStateFull) BuildInteractionState() *InteractionState {
+	if g == nil {
+		return nil
+	}
+
+	if g.ActiveCombat != nil {
+		return &InteractionState{
+			Type:          InteractionStateTypeCombat,
+			PlayerID:      g.ActiveCombat.AttackerID,
+			Message:       "等待攻击方发起权威结算",
+			Attribute:     g.ActiveCombat.Attribute,
+			AttackerID:    g.ActiveCombat.AttackerID,
+			DefenderID:    g.ActiveCombat.DefenderID,
+			CombatPhase:   g.ActiveCombat.Phase,
+			AttackerRolls: append([]int(nil), g.ActiveCombat.AttackerRolls...),
+			DefenderRolls: append([]int(nil), g.ActiveCombat.DefenderRolls...),
+		}
+	}
+
+	if g.CombatResult != nil {
+		return &InteractionState{
+			Type:          InteractionStateTypeCombat,
+			PlayerID:      g.CombatResult.AttackerID,
+			Message:       "战斗结果等待确认",
+			Attribute:     g.CombatResult.Attribute,
+			AttackerID:    g.CombatResult.AttackerID,
+			DefenderID:    g.CombatResult.DefenderID,
+			CombatPhase:   "RESULT",
+			AttackerRolls: append([]int(nil), g.CombatResult.AttackerRolls...),
+			DefenderRolls: append([]int(nil), g.CombatResult.DefenderRolls...),
+			AttackerSum:   g.CombatResult.AttackerSum,
+			DefenderSum:   g.CombatResult.DefenderSum,
+			Damage:        g.CombatResult.Damage,
+			Loser:         g.CombatResult.Loser,
+			Draw:          g.CombatResult.Draw,
+			AttackerDied:  g.CombatResult.AttackerDied,
+			DefenderDied:  g.CombatResult.DefenderDied,
+		}
+	}
+
+	if g.PendingAction != nil {
+		return &InteractionState{
+			Type:       InteractionStateType(g.PendingAction.Type),
+			PlayerID:   g.PendingAction.Target,
+			Message:    g.PendingAction.Message,
+			Attribute:  g.PendingAction.AttributeName(),
+			Difficulty: g.PendingAction.DifficultyValue(0),
+			EventID:    g.PendingAction.EventIDValue(),
+			CardID:     g.PendingAction.CardID,
+		}
+	}
+
+	if g.PendingTile != nil {
+		return &InteractionState{
+			Type:      InteractionStateTypeTilePlacement,
+			PlayerID:  g.ActivePlayerID,
+			Message:   "等待放置新房间",
+			TileID:    g.PendingTile.ID,
+			Direction: g.PendingMoveDirection,
+			Rotation:  g.PendingTileRotation,
+			TargetPos: g.PendingTargetPos,
+		}
+	}
+
+	if g.Phase == GamePhaseHauntRoll {
+		return &InteractionState{
+			Type:      InteractionStateTypeHauntRoll,
+			PlayerID:  g.ActivePlayerID,
+			OmenCount: g.OmenCount,
+		}
+	}
+
+	return nil
 }
 
 // RoomGameState 房间游戏状态

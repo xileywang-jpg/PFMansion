@@ -26,7 +26,7 @@ const TileInfoBar: React.FC = () => {
     map, 
     players, 
     activePlayerId, 
-    hoveredTileId,
+    ui,
     pendingTile,
     getTileById,
     setHoveredTileId 
@@ -47,8 +47,8 @@ const TileInfoBar: React.FC = () => {
     }
 
     // 其次显示 hoveredTileId（悬停的地块）
-    if (hoveredTileId) {
-      const instance = map[hoveredTileId];
+    if (ui.hoveredTileId) {
+      const instance = map[ui.hoveredTileId];
       if (instance) {
         const def = instance.defId === STARTING_TILE.id
           ? STARTING_TILE
@@ -87,7 +87,7 @@ const TileInfoBar: React.FC = () => {
     }
 
     return null;
-  }, [map, players, activePlayerId, hoveredTileId, pendingTile, getTileById]);
+  }, [map, players, activePlayerId, ui.hoveredTileId, pendingTile, getTileById]);
 
   if (!currentTileInfo) {
     return null;

@@ -148,7 +148,7 @@ const SkillCard: React.FC<SkillCardProps> = ({ name, description }) => (
 
 const PlayerInspectionModal: React.FC = () => {
   const { 
-    inspectPlayerId, 
+    ui,
     closeInspection, 
     players, 
     playerIds, 
@@ -156,7 +156,7 @@ const PlayerInspectionModal: React.FC = () => {
     getCharacterById 
   } = useGameStore();
   
-  const player = inspectPlayerId ? players[inspectPlayerId] : null;
+  const player = ui.inspectPlayerId ? players[ui.inspectPlayerId] : null;
 
   // 获取角色完整定义
   const characterDef = useMemo(() => {

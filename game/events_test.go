@@ -1,6 +1,58 @@
 package game
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestApplyEffect_ModifyStatUsesCoreHandler(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	player := gm.Rooms[roomID].GameState.FullState.Players["player_1"]
+	before := player.Character.Attributes["sanity"].Current
+
+	gm.applyEffect(roomID, "player_1", Effect{Type: "MODIFY_STAT", Attribute: "sanity", Amount: -2})
+
+	after := player.Character.Attributes["sanity"].Current
+	if after != before-2 {
+		t.Fatalf("MODIFY_STAT 应减少理智, 期望 %d, 实际 %d", before-2, after)
+	}
+
+	logs := gm.Rooms[roomID].GameState.FullState.Logs
+	if len(logs) == 0 || !strings.Contains(logs[len(logs)-1].Text, "sanity -2") {
+		t.Fatalf("MODIFY_STAT 应追加属性变化日志, 实际日志: %+v", logs)
+	}
+}
+
+func TestApplyEffect_RollCreatesPendingAction(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	room := gm.Rooms[roomID]
+	result := 7
+	room.GameState.FullState.LastRollResult = &result
+
+	gm.applyEffect(roomID, "player_1", Effect{Type: "ROLL", Attribute: "knowledge", Difficulty: 5})
+
+	pending := room.GameState.FullState.PendingAction
+	if pending == nil || pending.Type != PendingActionTypeAttributeCheck {
+		t.Fatalf("ROLL 应创建 ATTRIBUTE_CHECK pendingAction, 实际为 %+v", pending)
+	}
+	if pending.Attribute != "knowledge" {
+		t.Fatalf("ROLL pendingAction 结构化 attribute 应为 knowledge, 实际为 %#v", pending.Attribute)
+	}
+	if pending.Difficulty != 5 {
+		t.Fatalf("ROLL pendingAction 结构化 difficulty 应为 5, 实际为 %#v", pending.Difficulty)
+	}
+	if pending.Data["attribute"] != "knowledge" {
+		t.Fatalf("ROLL pendingAction attribute 应为 knowledge, 实际为 %#v", pending.Data["attribute"])
+	}
+	if pending.Data["difficulty"] != 5 {
+		t.Fatalf("ROLL pendingAction difficulty 应为 5, 实际为 %#v", pending.Data["difficulty"])
+	}
+	if room.GameState.FullState.LastRollResult != nil {
+		t.Fatal("ROLL 应清除旧的 LastRollResult")
+	}
+}
 
 func TestDrawCard_ItemUsesUnifiedCollection(t *testing.T) {
 	gm := setupTestGameManager()
@@ -122,8 +174,14 @@ func TestDrawCard_EventPreservesRevealAndPendingAction(t *testing.T) {
 	if state.ActiveCard == nil || state.ActiveCard.ID != "event_test_check" {
 		t.Fatalf("EVENT 抽卡后应保留 ActiveCard, 实际是 %+v", state.ActiveCard)
 	}
-	if state.PendingAction == nil || state.PendingAction.Type != "ATTRIBUTE_CHECK" {
+	if state.PendingAction == nil || state.PendingAction.Type != PendingActionTypeAttributeCheck {
 		t.Fatalf("EVENT 抽卡后应创建 ATTRIBUTE_CHECK pendingAction, 实际是 %+v", state.PendingAction)
+	}
+	if state.PendingAction.Attribute != "knowledge" {
+		t.Fatalf("EVENT pendingAction 结构化 attribute 应为 knowledge, 实际是 %v", state.PendingAction.Attribute)
+	}
+	if state.PendingAction.Difficulty != 5 {
+		t.Fatalf("EVENT pendingAction 结构化 difficulty 应为 5, 实际是 %v", state.PendingAction.Difficulty)
 	}
 	if state.PendingAction.Data["attribute"] != "knowledge" {
 		t.Fatalf("EVENT pendingAction 的 attribute 应为 knowledge, 实际是 %v", state.PendingAction.Data["attribute"])
@@ -157,14 +215,7 @@ func TestResolveEventChoice_ClearsLastRollResultAfterAttributeCheck(t *testing.T
 			Failure:    []Effect{{Type: "LOG", Message: "检定失败"}},
 		},
 	}
-	state.PendingAction = &PendingAction{
-		Type:   "ATTRIBUTE_CHECK",
-		Target: "player_1",
-		Data: map[string]interface{}{
-			"attribute":  "sanity",
-			"difficulty": 4,
-		},
-	}
+	state.PendingAction = NewPendingAttributeCheck("player_1", "sanity", 4, nil)
 	state.LastRollResult = &result
 
 	if err := gm.ResolveEventChoice(roomID, "player_1", 0); err != nil {
