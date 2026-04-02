@@ -228,6 +228,7 @@ type TileInteraction struct {
 	Condition          *TileInteractionCondition `json:"condition,omitempty"`
 	Effects            []Effect                  `json:"effects,omitempty"`
 	Cost               *TileInteractionCost      `json:"cost,omitempty"`
+	PoolID             string                    `json:"poolId,omitempty"`
 	Difficulty         int                       `json:"difficulty,omitempty"`
 	Attribute          string                    `json:"attribute,omitempty"`
 	Success            []Effect                  `json:"success,omitempty"`

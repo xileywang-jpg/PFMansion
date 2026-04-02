@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 )
 
 type effectHandler func(g *GameManager, roomID, playerID string, state *GameStateFull, player *GamePlayer, effect Effect)
@@ -132,32 +133,35 @@ func handleDrawCardEffect(g *GameManager, roomID, playerID string, state *GameSt
 	}
 }
 
-func resolveMovePlayerTarget(player *GamePlayer, effect Effect) (int, int) {
+func resolveMovePlayerTarget(player *GamePlayer, effect Effect) (int, int, error) {
 	newX := player.Position.X
 	newY := player.Position.Y
 
 	if effect.X != 0 || effect.Y != 0 {
-		return effect.X, effect.Y
+		return effect.X, effect.Y, nil
 	}
 
-	switch effect.Location {
-	case "basement":
-		return 0, 0
-	case "entry", "start":
-		return 0, 0
+	locationID := strings.ToLower(strings.TrimSpace(effect.Location))
+	switch locationID {
+	case "":
+		return newX, newY, nil
 	case "random":
-		return newX + rand.Intn(5) - 2, newY + rand.Intn(5) - 2
-	default:
-		if effect.Location != "" {
-			return 0, 0
-		}
+		return newX + rand.Intn(5) - 2, newY + rand.Intn(5) - 2, nil
 	}
 
-	return newX, newY
+	if position, ok := GetNamedLocationByID(locationID); ok {
+		return position.X, position.Y, nil
+	}
+
+	return 0, 0, fmt.Errorf("未知的命名位置: %s", effect.Location)
 }
 
 func handleMovePlayerEffect(g *GameManager, roomID, playerID string, state *GameStateFull, player *GamePlayer, effect Effect) {
-	newX, newY := resolveMovePlayerTarget(player, effect)
+	newX, newY, err := resolveMovePlayerTarget(player, effect)
+	if err != nil {
+		g.addLog(roomID, err.Error(), "alert")
+		return
+	}
 
 	currentTile, err := g.getCurrentTileUnlocked(state, player)
 	if err != nil {
@@ -229,7 +233,10 @@ func handleConditionalEffect(g *GameManager, roomID, playerID string, _ *GameSta
 }
 
 func handleGiveItemEffect(g *GameManager, roomID, _ string, _ *GameStateFull, player *GamePlayer, effect Effect) {
-	itemID := effect.Message
+	itemID := effect.ItemID
+	if itemID == "" {
+		itemID = effect.Message
+	}
 	if itemID == "" {
 		return
 	}
@@ -242,7 +249,10 @@ func handleGiveItemEffect(g *GameManager, roomID, _ string, _ *GameStateFull, pl
 }
 
 func handleGiveSkillEffect(g *GameManager, roomID, _ string, _ *GameStateFull, player *GamePlayer, effect Effect) {
-	skillID := effect.Message
+	skillID := effect.SkillID
+	if skillID == "" {
+		skillID = effect.Message
+	}
 	if skillID == "" {
 		return
 	}

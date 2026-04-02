@@ -226,6 +226,50 @@
       ]
     }
   ],
+  "rewardItems": [
+    {
+      "id": "forge_athena_spear",
+      "type": "WEAPON",
+      "name": "雅典娜之矛",
+      "description": "以智慧与秩序铸成的传奇长枪。",
+      "icon": "Crosshair"
+    },
+    {
+      "id": "forge_sunbow",
+      "type": "WEAPON",
+      "name": "太阳神弓",
+      "description": "箭矢会沿着光的轨迹飞行。",
+      "icon": "Crosshair"
+    },
+    {
+      "id": "forge_ares_blade",
+      "type": "WEAPON",
+      "name": "战神之刃",
+      "description": "钢铁在它面前只配碎裂。",
+      "icon": "Sword"
+    },
+    {
+      "id": "forge_hermes_wings",
+      "type": "WEAPON",
+      "name": "赫尔墨斯之翼",
+      "description": "风会替持有者奔跑。",
+      "icon": "Feather"
+    },
+    {
+      "id": "forge_dionysus_cup",
+      "type": "WEAPON",
+      "name": "酒神金杯",
+      "description": "狂喜与痛楚都在杯中摇晃。",
+      "icon": "Goblet"
+    },
+    {
+      "id": "forge_zeus_shield",
+      "type": "WEAPON",
+      "name": "雷霆神盾",
+      "description": "盾面深处滚动着静止的闪电。",
+      "icon": "Shield"
+    }
+  ],
   "omens": [
     {
       "id": "omen_crystal_ball",

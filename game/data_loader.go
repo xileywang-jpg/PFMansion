@@ -2,6 +2,7 @@ package game
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
 	"strings"
@@ -41,9 +42,22 @@ type ThemeConfig struct {
 	Enabled      bool   `json:"enabled"`
 }
 
+type CardPoolConfig struct {
+	ID      string   `json:"id"`
+	CardIDs []string `json:"cardIds"`
+}
+
+type NamedLocationConfig struct {
+	ID string `json:"id"`
+	X  int    `json:"x"`
+	Y  int    `json:"y"`
+}
+
 // ConfigJSON 配置文件结构
 type ConfigJSON struct {
-	Themes []ThemeConfig `json:"themes"`
+	Themes         []ThemeConfig         `json:"themes"`
+	CardPools      []CardPoolConfig      `json:"cardPools,omitempty"`
+	NamedLocations []NamedLocationConfig `json:"namedLocations,omitempty"`
 }
 
 // ==================== 数据加载器 ====================
@@ -61,9 +75,10 @@ type EventsJSON struct {
 
 // ItemsJSON 物品 JSON 结构
 type ItemsJSON struct {
-	Items  []Card `json:"items"`
-	Omens  []Card `json:"omens"`
-	Skills []Card `json:"skills"`
+	Items       []Card `json:"items"`
+	RewardItems []Card `json:"rewardItems,omitempty"`
+	Omens       []Card `json:"omens"`
+	Skills      []Card `json:"skills"`
 }
 
 // HauntMatrixJSON 剧本矩阵 JSON 结构
@@ -87,6 +102,14 @@ type CharacterJSON struct {
 	Attributes  map[string]CharacterAttributeJSON `json:"attributes"`
 }
 
+type SkillNodeGrantEffectJSON struct {
+	Type        string `json:"type"`
+	Stat        string `json:"stat,omitempty"`
+	Amount      int    `json:"amount,omitempty"`
+	Buff        string `json:"buff,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
 // CharactersJSON 角色 JSON 结构
 type CharactersJSON struct {
 	Original []CharacterJSON `json:"original"`
@@ -95,15 +118,16 @@ type CharactersJSON struct {
 
 // SkillTreeNodeJSON 技能树节点 JSON 结构
 type SkillTreeNodeJSON struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	Cost          int      `json:"cost"`
-	Icon          string   `json:"icon"`
-	Prerequisites []string `json:"prerequisites,omitempty"`
-	RequiredTrait string   `json:"requiredTrait,omitempty"`
-	GrantsSkillID string   `json:"grantsSkillId,omitempty"`
-	GrantsBuff    string   `json:"grantsBuff,omitempty"`
+	ID            string                     `json:"id"`
+	Name          string                     `json:"name"`
+	Description   string                     `json:"description"`
+	Cost          int                        `json:"cost"`
+	Icon          string                     `json:"icon"`
+	Prerequisites []string                   `json:"prerequisites,omitempty"`
+	RequiredTrait string                     `json:"requiredTrait,omitempty"`
+	GrantsSkillID string                     `json:"grantsSkillId,omitempty"`
+	GrantsEffects []SkillNodeGrantEffectJSON `json:"grantsEffects,omitempty"`
+	GrantsBuff    string                     `json:"grantsBuff,omitempty"`
 	Position      struct {
 		Row int `json:"row"`
 		Col int `json:"col"`
@@ -128,13 +152,15 @@ var dataLoader *DataLoader
 
 // DataLoader 数据加载器
 type DataLoader struct {
-	Config     ConfigJSON
-	Tiles      TileDeckJSON
-	Events     EventsJSON
-	Items      ItemsJSON
-	Scenarios  HauntMatrixJSON
-	Characters CharactersJSON
-	SkillTrees SkillTreesJSON
+	Config           ConfigJSON
+	Tiles            TileDeckJSON
+	Events           EventsJSON
+	Items            ItemsJSON
+	Scenarios        HauntMatrixJSON
+	Characters       CharactersJSON
+	SkillTrees       SkillTreesJSON
+	CardPoolMap      map[string][]Card
+	NamedLocationMap map[string]Position
 }
 
 func ensureDataLoaded() {
@@ -179,6 +205,9 @@ func normalizeTileInteraction(interaction *TileInteraction) {
 		return
 	}
 	interaction.Type = strings.ToUpper(interaction.Type)
+	if interaction.PoolID != "" {
+		interaction.PoolID = strings.ToLower(strings.TrimSpace(interaction.PoolID))
+	}
 	if interaction.Attribute != "" {
 		interaction.Attribute = strings.ToLower(interaction.Attribute)
 	}
@@ -227,6 +256,98 @@ func normalizeTileDefs(tiles []TileDef) {
 	}
 }
 
+func normalizeSkillNodeGrantEffect(effect *SkillNodeGrantEffectJSON) {
+	if effect == nil {
+		return
+	}
+	effect.Type = strings.ToUpper(strings.TrimSpace(effect.Type))
+	if effect.Stat != "" {
+		effect.Stat = strings.ToLower(strings.TrimSpace(effect.Stat))
+	}
+	effect.Buff = strings.TrimSpace(effect.Buff)
+	effect.Description = strings.TrimSpace(effect.Description)
+}
+
+func normalizeSkillTrees(trees []SkillTreeCategoryJSON) {
+	for treeIndex := range trees {
+		for nodeIndex := range trees[treeIndex].Nodes {
+			node := &trees[treeIndex].Nodes[nodeIndex]
+			for effectIndex := range node.GrantsEffects {
+				normalizeSkillNodeGrantEffect(&node.GrantsEffects[effectIndex])
+			}
+		}
+	}
+}
+
+func (d *DataLoader) findCardByID(id string) *Card {
+	for i := range d.Events.Events {
+		if d.Events.Events[i].ID == id {
+			return &d.Events.Events[i]
+		}
+	}
+	for i := range d.Items.Items {
+		if d.Items.Items[i].ID == id {
+			return &d.Items.Items[i]
+		}
+	}
+	for i := range d.Items.RewardItems {
+		if d.Items.RewardItems[i].ID == id {
+			return &d.Items.RewardItems[i]
+		}
+	}
+	for i := range d.Items.Omens {
+		if d.Items.Omens[i].ID == id {
+			return &d.Items.Omens[i]
+		}
+	}
+	for i := range d.Items.Skills {
+		if d.Items.Skills[i].ID == id {
+			return &d.Items.Skills[i]
+		}
+	}
+	return nil
+}
+
+func (d *DataLoader) compileCardPools() error {
+	d.CardPoolMap = make(map[string][]Card)
+	for _, pool := range d.Config.CardPools {
+		poolID := strings.ToLower(strings.TrimSpace(pool.ID))
+		if poolID == "" {
+			return fmt.Errorf("配置卡池缺少 id")
+		}
+		if len(pool.CardIDs) == 0 {
+			return fmt.Errorf("配置卡池 %s 没有 cardIds", pool.ID)
+		}
+
+		cards := make([]Card, 0, len(pool.CardIDs))
+		for _, cardID := range pool.CardIDs {
+			card := d.findCardByID(cardID)
+			if card == nil {
+				return fmt.Errorf("配置卡池 %s 引用了不存在的卡牌 %s", pool.ID, cardID)
+			}
+			cards = append(cards, *card)
+		}
+
+		d.CardPoolMap[poolID] = cards
+	}
+	return nil
+}
+
+func (d *DataLoader) compileNamedLocations() error {
+	d.NamedLocationMap = make(map[string]Position)
+	for _, location := range d.Config.NamedLocations {
+		locationID := strings.ToLower(strings.TrimSpace(location.ID))
+		if locationID == "" {
+			return fmt.Errorf("配置命名位置缺少 id")
+		}
+		if _, exists := d.NamedLocationMap[locationID]; exists {
+			return fmt.Errorf("配置命名位置重复: %s", location.ID)
+		}
+		d.NamedLocationMap[locationID] = Position{X: location.X, Y: location.Y}
+	}
+	return nil
+}
+
 // LoadData 加载所有数据
 func LoadData() error {
 	dataLoader = &DataLoader{}
@@ -273,14 +394,28 @@ func LoadData() error {
 		log.Printf("⚠️ 加载技能树数据失败: %v", err)
 		// 不返回错误，保持向后兼容
 	}
+	normalizeSkillTrees(dataLoader.SkillTrees.Trees)
 
-	log.Printf("✅ 数据加载完成: %d 主题, %d 房间, %d 事件, %d 物品, %d 厄运, %d 技能, %d 剧本, %d 角色, %d 技能树",
+	if err := dataLoader.compileNamedLocations(); err != nil {
+		log.Printf("⚠️ 编译命名位置失败: %v", err)
+		return err
+	}
+
+	if err := dataLoader.compileCardPools(); err != nil {
+		log.Printf("⚠️ 编译配置卡池失败: %v", err)
+		return err
+	}
+
+	log.Printf("✅ 数据加载完成: %d 主题, %d 房间, %d 事件, %d 牌堆物品, %d 奖励物品, %d 厄运, %d 技能, %d 配置卡池, %d 命名位置, %d 剧本, %d 角色, %d 技能树",
 		len(dataLoader.Config.Themes),
 		len(dataLoader.Tiles.Original)+len(dataLoader.Tiles.Volantis),
 		len(dataLoader.Events.Events),
 		len(dataLoader.Items.Items),
+		len(dataLoader.Items.RewardItems),
 		len(dataLoader.Items.Omens),
 		len(dataLoader.Items.Skills),
+		len(dataLoader.CardPoolMap),
+		len(dataLoader.NamedLocationMap),
 		len(dataLoader.Scenarios.Scenarios),
 		len(dataLoader.Characters.Original)+len(dataLoader.Characters.Volantis),
 		len(dataLoader.SkillTrees.Trees))
@@ -413,7 +548,38 @@ func GetItemByID(id string) *Card {
 			return &card
 		}
 	}
+	for _, card := range dataLoader.Items.RewardItems {
+		if card.ID == id {
+			return &card
+		}
+	}
 	return nil
+}
+
+func GetCardPoolByID(id string) []Card {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return nil
+	}
+	pool, ok := dataLoader.CardPoolMap[strings.ToLower(strings.TrimSpace(id))]
+	if !ok {
+		return nil
+	}
+	result := make([]Card, len(pool))
+	copy(result, pool)
+	return result
+}
+
+func GetNamedLocationByID(id string) (Position, bool) {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return Position{}, false
+	}
+	position, ok := dataLoader.NamedLocationMap[strings.ToLower(strings.TrimSpace(id))]
+	if !ok {
+		return Position{}, false
+	}
+	return position, true
 }
 
 // GetOmens 获取厄运卡
@@ -569,8 +735,9 @@ func GetSkillNode(nodeId string) *SkillTreeNodeJSON {
 
 // SkillNodeGrant 技能节点增益
 type SkillNodeGrant struct {
-	GrantsSkillID string // 给予的技能ID
-	GrantsBuff    string // 给予的buff描述
+	GrantsSkillID string
+	GrantsEffects []SkillNodeGrantEffectJSON
+	GrantsBuff    string
 }
 
 // GetSkillNodeGrant 获取技能节点增益（供 data.go 调用）
@@ -581,6 +748,7 @@ func GetSkillNodeGrant(nodeId string) *SkillNodeGrant {
 	}
 	return &SkillNodeGrant{
 		GrantsSkillID: node.GrantsSkillID,
+		GrantsEffects: append([]SkillNodeGrantEffectJSON(nil), node.GrantsEffects...),
 		GrantsBuff:    node.GrantsBuff,
 	}
 }

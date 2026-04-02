@@ -579,6 +579,47 @@ func TestExecuteTileInteraction_Heal(t *testing.T) {
 	}
 }
 
+func TestExecuteTileInteraction_ForgeUsesConfiguredCardPool(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	room := gm.Rooms[roomID]
+	room.Theme = "volantis"
+	room.GameState.FullState.Map["0,0"].DefID = "vol_tile_titan_forge"
+
+	player := room.GameState.FullState.Players["player_1"]
+	knowledge := player.Character.Attributes["knowledge"]
+	knowledge.Current = 5
+	player.Character.Attributes["knowledge"] = knowledge
+
+	pool := GetCardPoolByID("forge_legendary_weapons")
+	if len(pool) == 0 {
+		t.Fatal("锻造配置卡池不应为空")
+	}
+
+	expected := make(map[string]struct{}, len(pool))
+	for _, card := range pool {
+		expected[card.ID] = struct{}{}
+	}
+
+	_, err := gm.ExecuteTileInteraction(roomID, "player_1", "FORGE")
+	if err != nil {
+		t.Fatalf("ExecuteTileInteraction(FORGE) 失败: %v", err)
+	}
+
+	if len(player.Items) != 1 {
+		t.Fatalf("锻造后应获得 1 件物品, 实际为 %d", len(player.Items))
+	}
+	if _, ok := expected[player.Items[0].ID]; !ok {
+		t.Fatalf("锻造产物 %s 不在配置卡池内", player.Items[0].ID)
+	}
+	if player.Items[0].Type != "WEAPON" {
+		t.Fatalf("锻造产物类型应为 WEAPON, 实际为 %s", player.Items[0].Type)
+	}
+	if player.Items[0].Name == "" {
+		t.Fatal("锻造产物应包含名称")
+	}
+}
+
 func TestResolveCombat_RequiresAttacker(t *testing.T) {
 	gm := setupTestGameManager()
 	roomID := createTestRoom(gm)

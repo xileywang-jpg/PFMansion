@@ -1442,6 +1442,7 @@ export const TILES_DATA = [
   "interact": {
     "type": "FORGE",
     "description": "锻造一件传奇武器",
+    "poolId": "forge_legendary_weapons",
     "condition": {
       "op": "GT",
       "stat": "knowledge",

@@ -88,8 +88,17 @@ export interface SkillNode {
   prerequisites?: string[]; // IDs of parent nodes that must be unlocked first
   requiredTrait?: string; // Specific character trait required (e.g., "Strong")
   grantsSkillId?: string; // Active skill ID from SKILLS_DB
+  grantsEffects?: SkillNodeGrantEffect[];
   grantsBuff?: string; // Passive effect text
   position: { row: number; col: number }; // For visual layout
+}
+
+export interface SkillNodeGrantEffect {
+  type: 'MODIFY_ATTRIBUTE' | 'ADD_BUFF';
+  stat?: string;
+  amount?: number;
+  buff?: string;
+  description?: string;
 }
 
 export interface SkillTreeCategory {
@@ -231,6 +240,7 @@ export interface TileInteraction {
   condition?: any;
   effects?: any[];
   cost?: { type: string; amount: number };
+  poolId?: string;
   difficulty?: number;
   attribute?: AttributeName;
   successMessage?: string;
@@ -313,6 +323,8 @@ export interface Effect {
   amount?: number;
   target?: string;
   deck?: CardSymbol;
+  itemId?: string;
+  skillId?: string;
   message?: string;
   style?: 'info' | 'alert' | 'success' | 'narrative';
   location?: string;

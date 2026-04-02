@@ -8,15 +8,6 @@ import (
 	"time"
 )
 
-var forgedWeapons = []Card{
-	{ID: "forge_athena_spear", Type: "WEAPON", Name: "雅典娜之矛", Description: "以智慧与秩序铸成的传奇长枪。"},
-	{ID: "forge_sunbow", Type: "WEAPON", Name: "太阳神弓", Description: "箭矢会沿着光的轨迹飞行。"},
-	{ID: "forge_ares_blade", Type: "WEAPON", Name: "战神之刃", Description: "钢铁在它面前只配碎裂。"},
-	{ID: "forge_hermes_wings", Type: "WEAPON", Name: "赫尔墨斯之翼", Description: "风会替持有者奔跑。"},
-	{ID: "forge_dionysus_cup", Type: "WEAPON", Name: "酒神金杯", Description: "狂喜与痛楚都在杯中摇晃。"},
-	{ID: "forge_zeus_shield", Type: "WEAPON", Name: "雷霆神盾", Description: "盾面深处滚动着静止的闪电。"},
-}
-
 func (g *GameManager) getCurrentTileUnlocked(state *GameStateFull, player *GamePlayer) (*TileInstance, error) {
 	if state == nil || player == nil {
 		return nil, errors.New("游戏未开始")
@@ -378,7 +369,15 @@ func (g *GameManager) ExecuteTileInteraction(roomID, playerID, interactionType s
 		return nil, nil
 
 	case "FORGE":
-		weapon := forgedWeapons[rand.Intn(len(forgedWeapons))]
+		poolID := interaction.PoolID
+		if poolID == "" {
+			poolID = "forge_legendary_weapons"
+		}
+		pool := GetCardPoolByID(poolID)
+		if len(pool) == 0 {
+			return nil, fmt.Errorf("互动卡池未配置: %s", poolID)
+		}
+		weapon := pool[rand.Intn(len(pool))]
 		player.Items = append(player.Items, weapon)
 		g.addLog(roomID, fmt.Sprintf("%s 在泰坦锻铁炉中打造了 %s", player.Character.Name, weapon.Name), "success")
 		g.addPersonalLogUnlocked(state.FullState, playerID, fmt.Sprintf("在锻铁炉中打造了 %s。", weapon.Name), "success")

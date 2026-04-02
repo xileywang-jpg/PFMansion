@@ -14,5 +14,35 @@
       "primaryColor": "#FFD700",
       "enabled": true
     }
+  ],
+  "cardPools": [
+    {
+      "id": "forge_legendary_weapons",
+      "cardIds": [
+        "forge_athena_spear",
+        "forge_sunbow",
+        "forge_ares_blade",
+        "forge_hermes_wings",
+        "forge_dionysus_cup",
+        "forge_zeus_shield"
+      ]
+    }
+  ],
+  "namedLocations": [
+    {
+      "id": "basement",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "entry",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "start",
+      "x": 0,
+      "y": 0
+    }
   ]
 }

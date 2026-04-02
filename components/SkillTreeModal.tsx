@@ -6,6 +6,18 @@ import { X, Lock, Check, Brain, Shield, Wind, Zap, Book, Heart, Cross, Moon, Mou
 import { SKILL_TREES } from '../data/source/skillTrees';
 import { SkillNode } from '../types';
 
+function getGrantEffectLabel(node: SkillNode): string[] {
+    if (node.grantsEffects && node.grantsEffects.length > 0) {
+        return node.grantsEffects
+            .map(effect => effect.description || effect.buff || '')
+            .filter(Boolean);
+    }
+    if (node.grantsBuff) {
+        return [node.grantsBuff];
+    }
+    return [];
+}
+
 const SkillTreeModal: React.FC = () => {
     const { ui, toggleSkillTree, players, activePlayerId, unlockSkillNode } = useGameStore();
   const player = players[activePlayerId];
@@ -19,6 +31,7 @@ const SkillTreeModal: React.FC = () => {
      }
      return null;
   }, [selectedNodeId]);
+  const rewardLabels = selectedNode ? getGrantEffectLabel(selectedNode) : [];
 
     if (!ui.isSkillTreeOpen || !player) return null;
 
@@ -167,7 +180,7 @@ const SkillTreeModal: React.FC = () => {
                   </div>
                   
                   {/* Unlocks Preview */}
-                  {(selectedNode.grantsSkillId || selectedNode.grantsBuff) && (
+                  {(selectedNode.grantsSkillId || rewardLabels.length > 0) && (
                       <div>
                           <h4 className="text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-2 flex items-center gap-2"><Zap size={10} /> 解锁奖励</h4>
                           <div className="space-y-2">
@@ -177,12 +190,12 @@ const SkillTreeModal: React.FC = () => {
                                       <span>获得主动技能</span>
                                   </div>
                               )}
-                              {selectedNode.grantsBuff && (
-                                  <div className="flex items-center gap-2 text-xs text-emerald-300 bg-emerald-900/10 p-2 rounded border border-emerald-900/30">
+                              {rewardLabels.map((label, index) => (
+                                  <div key={`${label}-${index}`} className="flex items-center gap-2 text-xs text-emerald-300 bg-emerald-900/10 p-2 rounded border border-emerald-900/30">
                                       <Shield size={14} className="shrink-0" /> 
-                                      <span>{selectedNode.grantsBuff}</span>
+                                      <span>{label}</span>
                                   </div>
-                              )}
+                              ))}
                           </div>
                       </div>
                   )}

@@ -172,9 +172,9 @@ export const renderTileEffectText = (effect: Partial<Effect> & { text?: string }
     case 'MOVE_PLAYER':
       return `移动到 ${effect.location || '指定位置'}`;
     case 'GIVE_ITEM':
-      return '获得一件物品';
+      return effect.itemId ? `获得物品 ${effect.itemId}` : '获得一件物品';
     case 'GIVE_SKILL':
-      return '获得一项技能';
+      return effect.skillId ? `获得技能 ${effect.skillId}` : '获得一项技能';
     case 'ROLL':
       return `进行 ${getAttributeLabel(effect.attribute)} 检定`;
     default:

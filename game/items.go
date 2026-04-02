@@ -49,6 +49,9 @@ func normalizeEffectType(effectType string) string {
 
 func normalizeEffect(effect Effect) Effect {
 	effect.Type = normalizeEffectType(effect.Type)
+	if effect.Location != "" {
+		effect.Location = strings.ToLower(strings.TrimSpace(effect.Location))
+	}
 	if effect.Stat == "" && effect.Attribute != "" {
 		effect.Stat = strings.ToLower(effect.Attribute)
 	}
@@ -721,10 +724,15 @@ func (g *GameManager) UnlockSkillNode(roomID, playerID, nodeId string) error {
 			}
 		}
 
-		// 应用buff（属性加成）
-		if grant.GrantsBuff != "" {
-			ApplySkillNodeBuff(player, grant.GrantsBuff)
-			g.addLog(roomID, fmt.Sprintf("%s 获得了增益: %s", player.Character.Name, grant.GrantsBuff), "info")
+		for _, effect := range grant.GrantsEffects {
+			message := applySkillNodeGrantEffect(player, effect)
+			if message != "" {
+				g.addLog(roomID, fmt.Sprintf("%s 获得了增益: %s", player.Character.Name, message), "info")
+			}
+		}
+
+		if len(grant.GrantsEffects) == 0 && grant.GrantsBuff != "" {
+			g.addLog(roomID, fmt.Sprintf("%s 的技能节点 %s 仍使用旧版 grantsBuff 配置，请迁移到 grantsEffects", player.Character.Name, nodeId), "alert")
 		}
 	}
 
@@ -732,4 +740,44 @@ func (g *GameManager) UnlockSkillNode(roomID, playerID, nodeId string) error {
 	g.addLog(roomID, fmt.Sprintf("%s 习得了技能节点: %s", player.Character.Name, nodeId), "success")
 
 	return nil
+}
+
+func applySkillNodeGrantEffect(player *GamePlayer, effect SkillNodeGrantEffectJSON) string {
+	switch effect.Type {
+	case "MODIFY_ATTRIBUTE":
+		if effect.Stat == "" || effect.Amount == 0 {
+			return ""
+		}
+		attr, ok := player.Character.Attributes[effect.Stat]
+		if !ok {
+			return ""
+		}
+		attr.Max += effect.Amount
+		if attr.Max < attr.Floor {
+			attr.Max = attr.Floor
+		}
+		attr.Current += effect.Amount
+		if attr.Current < attr.Floor {
+			attr.Current = attr.Floor
+		}
+		if attr.Current > attr.Max {
+			attr.Current = attr.Max
+		}
+		player.Character.Attributes[effect.Stat] = attr
+		if effect.Description != "" {
+			return effect.Description
+		}
+		return fmt.Sprintf("%s %+d", effect.Stat, effect.Amount)
+	case "ADD_BUFF":
+		if effect.Buff == "" {
+			return ""
+		}
+		player.Buffs = append(player.Buffs, effect.Buff)
+		if effect.Description != "" {
+			return effect.Description
+		}
+		return effect.Buff
+	default:
+		return ""
+	}
 }
