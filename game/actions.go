@@ -1065,7 +1065,7 @@ func (g *GameManager) ModifyStat(roomID, playerID, attribute string, amount int)
 	})
 
 	// 检查死亡
-	if attr.Current <= attr.Floor && attribute == "might" {
+	if attr.Current <= attr.Floor && attribute == "might" && !player.IsDead {
 		player.IsDead = true
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 			ID:        generateLogID(),
@@ -1073,6 +1073,7 @@ func (g *GameManager) ModifyStat(roomID, playerID, attribute string, amount int)
 			Text:      fmt.Sprintf("%s 在大厦中殒落了...", player.Character.Name),
 			Type:      "alert",
 		})
+		g.handlePlayerDeathObjectiveUpdateUnlocked(state.FullState, playerID)
 	}
 
 	return nil

@@ -7,6 +7,7 @@ Mansion Protocol 是一个以后端权威状态推进为核心、以配置化内
 - 前端通过 WebSocket 接收 state_sync 与交互结果，只做展示与输入
 - 运行时内容通过 game/data 下的 JSON 嵌入后端，原始编辑数据逐步向 raw_data 收口
 - 数据配置化改造正在持续推进，已落地 cardPools、namedLocations、rewardItems、skill tree grantsEffects、Effect.itemId / skillId 等结构化能力
+- 前端构建前会自动校验运行时代码边界，禁止重新引入 data/source、已退役 data/* 包装层和旧主题配置的直接依赖
 
 ## 快速启动
 
@@ -54,3 +55,4 @@ PFMansion/
 - 新数据能力优先结构化，不再新增依赖中文文案解析的逻辑字段
 - 内容迁移遵循“先配置化、后删除硬编码 fallback”的顺序
 - 文档只在 docs/ 目录维护，根目录不再保留平行 DOCS 文件
+- 运行时静态数据必须来自 /api/game/data 或后端同步结果，data/source 仅保留 authoring/生成链职责

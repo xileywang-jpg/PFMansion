@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { PLAYER_COLORS } from '../constants';
 import { AttributeName } from '../types';
-import { SKILLS_DB } from '../data/skills';
 import { CharacterPortrait } from './effects/CardImage';
 
 // ==================== 图标映射 ====================
@@ -153,7 +152,8 @@ const PlayerInspectionModal: React.FC = () => {
     players, 
     playerIds, 
     isHauntActive,
-    getCharacterById 
+    getCharacterById,
+    getSkillById
   } = useGameStore();
   
   const player = ui.inspectPlayerId ? players[ui.inspectPlayerId] : null;
@@ -171,8 +171,8 @@ const PlayerInspectionModal: React.FC = () => {
     const characterSkills = player.character.initialSkills || [];
     const acquiredSkills = player.skills || [];
     const allSkillIds = Array.from(new Set([...itemSkills, ...characterSkills, ...acquiredSkills]));
-    return allSkillIds.map(id => SKILLS_DB[id]).filter(Boolean);
-  }, [player]);
+    return allSkillIds.map(id => getSkillById(id)).filter(Boolean);
+  }, [player, getSkillById]);
 
   if (!player) return null;
 

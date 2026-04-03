@@ -5,6 +5,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Backpack, Crosshair, Syringe, Gem, Skull, Zap, Trash2, ArrowUpCircle } from 'lucide-react';
 import { Item } from '../types';
 
+const formatPassiveEffectText = (effect: NonNullable<Item['passiveEffects']>[number]) => {
+    if (effect.text) {
+        return effect.text;
+    }
+    if (effect.type === 'skill' && effect.skillId) {
+        return `获得技能 ${effect.skillId}`;
+    }
+    if ((effect.type === 'buff' || effect.type === 'debuff') && effect.stat && effect.amount) {
+        const sign = effect.amount > 0 ? '+' : '';
+        return `${effect.stat} ${sign}${effect.amount}`;
+    }
+    if (effect.type === 'special' && effect.specialKey) {
+        return effect.specialKey;
+    }
+    return effect.type;
+};
+
 const InventoryModal: React.FC = () => {
     const { ui, toggleInventory, players, activePlayerId, useItem, dropItem } = useGameStore();
   const player = players[activePlayerId];
@@ -68,7 +85,7 @@ const InventoryModal: React.FC = () => {
                         {selectedItem.passiveEffects && selectedItem.passiveEffects.length > 0 && (
                             <div className="mb-4">
                                 <span className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider block mb-2">被动效果</span>
-                                {selectedItem.passiveEffects.map((eff, i) => <div key={i} className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/50 p-2 rounded mb-1"><Zap size={14} className="text-yellow-500" />{eff.text}</div>)}
+                                {selectedItem.passiveEffects.map((eff, i) => <div key={i} className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/50 p-2 rounded mb-1"><Zap size={14} className="text-yellow-500" />{formatPassiveEffectText(eff)}</div>)}
                             </div>
                         )}
                         {selectedItem.usage && (

@@ -177,6 +177,12 @@ export const renderTileEffectText = (effect: Partial<Effect> & { text?: string }
       return effect.skillId ? `获得技能 ${effect.skillId}` : '获得一项技能';
     case 'ROLL':
       return `进行 ${getAttributeLabel(effect.attribute)} 检定`;
+    case 'ADD_STATUS':
+      return `获得状态 ${effect.statusType || effect.attribute || effect.message || '未知状态'}`;
+    case 'ADD_BUFF':
+      return `获得增益 ${effect.buff || effect.message || '未知增益'}`;
+    case 'REMOVE_BUFF':
+      return `移除增益 ${effect.buff || effect.message || '未知增益'}`;
     default:
       return effect.type || '未知效果';
   }

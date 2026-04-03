@@ -3,7 +3,6 @@ import React, { useState, useMemo } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Lock, Check, Brain, Shield, Wind, Zap, Book, Heart, Cross, Moon, MousePointerClick, ChevronRight } from 'lucide-react';
-import { SKILL_TREES } from '../data/source/skillTrees';
 import { SkillNode } from '../types';
 
 function getGrantEffectLabel(node: SkillNode): string[] {
@@ -19,18 +18,19 @@ function getGrantEffectLabel(node: SkillNode): string[] {
 }
 
 const SkillTreeModal: React.FC = () => {
-    const { ui, toggleSkillTree, players, activePlayerId, unlockSkillNode } = useGameStore();
+        const { ui, toggleSkillTree, players, activePlayerId, unlockSkillNode, getSkillTrees } = useGameStore();
   const player = players[activePlayerId];
+    const skillTrees = getSkillTrees();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const selectedNode = useMemo(() => {
      if (!selectedNodeId) return null;
-     for(const tree of SKILL_TREES) {
+         for(const tree of skillTrees) {
          const found = tree.nodes.find(n => n.id === selectedNodeId);
          if(found) return found;
      }
      return null;
-  }, [selectedNodeId]);
+    }, [selectedNodeId, skillTrees]);
   const rewardLabels = selectedNode ? getGrantEffectLabel(selectedNode) : [];
 
     if (!ui.isSkillTreeOpen || !player) return null;
@@ -295,7 +295,7 @@ const SkillTreeModal: React.FC = () => {
              {/* Left: Trees Grid */}
              <div className="flex-1 overflow-x-auto overflow-y-auto p-8 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-5 relative">
                 <div className="flex gap-16 min-w-max pb-8">
-                    {SKILL_TREES.map(tree => (
+                    {skillTrees.map(tree => (
                         <div key={tree.id} className="w-[300px] flex flex-col">
                             <div className="mb-10 text-center">
                                 <h3 className="text-lg font-bold text-zinc-200 uppercase tracking-widest border-b border-zinc-800 pb-2 mb-2">{tree.name}</h3>

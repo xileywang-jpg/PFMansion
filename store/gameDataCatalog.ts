@@ -32,6 +32,20 @@ export function getSkillById(data: GameDataBundle | null, id: string) {
   return data?.skills?.find(skill => skill.id === id);
 }
 
+export function getSkillTrees(data: GameDataBundle | null) {
+  return data?.skillTrees ?? [];
+}
+
+export function getSkillNodeById(data: GameDataBundle | null, nodeId: string) {
+  for (const tree of getSkillTrees(data)) {
+    const found = tree?.nodes?.find((node: any) => node.id === nodeId);
+    if (found) {
+      return found;
+    }
+  }
+  return undefined;
+}
+
 export function getScenarios(data: GameDataBundle | null) {
   return data?.scenarios ?? {};
 }

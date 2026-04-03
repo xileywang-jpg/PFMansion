@@ -87,7 +87,7 @@ export interface SkillNode {
   icon: string;
   prerequisites?: string[]; // IDs of parent nodes that must be unlocked first
   requiredTrait?: string; // Specific character trait required (e.g., "Strong")
-  grantsSkillId?: string; // Active skill ID from SKILLS_DB
+  grantsSkillId?: string; // Active skill ID
   grantsEffects?: SkillNodeGrantEffect[];
   grantsBuff?: string; // Passive effect text
   position: { row: number; col: number }; // For visual layout
@@ -126,7 +126,7 @@ export interface CharacterDef {
   portraitUrl?: string;
   attributes: Record<AttributeName, Attribute>;
   traits: string[]; 
-  initialSkills?: string[]; // Skills the character starts with (IDs from SKILLS_DB)
+  initialSkills?: string[]; // Skills the character starts with (skill IDs)
 }
 
 export type PlayerTeam = 'HERO' | 'TRAITOR' | 'UNASSIGNED';
@@ -191,11 +191,18 @@ export enum FloorLevel {
 export type TileEffectType = 'buff' | 'debuff' | 'trigger' | 'item';
 
 // PassiveEffect 被动效果（与后端 PassiveEffect 对齐）
-export type PassiveEffectType = 'buff' | 'debuff' | 'special' | 'skill';
+export type PassiveEffectType = 'buff' | 'debuff' | 'special' | 'skill' | 'combat_buff' | 'combat_modifier' | 'combat_damage_bonus';
 
 export interface PassiveEffect {
   type: PassiveEffectType;
   text: string;
+  stat?: string;
+  amount?: number;
+  skillId?: string;
+  specialKey?: string;
+  trigger?: 'ATTACK' | 'END_TURN' | 'ENTER_ROOM';
+  modifier?: number;
+  npcTypes?: string[];
 }
 
 // 兼容别名
@@ -318,13 +325,20 @@ export interface Choice {
 
 // Effect 效果定义（完整版）
 export interface Effect {
-  type: 'MODIFY_STAT' | 'DAMAGE' | 'HEAL' | 'DRAW_CARD' | 'MOVE_PLAYER' | 'LOG' | 'IF' | 'GIVE_ITEM' | 'GIVE_SKILL' | 'ROLL';
+  type: 'MODIFY_STAT' | 'DAMAGE' | 'HEAL' | 'DRAW_CARD' | 'MOVE_PLAYER' | 'LOG' | 'IF' | 'GIVE_ITEM' | 'GIVE_SKILL' | 'ROLL' | 'ADD_STATUS' | 'ADD_BUFF' | 'REMOVE_BUFF';
   stat?: string;
   amount?: number;
   target?: string;
   deck?: CardSymbol;
   itemId?: string;
   skillId?: string;
+  statusType?: string;
+  duration?: number;
+  buff?: string;
+  source?: string;
+  faction?: string;
+  damage?: number;
+  statusAmount?: number;
   message?: string;
   style?: 'info' | 'alert' | 'success' | 'narrative';
   location?: string;
@@ -363,7 +377,7 @@ export interface Card {
   triggerType?: 'ON_ENTER' | 'ON_EXIT' | 'MANUAL';
   interaction?: Interaction;
   usage?: ItemUsage;
-  passiveEffects?: string[];
+  passiveEffects?: PassiveEffect[];
   // 用于物品/厄运的额外字段
   cardSymbol?: CardSymbol;
 }

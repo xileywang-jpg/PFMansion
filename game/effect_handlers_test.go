@@ -77,3 +77,71 @@ func TestResolveMovePlayerTarget_ExplicitCoordinatesOverrideLocation(t *testing.
 		t.Fatalf("显式坐标应优先生效: got=(%d,%d)", x, y)
 	}
 }
+
+func TestHandleAddBuffEffect_UsesExplicitBuffField(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	player := state.Players["player_1"]
+
+	gm.applyEffect(roomID, "player_1", Effect{Type: "ADD_BUFF", Buff: "防御 +1"})
+
+	if len(player.Buffs) != 1 || player.Buffs[0] != "防御 +1" {
+		t.Fatalf("ADD_BUFF 应按显式 buff 生效, 实际为 %#v", player.Buffs)
+	}
+}
+
+func TestHandleRemoveBuffEffect_UsesExplicitBuffField(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	player := state.Players["player_1"]
+	player.Buffs = []string{"防御 +1", "速度 +1"}
+
+	gm.applyEffect(roomID, "player_1", Effect{Type: "REMOVE_BUFF", Buff: "防御 +1"})
+
+	if len(player.Buffs) != 1 || player.Buffs[0] != "速度 +1" {
+		t.Fatalf("REMOVE_BUFF 应按显式 buff 移除, 实际为 %#v", player.Buffs)
+	}
+}
+
+func TestHandleAddStatusEffect_UsesExplicitStatusFields(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	player := state.Players["player_1"]
+
+	gm.applyEffect(roomID, "player_1", Effect{
+		Type:       "ADD_STATUS",
+		StatusType: "burning",
+		Duration:   2,
+		Damage:     1,
+		Faction:    "enemy",
+		Source:     "event_fire",
+		StatusAmt:  3,
+	})
+
+	if len(player.StatusEffects) != 1 {
+		t.Fatalf("ADD_STATUS 后状态数量错误: %#v", player.StatusEffects)
+	}
+	status := player.StatusEffects[0]
+	if status.Type != "BURNING" {
+		t.Fatalf("状态类型应标准化为 BURNING, 实际为 %s", status.Type)
+	}
+	if status.Duration != 2 || status.Damage != 1 || status.Faction != "enemy" || status.Source != "event_fire" || status.Amount != 3 {
+		t.Fatalf("状态字段映射错误: %#v", status)
+	}
+}
+
+func TestHandleAddBuffEffect_MessageFallbackRemainsCompatible(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	state := gm.Rooms[roomID].GameState.FullState
+	player := state.Players["player_1"]
+
+	gm.applyEffect(roomID, "player_1", Effect{Type: "ADD_BUFF", Message: "速度 +1"})
+
+	if len(player.Buffs) != 1 || player.Buffs[0] != "速度 +1" {
+		t.Fatalf("ADD_BUFF 旧版 message 兼容路径失效, 实际为 %#v", player.Buffs)
+	}
+}

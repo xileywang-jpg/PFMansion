@@ -279,6 +279,49 @@ func normalizeSkillTrees(trees []SkillTreeCategoryJSON) {
 	}
 }
 
+func normalizePassiveEffect(effect *PassiveEffect) {
+	if effect == nil {
+		return
+	}
+	effect.Type = strings.ToLower(strings.TrimSpace(effect.Type))
+	effect.Text = strings.TrimSpace(effect.Text)
+	effect.Stat = strings.ToLower(strings.TrimSpace(effect.Stat))
+	effect.SkillID = strings.TrimSpace(effect.SkillID)
+	effect.SpecialKey = strings.TrimSpace(effect.SpecialKey)
+	effect.Trigger = normalizePassiveTrigger(effect.Trigger)
+	for i := range effect.NPCTypes {
+		effect.NPCTypes[i] = strings.ToUpper(strings.TrimSpace(effect.NPCTypes[i]))
+	}
+}
+
+func normalizeCards(cards []Card) {
+	for i := range cards {
+		for p := range cards[i].PassiveEffects {
+			normalizePassiveEffect(&cards[i].PassiveEffects[p])
+		}
+		if cards[i].Interaction != nil {
+			cards[i].Interaction.Type = strings.ToUpper(strings.TrimSpace(cards[i].Interaction.Type))
+			cards[i].Interaction.Attribute = strings.ToLower(strings.TrimSpace(cards[i].Interaction.Attribute))
+			for e := range cards[i].Interaction.Success {
+				cards[i].Interaction.Success[e] = normalizeEffect(cards[i].Interaction.Success[e])
+			}
+			for e := range cards[i].Interaction.Failure {
+				cards[i].Interaction.Failure[e] = normalizeEffect(cards[i].Interaction.Failure[e])
+			}
+			for o := range cards[i].Interaction.Options {
+				for e := range cards[i].Interaction.Options[o].Effects {
+					cards[i].Interaction.Options[o].Effects[e] = normalizeEffect(cards[i].Interaction.Options[o].Effects[e])
+				}
+			}
+		}
+		if cards[i].Usage != nil {
+			for e := range cards[i].Usage.Effects {
+				cards[i].Usage.Effects[e] = normalizeEffect(cards[i].Usage.Effects[e])
+			}
+		}
+	}
+}
+
 func (d *DataLoader) findCardByID(id string) *Card {
 	for i := range d.Events.Events {
 		if d.Events.Events[i].ID == id {
@@ -348,6 +391,513 @@ func (d *DataLoader) compileNamedLocations() error {
 	return nil
 }
 
+func (d *DataLoader) isKnownItemID(itemID string) bool {
+	itemID = strings.TrimSpace(itemID)
+	if itemID == "" {
+		return false
+	}
+	for _, card := range d.Items.Items {
+		if card.ID == itemID {
+			return true
+		}
+	}
+	for _, card := range d.Items.RewardItems {
+		if card.ID == itemID {
+			return true
+		}
+	}
+	for _, card := range d.Items.Omens {
+		if card.ID == itemID {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *DataLoader) isKnownSkillID(skillID string) bool {
+	skillID = strings.TrimSpace(skillID)
+	if skillID == "" {
+		return false
+	}
+	for _, card := range d.Items.Skills {
+		if card.ID == skillID {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *DataLoader) findSkillIDByName(skillName string) string {
+	skillName = strings.TrimSpace(skillName)
+	if skillName == "" {
+		return ""
+	}
+	for _, skill := range d.Items.Skills {
+		if strings.Contains(skill.Name, skillName) || strings.Contains(skillName, skill.Name) {
+			return skill.ID
+		}
+	}
+	return ""
+}
+
+func isValidAttributeName(attr string) bool {
+	switch strings.ToLower(strings.TrimSpace(attr)) {
+	case "might", "speed", "sanity", "knowledge":
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidPassiveTrigger(trigger string) bool {
+	switch normalizePassiveTrigger(trigger) {
+	case "", "ATTACK", "DEFENSE", "END_TURN", "ENTER_ROOM":
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidNPCTypeName(npcType string) bool {
+	switch strings.ToUpper(strings.TrimSpace(npcType)) {
+	case string(NPCType_Ghost), string(NPCType_Beast), string(NPCType_Spirit), string(NPCType_Zombie):
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedLegacyPassiveBuffText(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+
+	_, strippedText := inferLegacyPassiveTrigger(text)
+	strippedText = strings.ReplaceAll(strippedText, "，", ",")
+	parts := strings.Split(strippedText, ",")
+	matched := false
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		attrName, amount := parseAttributeChange(part)
+		if attrName == "" || amount == 0 {
+			return false
+		}
+		matched = true
+	}
+
+	return matched
+}
+
+func (d *DataLoader) validatePassiveEffect(passive PassiveEffect, context string) error {
+	typeName := strings.ToLower(strings.TrimSpace(passive.Type))
+	text := strings.TrimSpace(passive.Text)
+	trigger := normalizePassiveTrigger(passive.Trigger)
+	if !isValidPassiveTrigger(trigger) {
+		return fmt.Errorf("%s: passiveEffects.trigger 非法: %s", context, passive.Trigger)
+	}
+
+	switch typeName {
+	case "buff", "debuff":
+		hasStructured := strings.TrimSpace(passive.Stat) != "" || passive.Amount != 0
+		if hasStructured {
+			if !isValidAttributeName(passive.Stat) {
+				return fmt.Errorf("%s: passiveEffects.%s 的 stat 非法: %s", context, typeName, passive.Stat)
+			}
+			if passive.Amount == 0 {
+				return fmt.Errorf("%s: passiveEffects.%s 缺少 amount", context, typeName)
+			}
+		}
+		if !hasStructured && text == "" {
+			return fmt.Errorf("%s: passiveEffects.%s 缺少 text 或结构化字段", context, typeName)
+		}
+		if !hasStructured && !isSupportedLegacyPassiveBuffText(text) {
+			return fmt.Errorf("%s: passiveEffects.%s 文本当前不会被后端执行，请迁移为结构化字段或改用 special/skill/combat_* 类型: %s", context, typeName, text)
+		}
+	case "skill":
+		if strings.TrimSpace(passive.SkillID) != "" {
+			if !d.isKnownSkillID(passive.SkillID) {
+				return fmt.Errorf("%s: passiveEffects.skill 引用了不存在的 skillId=%s", context, passive.SkillID)
+			}
+			return nil
+		}
+		if strings.HasPrefix(text, "获得技能：") {
+			skillName := strings.TrimSpace(strings.TrimPrefix(text, "获得技能："))
+			if d.findSkillIDByName(skillName) == "" {
+				return fmt.Errorf("%s: passiveEffects.skill 文本无法匹配技能: %s", context, skillName)
+			}
+			return nil
+		}
+		return fmt.Errorf("%s: passiveEffects.skill 缺少 skillId 或兼容 text", context)
+	case "special":
+		if strings.TrimSpace(passive.SpecialKey) == "" && text == "" {
+			return fmt.Errorf("%s: passiveEffects.special 缺少 specialKey 或 text", context)
+		}
+	case "combat_buff", "combat_modifier":
+		if passive.Modifier == 0 {
+			return fmt.Errorf("%s: passiveEffects.%s 缺少 modifier", context, typeName)
+		}
+		if strings.TrimSpace(passive.Stat) != "" && !isValidAttributeName(passive.Stat) {
+			return fmt.Errorf("%s: passiveEffects.%s 的 stat 非法: %s", context, typeName, passive.Stat)
+		}
+	case "combat_damage_bonus":
+		if passive.Amount == 0 {
+			return fmt.Errorf("%s: passiveEffects.%s 缺少 amount", context, typeName)
+		}
+		if strings.TrimSpace(passive.Stat) != "" && !isValidAttributeName(passive.Stat) {
+			return fmt.Errorf("%s: passiveEffects.%s 的 stat 非法: %s", context, typeName, passive.Stat)
+		}
+		for _, npcType := range passive.NPCTypes {
+			if !isValidNPCTypeName(npcType) {
+				return fmt.Errorf("%s: passiveEffects.%s 的 npcTypes 非法: %s", context, typeName, npcType)
+			}
+		}
+	default:
+		return fmt.Errorf("%s: passiveEffects.type 不支持: %s", context, passive.Type)
+	}
+
+	return nil
+}
+
+func (d *DataLoader) validateEffectCondition(condition *Condition, context string) error {
+	if condition == nil {
+		return nil
+	}
+
+	op := strings.ToUpper(strings.TrimSpace(condition.Op))
+	switch op {
+	case "HAS_ITEM":
+		if strings.TrimSpace(condition.ItemID) == "" {
+			return fmt.Errorf("%s: IF 条件 HAS_ITEM 缺少 itemId", context)
+		}
+		if !d.isKnownItemID(condition.ItemID) {
+			return fmt.Errorf("%s: IF 条件引用了不存在的 itemId=%s", context, condition.ItemID)
+		}
+	case "HAS_SKILL":
+		if strings.TrimSpace(condition.SkillID) == "" {
+			return fmt.Errorf("%s: IF 条件 HAS_SKILL 缺少 skillId", context)
+		}
+		if !d.isKnownSkillID(condition.SkillID) {
+			return fmt.Errorf("%s: IF 条件引用了不存在的 skillId=%s", context, condition.SkillID)
+		}
+	default:
+		return fmt.Errorf("%s: IF 条件不支持 op=%s", context, condition.Op)
+	}
+
+	return nil
+}
+
+func (d *DataLoader) validateEffect(effect Effect, context string) error {
+	effect = normalizeEffect(effect)
+
+	switch effect.Type {
+	case "GIVE_ITEM":
+		itemID := strings.TrimSpace(effect.ItemID)
+		if itemID == "" {
+			itemID = strings.TrimSpace(effect.Message)
+		}
+		if itemID == "" {
+			return fmt.Errorf("%s: GIVE_ITEM 缺少 itemId", context)
+		}
+		if !d.isKnownItemID(itemID) {
+			return fmt.Errorf("%s: GIVE_ITEM 引用了不存在的 itemId=%s", context, itemID)
+		}
+	case "GIVE_SKILL":
+		skillID := strings.TrimSpace(effect.SkillID)
+		if skillID == "" {
+			skillID = strings.TrimSpace(effect.Message)
+		}
+		if skillID == "" {
+			return fmt.Errorf("%s: GIVE_SKILL 缺少 skillId", context)
+		}
+		if !d.isKnownSkillID(skillID) {
+			return fmt.Errorf("%s: GIVE_SKILL 引用了不存在的 skillId=%s", context, skillID)
+		}
+	case "MOVE_PLAYER":
+		hasExplicitPosition := effect.X != 0 || effect.Y != 0
+		location := strings.ToLower(strings.TrimSpace(effect.Location))
+		if !hasExplicitPosition && location != "" && location != "random" {
+			if _, ok := d.NamedLocationMap[location]; !ok {
+				return fmt.Errorf("%s: MOVE_PLAYER 引用了不存在的命名位置 location=%s", context, effect.Location)
+			}
+		}
+	case "ADD_STATUS":
+		statusType := strings.ToUpper(strings.TrimSpace(effect.StatusType))
+		if statusType == "" {
+			statusType = strings.ToUpper(strings.TrimSpace(effect.Attribute))
+		}
+		if statusType == "" {
+			statusType = strings.ToUpper(strings.TrimSpace(effect.Message))
+		}
+		if statusType == "" {
+			return fmt.Errorf("%s: ADD_STATUS 缺少 statusType", context)
+		}
+	case "ADD_BUFF", "REMOVE_BUFF":
+		if strings.TrimSpace(effect.Buff) == "" && strings.TrimSpace(effect.Message) == "" {
+			return fmt.Errorf("%s: %s 缺少 buff", context, effect.Type)
+		}
+	case "IF":
+		if err := d.validateEffectCondition(effect.Condition, context); err != nil {
+			return err
+		}
+	}
+
+	for i := range effect.Then {
+		if err := d.validateEffect(effect.Then[i], fmt.Sprintf("%s.then[%d]", context, i)); err != nil {
+			return err
+		}
+	}
+	for i := range effect.Else {
+		if err := d.validateEffect(effect.Else[i], fmt.Sprintf("%s.else[%d]", context, i)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (d *DataLoader) validateEffectSlice(effects []Effect, context string) error {
+	for i := range effects {
+		if err := d.validateEffect(effects[i], fmt.Sprintf("%s[%d]", context, i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *DataLoader) validateCardEffects(card Card, context string) error {
+	for i := range card.PassiveEffects {
+		if err := d.validatePassiveEffect(card.PassiveEffects[i], fmt.Sprintf("%s.passiveEffects[%d]", context, i)); err != nil {
+			return err
+		}
+	}
+
+	if card.Interaction != nil {
+		if err := d.validateEffectSlice(card.Interaction.Success, context+".interaction.success"); err != nil {
+			return err
+		}
+		if err := d.validateEffectSlice(card.Interaction.Failure, context+".interaction.failure"); err != nil {
+			return err
+		}
+		for optionIndex := range card.Interaction.Options {
+			if err := d.validateEffectSlice(card.Interaction.Options[optionIndex].Effects, fmt.Sprintf("%s.interaction.options[%d].effects", context, optionIndex)); err != nil {
+				return err
+			}
+		}
+	}
+
+	if card.Usage != nil {
+		if err := d.validateEffectSlice(card.Usage.Effects, context+".usage.effects"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (d *DataLoader) validateTileEffects(tiles []TileDef, theme string) error {
+	for tileIndex := range tiles {
+		tile := &tiles[tileIndex]
+		base := fmt.Sprintf("tiles[%s:%s]", theme, tile.ID)
+
+		if err := d.validateEffectSlice(tile.Effects, base+".effects"); err != nil {
+			return err
+		}
+		if err := d.validateEffectSlice(tile.OnEnterEffects, base+".onEnterEffects"); err != nil {
+			return err
+		}
+		if err := d.validateEffectSlice(tile.OnExitEffects, base+".onExitEffects"); err != nil {
+			return err
+		}
+
+		if tile.OnEnter != nil {
+			if err := d.validateEffectSlice(tile.OnEnter.Success, base+".onEnter.success"); err != nil {
+				return err
+			}
+			if err := d.validateEffectSlice(tile.OnEnter.Failure, base+".onEnter.failure"); err != nil {
+				return err
+			}
+			if err := d.validateEffectSlice(tile.OnEnter.Effects, base+".onEnter.effects"); err != nil {
+				return err
+			}
+			for posIndex := range tile.OnEnter.Possibilities {
+				if err := d.validateEffect(tile.OnEnter.Possibilities[posIndex].Effect, fmt.Sprintf("%s.onEnter.possibilities[%d]", base, posIndex)); err != nil {
+					return err
+				}
+			}
+		}
+
+		if tile.OnLeave != nil {
+			if err := d.validateEffectSlice(tile.OnLeave.Success, base+".onLeave.success"); err != nil {
+				return err
+			}
+			if err := d.validateEffectSlice(tile.OnLeave.Failure, base+".onLeave.failure"); err != nil {
+				return err
+			}
+			if err := d.validateEffectSlice(tile.OnLeave.Effects, base+".onLeave.effects"); err != nil {
+				return err
+			}
+			for posIndex := range tile.OnLeave.Possibilities {
+				if err := d.validateEffect(tile.OnLeave.Possibilities[posIndex].Effect, fmt.Sprintf("%s.onLeave.possibilities[%d]", base, posIndex)); err != nil {
+					return err
+				}
+			}
+		}
+
+		if tile.Interact != nil {
+			if err := d.validateEffectSlice(tile.Interact.Effects, base+".interact.effects"); err != nil {
+				return err
+			}
+			if err := d.validateEffectSlice(tile.Interact.Success, base+".interact.success"); err != nil {
+				return err
+			}
+			if err := d.validateEffectSlice(tile.Interact.Failure, base+".interact.failure"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (d *DataLoader) validateSkillTreeGrantEffects() error {
+	for treeIndex := range d.SkillTrees.Trees {
+		tree := &d.SkillTrees.Trees[treeIndex]
+		for nodeIndex := range tree.Nodes {
+			node := &tree.Nodes[nodeIndex]
+			for effectIndex := range node.GrantsEffects {
+				effect := node.GrantsEffects[effectIndex]
+				context := fmt.Sprintf("skillTrees[%s].nodes[%s].grantsEffects[%d]", tree.ID, node.ID, effectIndex)
+				switch effect.Type {
+				case "MODIFY_ATTRIBUTE":
+					if effect.Stat == "" {
+						return fmt.Errorf("%s: MODIFY_ATTRIBUTE 缺少 stat", context)
+					}
+					if effect.Amount == 0 {
+						return fmt.Errorf("%s: MODIFY_ATTRIBUTE 缺少 amount", context)
+					}
+				case "ADD_BUFF":
+					if strings.TrimSpace(effect.Buff) == "" {
+						return fmt.Errorf("%s: ADD_BUFF 缺少 buff", context)
+					}
+				default:
+					return fmt.Errorf("%s: 不支持的 grantsEffects.type=%s", context, effect.Type)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (d *DataLoader) validateObjectiveDefinition(obj *Objective, context string) error {
+	if obj == nil {
+		return nil
+	}
+
+	if strings.TrimSpace(obj.Type) == "" {
+		return fmt.Errorf("%s: objective.type 不能为空", context)
+	}
+
+	if obj.Params == nil {
+		return fmt.Errorf("%s: objective.params 不能为空；runtime scenario objective 必须使用 params", context)
+	}
+
+	if objectiveUsesLegacyScenarioFields(obj) {
+		return fmt.Errorf("%s: objective 不应再使用顶层 target/turns/customId，请迁移到 params", context)
+	}
+
+	turnLimit := objectiveParamInt(obj, "turns")
+	if turnLimit <= 0 {
+		return fmt.Errorf("%s: params.turns 必须大于 0", context)
+	}
+
+	required := objectiveRequiredProgress(obj)
+	if required <= 0 {
+		return fmt.Errorf("%s: objective required 必须大于 0", context)
+	}
+
+	eventType := objectiveParamString(obj, "eventType")
+	if strings.TrimSpace(eventType) == "" {
+		return fmt.Errorf("%s: params.eventType 不能为空", context)
+	}
+	if !isSupportedObjectiveEventType(eventType) {
+		return fmt.Errorf("%s: params.eventType 不支持: %s", context, eventType)
+	}
+
+	switch strings.ToUpper(strings.TrimSpace(obj.Type)) {
+	case "ELIMINATE", "CONVERT", "REACH", "COLLECT", "OPEN_GATE":
+		if strings.TrimSpace(objectiveParamString(obj, "target")) == "" {
+			return fmt.Errorf("%s: %s 目标缺少 params.target", context, obj.Type)
+		}
+	case "CUSTOM":
+		if strings.TrimSpace(objectiveParamString(obj, "customId")) == "" {
+			return fmt.Errorf("%s: CUSTOM 目标缺少 params.customId", context)
+		}
+	}
+
+	return nil
+}
+
+func (d *DataLoader) validateAllScenarioObjectives() error {
+	for id, scenario := range d.Scenarios.Scenarios {
+		if err := d.validateObjectiveDefinition(scenario.HeroObjective, fmt.Sprintf("scenarios[%s].heroObjective", id)); err != nil {
+			return err
+		}
+		if err := d.validateObjectiveDefinition(scenario.TraitorObjective, fmt.Sprintf("scenarios[%s].traitorObjective", id)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *DataLoader) validateAllEffects() error {
+	if err := d.validateTileEffects(d.Tiles.Original, "original"); err != nil {
+		return err
+	}
+	if err := d.validateTileEffects(d.Tiles.Volantis, "volantis"); err != nil {
+		return err
+	}
+
+	for i := range d.Events.Events {
+		if err := d.validateCardEffects(d.Events.Events[i], fmt.Sprintf("events[%s]", d.Events.Events[i].ID)); err != nil {
+			return err
+		}
+	}
+	for i := range d.Items.Items {
+		if err := d.validateCardEffects(d.Items.Items[i], fmt.Sprintf("items[%s]", d.Items.Items[i].ID)); err != nil {
+			return err
+		}
+	}
+	for i := range d.Items.RewardItems {
+		if err := d.validateCardEffects(d.Items.RewardItems[i], fmt.Sprintf("rewardItems[%s]", d.Items.RewardItems[i].ID)); err != nil {
+			return err
+		}
+	}
+	for i := range d.Items.Omens {
+		if err := d.validateCardEffects(d.Items.Omens[i], fmt.Sprintf("omens[%s]", d.Items.Omens[i].ID)); err != nil {
+			return err
+		}
+	}
+	for i := range d.Items.Skills {
+		if err := d.validateCardEffects(d.Items.Skills[i], fmt.Sprintf("skills[%s]", d.Items.Skills[i].ID)); err != nil {
+			return err
+		}
+	}
+
+	if err := d.validateSkillTreeGrantEffects(); err != nil {
+		return err
+	}
+
+	if err := d.validateAllScenarioObjectives(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // LoadData 加载所有数据
 func LoadData() error {
 	dataLoader = &DataLoader{}
@@ -370,12 +920,17 @@ func LoadData() error {
 		log.Printf("⚠️ 加载事件数据失败: %v", err)
 		return err
 	}
+	normalizeCards(dataLoader.Events.Events)
 
 	// 加载物品数据
 	if err := json.Unmarshal(itemsData, &dataLoader.Items); err != nil {
 		log.Printf("⚠️ 加载物品数据失败: %v", err)
 		return err
 	}
+	normalizeCards(dataLoader.Items.Items)
+	normalizeCards(dataLoader.Items.RewardItems)
+	normalizeCards(dataLoader.Items.Omens)
+	normalizeCards(dataLoader.Items.Skills)
 
 	// 加载剧本数据
 	if err := json.Unmarshal(scenariosData, &dataLoader.Scenarios); err != nil {
@@ -403,6 +958,11 @@ func LoadData() error {
 
 	if err := dataLoader.compileCardPools(); err != nil {
 		log.Printf("⚠️ 编译配置卡池失败: %v", err)
+		return err
+	}
+
+	if err := dataLoader.validateAllEffects(); err != nil {
+		log.Printf("⚠️ 校验效果配置失败: %v", err)
 		return err
 	}
 
@@ -464,6 +1024,31 @@ func GetEnabledThemes() []ThemeConfig {
 		}
 	}
 	return themes
+}
+
+// GetDefaultThemeID 获取默认主题ID（优先 original，其次第一个启用主题）
+func GetDefaultThemeID() string {
+	enabledThemes := GetEnabledThemes()
+	for _, theme := range enabledThemes {
+		if theme.ID == "original" {
+			return theme.ID
+		}
+	}
+	if len(enabledThemes) > 0 {
+		return enabledThemes[0].ID
+	}
+
+	allThemes := GetThemes()
+	for _, theme := range allThemes {
+		if theme.ID == "original" {
+			return theme.ID
+		}
+	}
+	if len(allThemes) > 0 {
+		return allThemes[0].ID
+	}
+
+	return "original"
 }
 
 // GetThemeIDs 获取所有主题ID

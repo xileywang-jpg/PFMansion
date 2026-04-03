@@ -3,6 +3,7 @@ package game
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -236,6 +237,15 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 	} else if attackerSum < defenderSum {
 		// 攻击方点数低，攻击方受伤
 		damage := defenderSum - attackerSum
+		if bonus := g.calculatePassiveDamageBonus(defender, combat.Attribute, "DEFENSE", nil); bonus > 0 {
+			damage += bonus
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 的被动效果额外造成了 %d 点伤害！", defender.Character.Name, bonus),
+				Type:      "info",
+			})
+		}
 		result.Damage = damage
 		result.Loser = combat.AttackerID
 
@@ -264,7 +274,7 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 			})
 
 			// 检查死亡（以 might 为例，力量归零则死亡）
-			if combat.Attribute == "might" && damageAttr.Current <= damageAttr.Floor {
+			if combat.Attribute == "might" && damageAttr.Current <= damageAttr.Floor && !state.FullState.Players[combat.AttackerID].IsDead {
 				state.FullState.Players[combat.AttackerID].IsDead = true
 				result.AttackerDied = true
 				state.FullState.Logs = append(state.FullState.Logs, LogEntry{
@@ -273,11 +283,21 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 					Text:      fmt.Sprintf("%s 在战斗中陨落了！", attacker.Character.Name),
 					Type:      "alert",
 				})
+				g.handlePlayerDeathObjectiveUpdateUnlocked(state.FullState, combat.AttackerID)
 			}
 		}
 	} else {
 		// 防御方点数低，防御方受伤
 		damage := attackerSum - defenderSum
+		if bonus := g.calculatePassiveDamageBonus(attacker, combat.Attribute, "ATTACK", nil); bonus > 0 {
+			damage += bonus
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 的被动效果额外造成了 %d 点伤害！", attacker.Character.Name, bonus),
+				Type:      "info",
+			})
+		}
 		result.Damage = damage
 		result.Loser = combat.DefenderID
 
@@ -306,7 +326,7 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 			})
 
 			// 检查死亡
-			if combat.Attribute == "might" && damageAttr.Current <= damageAttr.Floor {
+			if combat.Attribute == "might" && damageAttr.Current <= damageAttr.Floor && !state.FullState.Players[combat.DefenderID].IsDead {
 				state.FullState.Players[combat.DefenderID].IsDead = true
 				result.DefenderDied = true
 				state.FullState.Logs = append(state.FullState.Logs, LogEntry{
@@ -315,6 +335,7 @@ func (g *GameManager) ResolveCombat(roomID, playerID string) (*CombatResult, err
 					Text:      fmt.Sprintf("%s 在战斗中陨落了！", defender.Character.Name),
 					Type:      "alert",
 				})
+				g.handlePlayerDeathObjectiveUpdateUnlocked(state.FullState, combat.DefenderID)
 			}
 		}
 	}
@@ -421,12 +442,12 @@ func (g *GameManager) ModifyCombatRolls(
 
 	// ===== 应用攻击方对自身骰子的效果 =====
 	if hasAttacker {
-		modifiedAttackerRolls = g.applySelfCombatModifiers(attacker, modifiedAttackerRolls, attribute)
+		modifiedAttackerRolls = g.applySelfCombatModifiers(attacker, modifiedAttackerRolls, attribute, "ATTACK")
 	}
 
 	// ===== 应用防御方对自身骰子的效果 =====
 	if hasDefender {
-		modifiedDefenderRolls = g.applySelfCombatModifiers(defender, modifiedDefenderRolls, attribute)
+		modifiedDefenderRolls = g.applySelfCombatModifiers(defender, modifiedDefenderRolls, attribute, "DEFENSE")
 	}
 
 	return modifiedAttackerRolls, modifiedDefenderRolls
@@ -440,12 +461,16 @@ func (g *GameManager) applyCombatModifiersToRolls(
 ) []int {
 	modifiedRolls := make([]int, len(rolls))
 	copy(modifiedRolls, rolls)
+	role := "ATTACK"
+	if target == "attacker" {
+		role = "DEFENSE"
+	}
 
 	// 检查玩家持有的物品被动效果 (combat_modifier 类型)
 	for _, item := range player.Items {
 		if len(item.PassiveEffects) > 0 {
 			for _, effect := range item.PassiveEffects {
-				if effect.Type == "combat_modifier" && effect.Modifier != 0 {
+				if effect.Type == "combat_modifier" && shouldApplyCombatPassiveEffect(effect, attribute, role) {
 					// 对对手骰子的修改
 					for i := range modifiedRolls {
 						modifiedRolls[i] += effect.Modifier
@@ -469,7 +494,7 @@ func (g *GameManager) applyCombatModifiersToRolls(
 // 例如：祝福状态可以增加自己的骰子点数
 func (g *GameManager) applySelfCombatModifiers(
 	player *GamePlayer,
-	rolls []int, attribute string,
+	rolls []int, attribute string, role string,
 ) []int {
 	modifiedRolls := make([]int, len(rolls))
 	copy(modifiedRolls, rolls)
@@ -500,7 +525,7 @@ func (g *GameManager) applySelfCombatModifiers(
 	for _, item := range player.Items {
 		if len(item.PassiveEffects) > 0 {
 			for _, effect := range item.PassiveEffects {
-				if effect.Type == "combat_buff" && effect.Modifier != 0 {
+				if effect.Type == "combat_buff" && shouldApplyCombatPassiveEffect(effect, attribute, role) {
 					// 战斗加成效果
 					for i := range modifiedRolls {
 						modifiedRolls[i] += effect.Modifier
@@ -517,6 +542,69 @@ func (g *GameManager) applySelfCombatModifiers(
 	}
 
 	return modifiedRolls
+}
+
+func shouldApplyCombatPassiveEffect(effect PassiveEffect, attribute, role string) bool {
+	if effect.Modifier == 0 {
+		return false
+	}
+	if stat := strings.ToLower(strings.TrimSpace(effect.Stat)); stat != "" {
+		if stat != strings.ToLower(strings.TrimSpace(attribute)) {
+			return false
+		}
+	}
+	if trigger := normalizePassiveTrigger(effect.Trigger); trigger != "" {
+		if trigger != normalizePassiveTrigger(role) {
+			return false
+		}
+	}
+	return true
+}
+
+func (g *GameManager) calculatePassiveDamageBonus(player *GamePlayer, attribute, role string, targetNPC *GameNPC) int {
+	if player == nil {
+		return 0
+	}
+
+	totalBonus := 0
+	for _, item := range player.Items {
+		for _, effect := range item.PassiveEffects {
+			if strings.ToLower(strings.TrimSpace(effect.Type)) != "combat_damage_bonus" {
+				continue
+			}
+			if effect.Amount == 0 {
+				continue
+			}
+			if stat := strings.ToLower(strings.TrimSpace(effect.Stat)); stat != "" {
+				if strings.ToLower(strings.TrimSpace(attribute)) != stat {
+					continue
+				}
+			}
+			if trigger := normalizePassiveTrigger(effect.Trigger); trigger != "" {
+				if trigger != normalizePassiveTrigger(role) {
+					continue
+				}
+			}
+			if len(effect.NPCTypes) > 0 {
+				if targetNPC == nil {
+					continue
+				}
+				matched := false
+				for _, npcType := range effect.NPCTypes {
+					if strings.EqualFold(npcType, string(targetNPC.Type)) {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+			}
+			totalBonus += effect.Amount
+		}
+	}
+
+	return totalBonus
 }
 
 // slicesEqual 判断两个整数切片是否相等

@@ -9,9 +9,6 @@ import {
 } from '../types';
 import { ActionDefinition } from '../types/Logic';
 import { GameDataBundle } from '../src/services/gameData';
-import { SKILL_TREES } from '../data/source/skillTrees';
-import { getScenarioId } from '../data/hauntMatrix';
-import { resolveTraitor, healTraitor } from '../utils/scenarioUtils';
 import { addStatusEffect, decrementStatusEffects, applyStatusEffectOnTurnStart } from '../utils/statusEffects';
 import { generateId } from '../utils/idGenerator';
 import * as network from '../ws/network';
@@ -27,6 +24,8 @@ import {
   getOmenById as readOmenById,
   getScenarioById as readScenarioById,
   getScenarios as readScenarios,
+  getSkillTrees as readSkillTrees,
+  getSkillNodeById as readSkillNodeById,
   getSkillById as readSkillById,
   getTileById as readTileById,
   getTilesByTheme as readTilesByTheme,
@@ -102,6 +101,8 @@ interface GameState {
   getEventById: (id: string) => any | undefined;
   getAllSkills: () => any[];
   getSkillById: (id: string) => any | undefined;
+  getSkillTrees: () => any[];
+  getSkillNodeById: (id: string) => any | undefined;
   getScenarios: () => Record<string, any>;
   getScenarioById: (id: string) => any | undefined;
   getTilesByTheme: (theme?: string) => any[];
@@ -307,6 +308,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     return readSkillById(get().gameData, id);
   },
 
+  // 获取技能树
+  getSkillTrees: (): any[] => {
+    return readSkillTrees(get().gameData);
+  },
+
+  // 根据ID获取技能节点
+  getSkillNodeById: (id: string): any | undefined => {
+    return readSkillNodeById(get().gameData, id);
+  },
+
   // 获取剧本
   getScenarios: (): Record<string, any> => {
     return readScenarios(get().gameData);
@@ -491,15 +502,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const state = get();
       const player = state.players[state.activePlayerId];
       
-      // Find the node
-      let nodeToUnlock = null;
-      for (const tree of SKILL_TREES) {
-          const found = tree.nodes.find(n => n.id === nodeId);
-          if (found) {
-              nodeToUnlock = found;
-              break;
-          }
-      }
+        const nodeToUnlock = state.getSkillNodeById(nodeId);
       
       if (!nodeToUnlock) return;
       

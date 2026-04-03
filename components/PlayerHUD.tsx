@@ -5,7 +5,6 @@ import { AttributeName, GamePhase } from '../types';
 import { PLAYER_COLORS } from '../constants';
 import { Brain, Zap, Dumbbell, Eye, Skull, Backpack, Gem, Crosshair, Syringe, User, Ghost, Users, ShieldAlert, Target, Sparkles, ChevronDown, ChevronUp, History, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { SKILLS_DB } from '../data/skills';
 
 const AttributeRow: React.FC<{ label: string, current: number, max: number, icon: any, isDead: boolean }> = ({ label, current, max, icon: Icon, isDead }) => {
     return (
@@ -32,7 +31,7 @@ const AttributeRow: React.FC<{ label: string, current: number, max: number, icon
 };
 
 const PlayerHUD: React.FC = () => {
-  const { players, playerIds, activePlayerId, logs, toggleInventory, openTradeInteraction, phase, currentScenario, executeLogicAction, toggleSkillTree, getEffectiveAttributeValue, openInspection, interactionState, activeCard, ui } = useGameStore();
+  const { players, playerIds, activePlayerId, logs, toggleInventory, openTradeInteraction, phase, currentScenario, executeLogicAction, toggleSkillTree, getEffectiveAttributeValue, openInspection, interactionState, activeCard, ui, getSkillById } = useGameStore();
   const player = players[activePlayerId];
   const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
   const [logTab, setLogTab] = useState<'global' | 'personal'>('global');
@@ -68,8 +67,8 @@ const PlayerHUD: React.FC = () => {
     const acquiredSkills = player.skills || [];
 
     const allSkillIds = Array.from(new Set([...itemSkills, ...characterSkills, ...acquiredSkills]));
-    return allSkillIds.map(id => SKILLS_DB[id]).filter(Boolean);
-  }, [player]);
+    return allSkillIds.map(id => getSkillById(id)).filter(Boolean);
+  }, [player, getSkillById]);
 
   // 日志列表（必须在所有 hook 之后，条件返回之前）
   const activeLogs = useMemo(() => {

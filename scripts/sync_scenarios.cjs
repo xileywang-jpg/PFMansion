@@ -21,6 +21,15 @@ const BASE = path.resolve(__dirname, '..');
 const SOURCE_PATH = path.join(BASE, 'raw_data', 'scenarios', 'runtime_scenarios.json');
 const BACKEND_PATH = path.join(BASE, 'game', 'data', 'scenarios.json');
 const FRONTEND_PATH = path.join(BASE, 'data', 'generated', 'runtimeScenarios.ts');
+const SUPPORTED_OBJECTIVE_EVENT_TYPES = new Set([
+  'PLAYER_DEATH',
+  'TILE_REACHED',
+  'ITEM_COLLECTED',
+  'RITUAL_COMPLETED',
+  'TURNS_SURVIVED',
+  'OMEN_USED',
+  'ROOM_EXPLORED',
+]);
 
 const args = new Set(process.argv.slice(2));
 
@@ -35,6 +44,73 @@ function readJson(filePath) {
 function writeJson(filePath, value) {
   ensureParentDir(filePath);
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+function isPositiveInteger(value) {
+  return Number.isInteger(value) && value > 0;
+}
+
+function validateObjectiveDefinition(objective, context) {
+  if (!isPlainObject(objective)) {
+    throw new Error(`${context} 必须是对象`);
+  }
+  if (!isNonEmptyString(objective.name)) {
+    throw new Error(`${context}.name 不能为空`);
+  }
+  if (!isNonEmptyString(objective.description)) {
+    throw new Error(`${context}.description 不能为空`);
+  }
+  if (!isNonEmptyString(objective.type)) {
+    throw new Error(`${context}.type 不能为空`);
+  }
+  if ('target' in objective || 'turns' in objective || 'customId' in objective) {
+    throw new Error(`${context} 不应再使用顶层 target/turns/customId，请迁移到 params`);
+  }
+  if (!isPlainObject(objective.params)) {
+    throw new Error(`${context}.params 必须是对象`);
+  }
+  if (!isPositiveInteger(objective.params.turns)) {
+    throw new Error(`${context}.params.turns 必须是正整数`);
+  }
+  if ('required' in objective.params && !isPositiveInteger(objective.params.required)) {
+    throw new Error(`${context}.params.required 必须是正整数`);
+  }
+  if (!isNonEmptyString(objective.params.eventType)) {
+    throw new Error(`${context}.params.eventType 不能为空`);
+  }
+
+  const type = objective.type.trim().toUpperCase();
+  const eventType = objective.params.eventType.trim().toUpperCase();
+  if (!SUPPORTED_OBJECTIVE_EVENT_TYPES.has(eventType)) {
+    throw new Error(`${context}.params.eventType 不支持: ${objective.params.eventType}`);
+  }
+
+  switch (type) {
+    case 'ELIMINATE':
+    case 'CONVERT':
+    case 'REACH':
+    case 'COLLECT':
+    case 'OPEN_GATE':
+      if (!isNonEmptyString(objective.params.target)) {
+        throw new Error(`${context}.params.target 不能为空`);
+      }
+      break;
+    case 'CUSTOM':
+      if (!isNonEmptyString(objective.params.customId)) {
+        throw new Error(`${context}.params.customId 不能为空`);
+      }
+      break;
+    default:
+      break;
+  }
 }
 
 function validateScenarioBundle(bundle) {
@@ -69,6 +145,12 @@ function validateScenarioBundle(bundle) {
     }
     if (typeof scenario.traitorRule !== 'string' || scenario.traitorRule.trim() === '') {
       throw new Error(`scenarios.${scenarioId}.traitorRule 不能为空`);
+    }
+    if (scenario.heroObjective) {
+      validateObjectiveDefinition(scenario.heroObjective, `scenarios.${scenarioId}.heroObjective`);
+    }
+    if (scenario.traitorObjective) {
+      validateObjectiveDefinition(scenario.traitorObjective, `scenarios.${scenarioId}.traitorObjective`);
     }
   }
 

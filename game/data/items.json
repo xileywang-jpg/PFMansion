@@ -34,7 +34,7 @@
         ]
       },
       "passiveEffects": [
-        { "type": "skill", "text": "获得技能：嗜血打击" }
+        { "type": "skill", "text": "获得技能：嗜血打击", "skillId": "skill_vampiric_strike" }
       ]
     },
     {
@@ -44,7 +44,7 @@
       "description": "它在你的胸口散发着淡淡的暖意。",
       "icon": "Gem",
       "passiveEffects": [
-        { "type": "buff", "text": "理智 +1" }
+        { "type": "buff", "text": "理智 +1", "stat": "sanity", "amount": 1 }
       ]
     },
     {
@@ -130,8 +130,8 @@
         ]
       },
       "passiveEffects": [
-        { "type": "buff", "text": "攻击时额外造成 1 点伤害" },
-        { "type": "buff", "text": "对暗影生物伤害 +2" }
+        { "type": "combat_damage_bonus", "text": "攻击时额外造成 1 点伤害", "amount": 1, "trigger": "ATTACK" },
+        { "type": "combat_damage_bonus", "text": "对暗影生物伤害 +2", "amount": 2, "trigger": "ATTACK", "npcTypes": ["GHOST", "SPIRIT"] }
       ]
     },
     {
@@ -186,7 +186,7 @@
         ]
       },
       "passiveEffects": [
-        { "type": "buff", "text": "知识 +2" }
+        { "type": "buff", "text": "知识 +2", "stat": "knowledge", "amount": 2 }
       ]
     },
     {
@@ -221,8 +221,8 @@
         ]
       },
       "passiveEffects": [
-        { "type": "special", "text": "不会迷失方向" },
-        { "type": "buff", "text": "速度 +1" }
+        { "type": "special", "text": "不会迷失方向", "specialKey": "pathfinding" },
+        { "type": "buff", "text": "速度 +1", "stat": "speed", "amount": 1 }
       ]
     }
   ],

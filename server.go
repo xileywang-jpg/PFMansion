@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"mansion-protocol/ws"
 	"mansion-protocol/game"
 	"mansion-protocol/logger"
+	"mansion-protocol/ws"
 )
 
 // 全局游戏状态
@@ -42,7 +42,8 @@ func main() {
 
 	// 加载游戏数据
 	if err := game.LoadData(); err != nil {
-		logger.Warn("数据加载失败，将使用默认数据", map[string]interface{}{"error": err.Error()})
+		logger.Error("数据加载失败，服务器启动终止", map[string]interface{}{"error": err.Error()})
+		os.Exit(1)
 	}
 
 	// 初始化游戏状态管理器
@@ -57,14 +58,14 @@ func main() {
 
 	// HTTP 处理
 	mux := http.NewServeMux()
-	
+
 	// WebSocket 端点
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		ws.HandleWebSocket(hub, w, r)
 	})
 
 	// ==================== 日志管理 API ====================
-	
+
 	// 获取日志
 	mux.HandleFunc("/api/admin/logs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -76,24 +77,24 @@ func main() {
 			if l := r.URL.Query().Get("lines"); l != "" {
 				fmt.Sscanf(l, "%d", &lines)
 			}
-			
+
 			logPath := logger.GetLogPath(logType)
 			data, err := os.ReadFile(logPath)
 			if err != nil {
 				http.Error(w, "无法读取日志", http.StatusInternalServerError)
 				return
 			}
-			
+
 			// 返回最后N行
 			allLines := filepath.SplitList(string(data))
 			if len(allLines) > lines {
 				allLines = allLines[len(allLines)-lines:]
 			}
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"logs": allLines,
-				"type": logType,
+				"logs":  allLines,
+				"type":  logType,
 				"count": len(allLines),
 			})
 			return
@@ -108,12 +109,12 @@ func main() {
 			if logType == "" {
 				logType = "all"
 			}
-			
+
 			if err := logger.Clear(logType); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"success": true,
@@ -132,15 +133,15 @@ func main() {
 			}
 			body, _ := io.ReadAll(r.Body)
 			json.Unmarshal(body, &req)
-			
+
 			if req.Level != "" {
 				logger.SetLevel(req.Level)
 			}
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"success": true,
-				"level": logger.GetLevel(),
+				"level":   logger.GetLevel(),
 			})
 			return
 		} else if r.Method == http.MethodGet {
@@ -158,13 +159,13 @@ func main() {
 		if r.Method == http.MethodPost {
 			var req struct {
 				Logs      []map[string]interface{} `json:"logs"`
-				SessionID string                  `json:"sessionId"`
-				UserID    string                  `json:"userId"`
+				SessionID string                   `json:"sessionId"`
+				UserID    string                   `json:"userId"`
 			}
-			
+
 			body, _ := io.ReadAll(r.Body)
 			json.Unmarshal(body, &req)
-			
+
 			if req.Logs == nil || len(req.Logs) == 0 {
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "count": 0})
@@ -175,7 +176,7 @@ func main() {
 			logPath := logger.GetLogPath("frontend")
 			logDir := filepath.Dir(logPath)
 			frontendLogPath := filepath.Join(logDir, "frontend.log")
-			
+
 			f, err := os.OpenFile(frontendLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 			if err == nil {
 				defer f.Close()
@@ -192,11 +193,11 @@ func main() {
 					f.WriteString(string(logLine) + "\n")
 				}
 			}
-			
+
 			logger.Debug("收到前端日志", map[string]interface{}{
 				"count": len(req.Logs), "sessionId": req.SessionID, "userId": req.UserID,
 			})
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "count": len(req.Logs)})
 			return
@@ -208,10 +209,10 @@ func main() {
 	mux.HandleFunc("/api/admin/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"uptime": time.Since(startTime).String(),
+			"uptime":   time.Since(startTime).String(),
 			"logLevel": logger.GetLevel(),
 			"logPath": map[string]string{
-				"game": logger.GetLogPath("game"),
+				"game":  logger.GetLogPath("game"),
 				"debug": logger.GetLogPath("debug"),
 			},
 		})
@@ -219,32 +220,33 @@ func main() {
 
 	// ==================== 游戏数据 API ====================
 	// 静态卡牌数据（items, omens, skills, events, scenarios, characters, skillTrees, tiles）
-	
+
 	// 获取所有游戏数据
 	mux.HandleFunc("/api/game/data/all", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		
+
 		data := map[string]interface{}{
-			"themes": game.GetThemes(),
+			"themes":       game.GetEnabledThemes(),
+			"defaultTheme": game.GetDefaultThemeID(),
 			"tiles": map[string]interface{}{
 				"original": game.GetTileDeckByTheme("original"),
 				"volantis": game.GetTileDeckByTheme("volantis"),
 			},
-			"items": game.GetItems(),
-			"omens": game.GetOmens(),
-			"skills": game.GetSkills(),
-			"events": game.GetEvents(),
-			"scenarios": game.GetScenarios(),
+			"items":      game.GetItems(),
+			"omens":      game.GetOmens(),
+			"skills":     game.GetSkills(),
+			"events":     game.GetEvents(),
+			"scenarios":  game.GetScenarios(),
 			"skillTrees": game.GetSkillTrees(),
 			"characters": map[string]interface{}{
 				"original": game.GetCharactersByTheme("original"),
 				"volantis": game.GetCharactersByTheme("volantis"),
 			},
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=300") // 缓存5分钟
 		json.NewEncoder(w).Encode(data)
@@ -329,7 +331,7 @@ func main() {
 		w.Header().Set("Cache-Control", "public, max-age=300")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"characters": game.GetCharactersByTheme(theme),
-			"theme": theme,
+			"theme":      theme,
 		})
 	})
 
@@ -373,7 +375,8 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=300")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"themes": game.GetThemes(),
+			"themes":       game.GetEnabledThemes(),
+			"defaultTheme": game.GetDefaultThemeID(),
 		})
 	})
 
@@ -383,7 +386,7 @@ func main() {
 		logger.Error("静态文件目录不存在", map[string]interface{}{"dir": staticDir})
 		log.Fatalf("静态文件目录不存在: %s", staticDir)
 	}
-	
+
 	absDir, _ := filepath.Abs(staticDir)
 	logger.Info("静态文件目录", map[string]interface{}{"path": absDir})
 
@@ -408,11 +411,11 @@ func main() {
 	}()
 
 	logger.Info("服务器启动", map[string]interface{}{
-		"addr": *addr,
-		"port": *port,
+		"addr":  *addr,
+		"port":  *port,
 		"debug": *debug,
 	})
-	
+
 	fmt.Println("🎮 Mansion Protocol 服务器启动")
 	fmt.Printf("🌐 访问地址: http://%s:%s\n", *addr, *port)
 	fmt.Printf("🔌 WebSocket: ws://%s:%s/ws\n", *addr, *port)
@@ -423,7 +426,7 @@ func main() {
 		logger.Error("服务器启动失败", map[string]interface{}{"error": err.Error()})
 		log.Fatalf("服务器启动失败: %v", err)
 	}
-	
+
 	logger.Info("服务器已关闭", nil)
 }
 

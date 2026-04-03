@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm run validate:runtime-data-boundaries",
     "build": "vite build",
     "preview": "vite preview",
-    "sync:scenarios": "node scripts/sync_scenarios.cjs"
+    "sync:scenarios": "node scripts/sync_scenarios.cjs",
+    "validate:runtime-data-boundaries": "node scripts/validate_runtime_data_boundaries.cjs"
   },
   "dependencies": {
     "framer-motion": "^12.23.25",

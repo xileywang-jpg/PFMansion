@@ -35,15 +35,23 @@
         "name": "追踪幽灵",
         "description": "在幽灵找到遗体前将它净化",
         "type": "ELIMINATE",
-        "target": "TRAITOR",
-        "turns": 15
+        "params": {
+          "target": "TRAITOR",
+          "turns": 15,
+          "required": 1,
+          "eventType": "PLAYER_DEATH"
+        }
       },
       "traitorObjective": {
         "name": "寻找遗体",
         "description": "找到幽灵的遗体并与之合葬",
         "type": "REACH",
-        "target": "tile_attic",
-        "turns": 15
+        "params": {
+          "target": "tile_attic",
+          "turns": 15,
+          "required": 1,
+          "eventType": "TILE_REACHED"
+        }
       }
     },
     "haunt_beast": {
@@ -63,15 +71,22 @@
         "name": "猎杀野兽",
         "description": "在15回合内击败叛徒",
         "type": "ELIMINATE",
-        "target": "TRAITOR",
-        "turns": 15
+        "params": {
+          "target": "TRAITOR",
+          "turns": 15,
+          "required": 1,
+          "eventType": "PLAYER_DEATH"
+        }
       },
       "traitorObjective": {
         "name": "吞噬猎物",
         "description": "杀死所有英雄玩家",
         "type": "ELIMINATE",
-        "target": "ALL_HEROES",
-        "turns": 20
+        "params": {
+          "target": "ALL_HEROES",
+          "turns": 20,
+          "eventType": "PLAYER_DEATH"
+        }
       }
     },
     "haunt_demon": {
@@ -91,15 +106,23 @@
         "name": "阻止仪式",
         "description": "在恶魔仪式完成前击败叛徒",
         "type": "ELIMINATE",
-        "target": "TRAITOR",
-        "turns": 12
+        "params": {
+          "target": "TRAITOR",
+          "turns": 12,
+          "required": 1,
+          "eventType": "PLAYER_DEATH"
+        }
       },
       "traitorObjective": {
         "name": "完成仪式",
         "description": "在12回合内完成恶魔召唤",
         "type": "CUSTOM",
-        "customId": "demon_ritual",
-        "turns": 12
+        "params": {
+          "customId": "demon_ritual",
+          "turns": 12,
+          "required": 12,
+          "eventType": "RITUAL_COMPLETED"
+        }
       }
     },
     "haunt_shadow": {
@@ -119,14 +142,21 @@
         "name": "寻找光源",
         "description": "在所有玩家被阴影吞噬前逃出大厦",
         "type": "SURVIVE",
-        "turns": 10
+        "params": {
+          "turns": 10,
+          "required": 10,
+          "eventType": "TURNS_SURVIVED"
+        }
       },
       "traitorObjective": {
         "name": "扩散阴影",
         "description": "让所有英雄陷入永恒的黑暗",
         "type": "ELIMINATE",
-        "target": "ALL_HEROES",
-        "turns": 15
+        "params": {
+          "target": "ALL_HEROES",
+          "turns": 15,
+          "eventType": "PLAYER_DEATH"
+        }
       }
     },
     "haunt_vampire": {
@@ -146,15 +176,22 @@
         "name": "猎杀吸血鬼",
         "description": "在更多人死亡前击败叛徒",
         "type": "ELIMINATE",
-        "target": "TRAITOR",
-        "turns": 12
+        "params": {
+          "target": "TRAITOR",
+          "turns": 12,
+          "required": 1,
+          "eventType": "PLAYER_DEATH"
+        }
       },
       "traitorObjective": {
         "name": "初拥",
         "description": "将所有玩家变成吸血鬼",
         "type": "CONVERT",
-        "target": "ALL_HEROES",
-        "turns": 15
+        "params": {
+          "target": "ALL_HEROES",
+          "turns": 15,
+          "eventType": "PLAYER_DEATH"
+        }
       }
     },
     "haunt_default": {
@@ -174,14 +211,22 @@
         "name": "阻止黑暗",
         "description": "在10回合内击败叛徒",
         "type": "ELIMINATE",
-        "target": "TRAITOR",
-        "turns": 10
+        "params": {
+          "target": "TRAITOR",
+          "turns": 10,
+          "required": 1,
+          "eventType": "PLAYER_DEATH"
+        }
       },
       "traitorObjective": {
         "name": "蔓延黑暗",
         "description": "控制大厦10回合",
         "type": "SURVIVE",
-        "turns": 10
+        "params": {
+          "turns": 10,
+          "required": 10,
+          "eventType": "TURNS_SURVIVED"
+        }
       }
     },
     "vol_haunt_divine": {
@@ -201,15 +246,23 @@
         "name": "阻止献祭",
         "description": "在献祭完成前击败叛徒",
         "type": "ELIMINATE",
-        "target": "TRAITOR",
-        "turns": 12
+        "params": {
+          "target": "TRAITOR",
+          "turns": 12,
+          "required": 1,
+          "eventType": "PLAYER_DEATH"
+        }
       },
       "traitorObjective": {
         "name": "完成献祭",
         "description": "在光辉神庙完成献祭仪式",
         "type": "REACH",
-        "target": "vol_tile_temple_light",
-        "turns": 12
+        "params": {
+          "target": "vol_tile_temple_light",
+          "turns": 12,
+          "required": 1,
+          "eventType": "TILE_REACHED"
+        }
       }
     },
     "vol_haunt_shadow": {
@@ -229,15 +282,23 @@
         "name": "关闭大门",
         "description": "找到并关闭幽影领域的入口",
         "type": "REACH",
-        "target": "vol_tile_shadow_realm",
-        "turns": 10
+        "params": {
+          "target": "vol_tile_shadow_realm",
+          "turns": 10,
+          "required": 1,
+          "eventType": "TILE_REACHED"
+        }
       },
       "traitorObjective": {
         "name": "打开大门",
         "description": "完全打开幽影领域的大门",
         "type": "OPEN_GATE",
-        "target": "vol_tile_shadow_realm",
-        "turns": 10
+        "params": {
+          "target": "vol_tile_shadow_realm",
+          "turns": 10,
+          "required": 1,
+          "eventType": "TILE_REACHED"
+        }
       }
     },
     "vol_haunt_death": {
@@ -257,15 +318,23 @@
         "name": "封印入口",
         "description": "在更多人死去前封印冥潭入口",
         "type": "ELIMINATE",
-        "target": "TRAITOR",
-        "turns": 12
+        "params": {
+          "target": "TRAITOR",
+          "turns": 12,
+          "required": 1,
+          "eventType": "PLAYER_DEATH"
+        }
       },
       "traitorObjective": {
         "name": "释放死亡",
         "description": "让冥潭的力量完全释放",
         "type": "CUSTOM",
-        "customId": "release_death",
-        "turns": 15
+        "params": {
+          "customId": "release_death",
+          "turns": 15,
+          "required": 15,
+          "eventType": "RITUAL_COMPLETED"
+        }
       }
     },
     "vol_haunt_revenge": {
@@ -285,15 +354,23 @@
         "name": "安抚英灵",
         "description": "在英灵暴动前找到安息之剑",
         "type": "COLLECT",
-        "target": "item_sword_of_rest",
-        "turns": 12
+        "params": {
+          "target": "item_sword_of_rest",
+          "turns": 12,
+          "required": 1,
+          "eventType": "ITEM_COLLECTED"
+        }
       },
       "traitorObjective": {
         "name": "唤醒大军",
         "description": "唤醒所有英灵组成复仇大军",
         "type": "CUSTOM",
-        "customId": "awaken_heroes",
-        "turns": 15
+        "params": {
+          "customId": "awaken_heroes",
+          "turns": 15,
+          "required": 15,
+          "eventType": "RITUAL_COMPLETED"
+        }
       }
     },
     "vol_haunt_warrior": {
@@ -313,14 +390,21 @@
         "name": "赢得竞技",
         "description": "在竞技场中击败所有敌人",
         "type": "ELIMINATE",
-        "target": "ALL_ENEMIES",
-        "turns": 15
+        "params": {
+          "target": "ALL_ENEMIES",
+          "turns": 15,
+          "eventType": "PLAYER_DEATH"
+        }
       },
       "traitorObjective": {
         "name": "统治竞技场",
         "description": "成为竞技场唯一的胜者",
         "type": "SURVIVE",
-        "turns": 15
+        "params": {
+          "turns": 15,
+          "required": 15,
+          "eventType": "TURNS_SURVIVED"
+        }
       }
     },
     "vol_haunt_default": {
@@ -340,15 +424,23 @@
         "name": "阻止末日",
         "description": "在末日审判前击败叛徒",
         "type": "ELIMINATE",
-        "target": "TRAITOR",
-        "turns": 10
+        "params": {
+          "target": "TRAITOR",
+          "turns": 10,
+          "required": 1,
+          "eventType": "PLAYER_DEATH"
+        }
       },
       "traitorObjective": {
         "name": "引发末日",
         "description": "让永恒之地陷入末日和火焰",
         "type": "CUSTOM",
-        "customId": "apocalypse",
-        "turns": 10
+        "params": {
+          "customId": "apocalypse",
+          "turns": 10,
+          "required": 10,
+          "eventType": "RITUAL_COMPLETED"
+        }
       }
     }
   }

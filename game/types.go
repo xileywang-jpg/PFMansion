@@ -302,12 +302,13 @@ type ScenarioSecrets struct {
 
 // Objective 目标定义
 type Objective struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Type        string `json:"type"`               // ELIMINATE, SURVIVE, REACH, COLLECT, CONVERT, CUSTOM
-	Target      string `json:"target,omitempty"`   // 目标ID或类型
-	Turns       int    `json:"turns"`              // 达成目标的回合限制
-	CustomID    string `json:"customId,omitempty"` // 自定义目标ID
+	Name              string                 `json:"name"`
+	Description       string                 `json:"description"`
+	Type              string                 `json:"type"`             // ELIMINATE, SURVIVE, REACH, COLLECT, CONVERT, CUSTOM
+	Params            map[string]interface{} `json:"params,omitempty"` // 结构化参数（target/turns/required/customId 等）
+	hasLegacyTarget   bool
+	hasLegacyTurns    bool
+	hasLegacyCustomID bool
 }
 
 // PlayerObjective 玩家个人目标进度

@@ -392,25 +392,27 @@ func (g *GameManager) initializeObjectivesInternal(state *GameStateFull) {
 	// 记录目标
 	if scenario := state.CurrentScenario; scenario != nil {
 		if scenario.HeroObjective != nil {
+			heroTurnLimit := objectiveTurnLimit(scenario.HeroObjective)
 			state.Logs = append(state.Logs, LogEntry{
 				ID:        generateLogID(),
 				Timestamp: time.Now().UnixMilli(),
 				Text: fmt.Sprintf("【英雄目标】%s: %s (%d回合内)",
 					scenario.HeroObjective.Name,
 					scenario.HeroObjective.Description,
-					scenario.HeroObjective.Turns),
+					heroTurnLimit),
 				Type: "info",
 			})
 		}
 
 		if scenario.TraitorObjective != nil {
+			traitorTurnLimit := objectiveTurnLimit(scenario.TraitorObjective)
 			state.Logs = append(state.Logs, LogEntry{
 				ID:        generateLogID(),
 				Timestamp: time.Now().UnixMilli(),
 				Text: fmt.Sprintf("【叛徒目标】%s: %s (%d回合内)",
 					scenario.TraitorObjective.Name,
 					scenario.TraitorObjective.Description,
-					scenario.TraitorObjective.Turns),
+					traitorTurnLimit),
 				Type: "alert",
 			})
 		}
@@ -738,6 +740,15 @@ func (g *GameManager) AttackNPC(roomID, playerID, npcInstanceID string) (map[str
 	} else {
 		// NPC 点数低，NPC 受伤
 		damage := playerRoll - npcRoll
+		if bonus := g.calculatePassiveDamageBonus(player, "", "ATTACK", npc); bonus > 0 {
+			damage += bonus
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 的被动效果额外造成了 %d 点伤害！", player.Character.Name, bonus),
+				Type:      "info",
+			})
+		}
 		npc.Health -= damage
 
 		npcStatus := fmt.Sprintf("%s 剩余 %d/%d HP", npc.Name, npc.Health, npc.MaxHealth)
@@ -838,6 +849,15 @@ func (g *GameManager) NPCAttackPlayer(roomID, npcInstanceID, playerID string) (m
 	} else if npcRoll < playerRoll {
 		// NPC 点数低，NPC 受伤
 		damage := playerRoll - npcRoll
+		if bonus := g.calculatePassiveDamageBonus(player, "", "DEFENSE", npc); bonus > 0 {
+			damage += bonus
+			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
+				ID:        generateLogID(),
+				Timestamp: time.Now().UnixMilli(),
+				Text:      fmt.Sprintf("%s 的被动效果额外造成了 %d 点伤害！", player.Character.Name, bonus),
+				Type:      "info",
+			})
+		}
 		npc.Health -= damage
 
 		state.FullState.Logs = append(state.FullState.Logs, LogEntry{
@@ -886,7 +906,7 @@ func (g *GameManager) NPCAttackPlayer(roomID, npcInstanceID, playerID string) (m
 		result["attribute"] = attrName
 
 		// 检查玩家是否死亡
-		if attr.Current <= attr.Floor && attrName == "might" {
+		if attr.Current <= attr.Floor && attrName == "might" && !player.IsDead {
 			player.IsDead = true
 			state.FullState.Logs = append(state.FullState.Logs, LogEntry{
 				ID:        generateLogID(),
@@ -894,6 +914,7 @@ func (g *GameManager) NPCAttackPlayer(roomID, npcInstanceID, playerID string) (m
 				Text:      fmt.Sprintf("%s 被 %s 杀死了...", player.Character.Name, npc.Name),
 				Type:      "alert",
 			})
+			g.handlePlayerDeathObjectiveUpdateUnlocked(state.FullState, playerID)
 			result["playerDied"] = true
 		}
 	}

@@ -3,24 +3,52 @@ import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { logger, auditLog } from './logger.js';
 
-// 主题配置（服务端可配置）
-const ENABLED_THEMES = [
-  {
-    id: 'original',
-    name: '原版',
-    description: '经典山屋惊魂',
-    primaryColor: '#8B4513'
-  },
-  {
-    id: 'volantis',
-    name: '翁法罗斯',
-    description: '崩坏星穹铁道 - 永恒之地',
-    primaryColor: '#FFD700'
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const GAME_CONFIG_PATH = path.resolve(__dirname, '../game/data/config.json');
+
+function loadThemeCatalog() {
+  try {
+    const raw = fs.readFileSync(GAME_CONFIG_PATH, 'utf8');
+    const config = JSON.parse(raw);
+    const themes = Array.isArray(config.themes)
+      ? config.themes.filter(theme => theme && theme.enabled !== false)
+      : [];
+    const defaultTheme = themes.find(theme => theme.id === 'original')?.id || themes[0]?.id || 'original';
+
+    return {
+      themes,
+      defaultTheme,
+    };
+  } catch (error) {
+    logger.error('读取共享主题配置失败，使用降级主题配置', { error: error.message, path: GAME_CONFIG_PATH });
+    return {
+      themes: [
+        {
+          id: 'original',
+          name: '原版',
+          description: '经典山屋惊魂',
+          primaryColor: '#8B4513',
+          enabled: true,
+        },
+        {
+          id: 'volantis',
+          name: '翁法罗斯',
+          description: '崩坏星穹铁道 - 永恒之地',
+          primaryColor: '#FFD700',
+          enabled: true,
+        },
+      ],
+      defaultTheme: 'original',
+    };
   }
-];
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -257,9 +285,11 @@ app.get('/api/services', (req, res) => {
 
 // 获取可用的主题列表
 app.get('/api/themes', (req, res) => {
+  const themeCatalog = loadThemeCatalog();
   res.json({
-    themes: ENABLED_THEMES,
-    default: 'original'
+    themes: themeCatalog.themes,
+    default: themeCatalog.defaultTheme,
+    defaultTheme: themeCatalog.defaultTheme,
   });
 });
 

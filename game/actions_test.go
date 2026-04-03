@@ -222,13 +222,8 @@ func TestPickupItem_CollectObjectiveWinsImmediately(t *testing.T) {
 	room.GameState.FullState.IsHauntActive = true
 	room.GameState.FullState.TraitorID = "player_1"
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Collect Relic",
-		TraitorObjective: &Objective{
-			Name:   "Collect Relic",
-			Type:   "COLLECT",
-			Target: "item_amulet",
-			Turns:  8,
-		},
+		Name:             "Collect Relic",
+		TraitorObjective: buildTestObjective("Collect Relic", "", "COLLECT", 8, map[string]interface{}{"target": "item_amulet"}),
 	}
 	room.GameState.FullState.Map["0,0"].DroppedItems = []Card{{ID: "item_amulet", Type: "ITEM", Name: "神圣护身符"}}
 
@@ -255,13 +250,8 @@ func TestProcessMove_ReachObjectiveWinsImmediately(t *testing.T) {
 	room.GameState.FullState.TurnPhase = TurnPhaseMoving
 	room.GameState.FullState.TraitorID = "player_1"
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Reach Exit",
-		TraitorObjective: &Objective{
-			Name:   "Reach Exit",
-			Type:   "REACH",
-			Target: "tile_exit",
-			Turns:  8,
-		},
+		Name:             "Reach Exit",
+		TraitorObjective: buildTestObjective("Reach Exit", "", "REACH", 8, map[string]interface{}{"target": "tile_exit"}),
 	}
 	room.GameState.FullState.Map["1,0"] = &TileInstance{
 		InstanceID:   "exit_tile",

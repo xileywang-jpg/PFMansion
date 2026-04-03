@@ -4,9 +4,15 @@ package game
 
 // PassiveEffect 被动效果
 type PassiveEffect struct {
-	Type     string `json:"type"` // buff, debuff, special, skill, combat_buff, combat_modifier
-	Text     string `json:"text"`
-	Modifier int    `json:"modifier,omitempty"` // 战斗修改值 (正数增加，负数减少)
+	Type       string   `json:"type"` // buff, debuff, special, skill, combat_buff, combat_modifier, combat_damage_bonus
+	Text       string   `json:"text"`
+	Stat       string   `json:"stat,omitempty"`
+	Amount     int      `json:"amount,omitempty"`
+	SkillID    string   `json:"skillId,omitempty"`
+	SpecialKey string   `json:"specialKey,omitempty"`
+	Trigger    string   `json:"trigger,omitempty"`  // ATTACK, END_TURN, ENTER_ROOM
+	Modifier   int      `json:"modifier,omitempty"` // 战斗修改值 (正数增加，负数减少)
+	NPCTypes   []string `json:"npcTypes,omitempty"`
 }
 
 // Card 事件卡牌（完整定义）
@@ -58,6 +64,13 @@ type Effect struct {
 	Deck       string     `json:"deck,omitempty"`   // EVENT, ITEM, OMEN
 	ItemID     string     `json:"itemId,omitempty"`
 	SkillID    string     `json:"skillId,omitempty"`
+	StatusType string     `json:"statusType,omitempty"`
+	Duration   int        `json:"duration,omitempty"`
+	Buff       string     `json:"buff,omitempty"`
+	Source     string     `json:"source,omitempty"`
+	Faction    string     `json:"faction,omitempty"`
+	Damage     int        `json:"damage,omitempty"`
+	StatusAmt  int        `json:"statusAmount,omitempty"`
 	Message    string     `json:"message,omitempty"`
 	Style      string     `json:"style,omitempty"`    // info, alert, success, narrative
 	Location   string     `json:"location,omitempty"` // basement, entry 等命名位置

@@ -28,6 +28,7 @@ let isUsingFallback = false;
 
 export interface GameDataBundle {
   themes: any[];
+  defaultTheme?: string;
   tiles: { original: any[]; volantis: any[] };
   items: any[];
   omens: any[];
@@ -217,6 +218,27 @@ export async function fetchTiles(theme: string = 'original') {
 export async function fetchThemes() {
   const data = await fetchGameData();
   return data.themes;
+}
+
+export interface ThemeCatalog {
+  themes: any[];
+  defaultTheme: string;
+}
+
+export async function fetchThemeCatalog(): Promise<ThemeCatalog> {
+  const response = await fetch(`${API_BASE}/themes`);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  const themes = Array.isArray(data.themes) ? data.themes : [];
+  const defaultTheme = data.defaultTheme || themes.find((theme: any) => theme.id === 'original')?.id || themes[0]?.id || 'original';
+
+  return {
+    themes,
+    defaultTheme,
+  };
 }
 
 // ==================== Hook ====================

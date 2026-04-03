@@ -69,7 +69,7 @@ const authApi = {
 
   // 获取可用主题
   async getThemes() {
-    const res = await fetch(`${API_BASE}/themes`);
+    const res = await fetch(`/api/game/data/themes`);
     if (!res.ok) throw new Error('获取主题列表失败');
     return res.json();
   }

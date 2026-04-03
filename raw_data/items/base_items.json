@@ -24,7 +24,7 @@
     "icon": "Sword",
     "type": "WEAPON",
     "grantedSkills": ["skill_vampiric_strike"],
-    "passiveEffects": [{ "type": "buff", "text": "获得技能：嗜血打击" }]
+    "passiveEffects": [{ "type": "skill", "text": "获得技能：嗜血打击", "skillId": "skill_vampiric_strike" }]
   },
   "item_amulet": {
     "id": "item_amulet",
@@ -57,7 +57,7 @@
     "description": "不仅能挖矿，还能挖穿墙壁。",
     "icon": "Hammer",
     "type": "WEAPON",
-    "passiveEffects": [{ "type": "buff", "text": "允许破坏墙壁" }]
+    "passiveEffects": [{ "type": "special", "text": "允许破坏墙壁", "specialKey": "wall_break" }]
   },
   "omen_crystal_ball": {
     "id": "omen_crystal_ball",

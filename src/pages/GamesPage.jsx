@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import authApi from '../api/auth';
+import { fetchThemeCatalog } from '../services/gameData';
 import { logger, trackPageView, trackAction } from '../../ws/logger';
 
 function GamesPage() {
@@ -30,16 +31,14 @@ function GamesPage() {
       
       // 获取游戏列表和主题列表
       try {
-        const [gamesList, themesData] = await Promise.all([
+        const [gamesList, themeCatalog] = await Promise.all([
           authApi.getGames(),
-          authApi.getThemes()
+          fetchThemeCatalog()
         ]);
         setGames(gamesList);
-        setThemes(themesData.themes || []);
+        setThemes(themeCatalog.themes || []);
         
-        // 不再自动读取缓存的主题，每次都让用户选择
-        // 但保留用户名显示
-        setSelectedTheme(themesData.default || themesData.themes?.[0]?.id || 'original');
+        setSelectedTheme(themeCatalog.defaultTheme || themeCatalog.themes?.[0]?.id || 'original');
         
         // 显示确认弹窗
         setShowThemeModal(true);

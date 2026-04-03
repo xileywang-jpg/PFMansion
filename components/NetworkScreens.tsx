@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { wsClient } from '../ws/client';
 import * as network from '../ws/network';
 import { useGameStore } from '../store/gameStore';
+import { fetchThemeCatalog } from '../src/services/gameData';
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -92,6 +93,7 @@ export const LobbyScreen: React.FC = () => {
   // 从 localStorage 读取玩家名称和主题，支持页面刷新后保持登录状态
   const [playerName, setPlayerName] = useState(() => localStorage.getItem('playerName') || '');
   const [selectedTheme, setSelectedTheme] = useState(() => localStorage.getItem('gameTheme') || 'original');
+  const [themes, setThemes] = useState<any[]>([]);
   const [isInRoom, setIsInRoom] = useState(false);
   const [roomPlayers, setRoomPlayers] = useState<any[]>([]);
   const [isHost, setIsHost] = useState(false);
@@ -109,7 +111,33 @@ export const LobbyScreen: React.FC = () => {
     localStorage.setItem('gameTheme', theme);
   };
 
+  const getThemeIcon = (themeId: string) => {
+    if (themeId === 'volantis') {
+      return '✨';
+    }
+    if (themeId === 'original') {
+      return '🏰';
+    }
+    return '🎨';
+  };
+
   useEffect(() => {
+    const loadThemeCatalog = async () => {
+      try {
+        const themeCatalog = await fetchThemeCatalog();
+        setThemes(themeCatalog.themes || []);
+
+        const availableThemeIds = new Set((themeCatalog.themes || []).map((theme: any) => theme.id));
+        if (!availableThemeIds.has(selectedTheme)) {
+          handleThemeChange(themeCatalog.defaultTheme || 'original');
+        }
+      } catch (error) {
+        console.error('加载主题配置失败:', error);
+      }
+    };
+
+    loadThemeCatalog();
+
     // 如果未连接，自动建立 WebSocket 连接
     if (!wsClient.isConnected()) {
       network.initNetworkLayer();
@@ -271,26 +299,27 @@ export const LobbyScreen: React.FC = () => {
           <div className="mb-6">
             <label className="block text-zinc-400 text-sm mb-2">选择主题</label>
             <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => handleThemeChange('original')}
-                className={`p-3 rounded border text-sm font-bold transition-all ${
-                  selectedTheme === 'original'
-                    ? 'bg-amber-900/30 border-amber-500 text-amber-400'
-                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
-                }`}
-              >
-                🏰 原版
-              </button>
-              <button
-                onClick={() => handleThemeChange('volantis')}
-                className={`p-3 rounded border text-sm font-bold transition-all ${
-                  selectedTheme === 'volantis'
-                    ? 'bg-yellow-900/30 border-yellow-500 text-yellow-400'
-                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
-                }`}
-              >
-                ✨ 翁法罗斯
-              </button>
+              {themes.map((theme) => {
+                const isSelected = selectedTheme === theme.id;
+                return (
+                  <button
+                    key={theme.id}
+                    onClick={() => handleThemeChange(theme.id)}
+                    className={`p-3 rounded border text-sm font-bold transition-all ${
+                      isSelected
+                        ? 'text-white'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                    }`}
+                    style={isSelected ? {
+                      backgroundColor: `${theme.primaryColor}33`,
+                      borderColor: theme.primaryColor,
+                      color: theme.primaryColor,
+                    } : undefined}
+                  >
+                    <div>{getThemeIcon(theme.id)} {theme.name}</div>
+                  </button>
+                );
+              })}
             </div>
           </div>
           

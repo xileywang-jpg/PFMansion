@@ -13,19 +13,9 @@ func TestInitializeObjectives_SetsUpObjectives(t *testing.T) {
 
 	// 设置剧本
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Test Haunt",
-		HeroObjective: &Objective{
-			Name:        "Survive",
-			Description: "生存 10 回合",
-			Type:        "SURVIVE",
-			Turns:       10,
-		},
-		TraitorObjective: &Objective{
-			Name:        "Eliminate",
-			Description: "消灭所有英雄",
-			Type:        "ELIMINATE",
-			Turns:       10,
-		},
+		Name:             "Test Haunt",
+		HeroObjective:    buildTestObjective("Survive", "生存 10 回合", "SURVIVE", 10, nil),
+		TraitorObjective: buildTestObjective("Eliminate", "消灭所有英雄", "ELIMINATE", 10, nil),
 	}
 
 	gm.InitializeObjectives(roomID)
@@ -109,14 +99,8 @@ func TestUpdateObjectives_TileReached_Traitor(t *testing.T) {
 
 	// 设置剧本
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Reach the Exit",
-		TraitorObjective: &Objective{
-			Name:        "Reach Exit",
-			Description: "到达出口",
-			Type:        "REACH",
-			Turns:       8,
-			Target:      "tile_exit",
-		},
+		Name:             "Reach the Exit",
+		TraitorObjective: buildTestObjective("Reach Exit", "到达出口", "REACH", 8, map[string]interface{}{"target": "tile_exit"}),
 	}
 
 	room.GameState.FullState.TraitorID = "player_1"
@@ -147,14 +131,8 @@ func TestUpdateObjectives_TileReached_Hero(t *testing.T) {
 
 	// 设置剧本
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Block the Exit",
-		HeroObjective: &Objective{
-			Name:        "Block Exit",
-			Description: "阻止叛徒到达出口",
-			Type:        "REACH",
-			Turns:       8,
-			Target:      "tile_exit",
-		},
+		Name:          "Block the Exit",
+		HeroObjective: buildTestObjective("Block Exit", "阻止叛徒到达出口", "REACH", 8, map[string]interface{}{"target": "tile_exit"}),
 	}
 
 	gm.UpdateObjectives(roomID, "TILE_REACHED", map[string]interface{}{
@@ -182,14 +160,8 @@ func TestUpdateObjectives_ItemCollected(t *testing.T) {
 	room := gm.Rooms[roomID]
 
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Collect the Key",
-		TraitorObjective: &Objective{
-			Name:        "Collect Key",
-			Description: "收集钥匙",
-			Type:        "COLLECT",
-			Turns:       8,
-			Target:      "item_key",
-		},
+		Name:             "Collect the Key",
+		TraitorObjective: buildTestObjective("Collect Key", "收集钥匙", "COLLECT", 8, map[string]interface{}{"target": "item_key"}),
 	}
 
 	room.GameState.FullState.TraitorID = "player_1"
@@ -208,19 +180,43 @@ func TestUpdateObjectives_ItemCollected(t *testing.T) {
 	}
 }
 
+func TestUpdateObjectives_TileReached_UsesParamsTargetAndRequired(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.CurrentScenario = &Scenario{
+		Name:             "Reach by Params",
+		TraitorObjective: buildTestObjective("Reach Exit", "到达出口", "REACH", 8, map[string]interface{}{"target": "tile_exit", "required": 2}),
+	}
+	room.GameState.FullState.TraitorID = "player_1"
+
+	gm.UpdateObjectives(roomID, "TILE_REACHED", map[string]interface{}{"playerId": "player_1", "tileId": "tile_exit"})
+	gm.UpdateObjectives(roomID, "TILE_REACHED", map[string]interface{}{"playerId": "player_1", "tileId": "tile_exit"})
+
+	obj := room.GameState.FullState.TraitorObjectives["player_1"]
+	if obj == nil {
+		t.Fatal("TraitorObjectives[player_1] 不应该为 nil")
+	}
+	if obj.Required != 2 {
+		t.Fatalf("required 应该取 params.required=2, 实际是 %d", obj.Required)
+	}
+	if obj.Progress != 2 {
+		t.Fatalf("progress 应该是 2, 实际是 %d", obj.Progress)
+	}
+	if !obj.Completed {
+		t.Fatal("达到 required 后应标记 completed")
+	}
+}
+
 func TestUpdateObjectives_TurnsSurvived(t *testing.T) {
 	gm := &GameManager{Rooms: make(map[string]*Room)}
 	roomID := createTestRoomForLogic(gm)
 	room := gm.Rooms[roomID]
 
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Survive",
-		HeroObjective: &Objective{
-			Name:        "Survive",
-			Description: "生存 10 回合",
-			Type:        "SURVIVE",
-			Turns:       10,
-		},
+		Name:          "Survive",
+		HeroObjective: buildTestObjective("Survive", "生存 10 回合", "SURVIVE", 10, nil),
 	}
 
 	gm.UpdateObjectives(roomID, "TURNS_SURVIVED", map[string]interface{}{
@@ -241,6 +237,165 @@ func TestUpdateObjectives_TurnsSurvived(t *testing.T) {
 	}
 }
 
+func TestUpdateObjectives_OpenGate_UsesTileReachedPath(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.CurrentScenario = &Scenario{
+		Name:             "Open Gate",
+		TraitorObjective: buildTestObjective("Open Gate", "打开大门", "OPEN_GATE", 8, map[string]interface{}{"target": "tile_gate"}),
+	}
+	room.GameState.FullState.TraitorID = "player_1"
+
+	gm.UpdateObjectives(roomID, "TILE_REACHED", map[string]interface{}{
+		"playerId": "player_1",
+		"tileId":   "tile_gate",
+	})
+
+	obj := room.GameState.FullState.TraitorObjectives["player_1"]
+	if obj == nil {
+		t.Fatal("OPEN_GATE 目标应创建叛徒进度")
+	}
+	if obj.Progress != 1 {
+		t.Fatalf("OPEN_GATE 目标进度应为 1, 实际是 %d", obj.Progress)
+	}
+	if !obj.Completed {
+		t.Fatal("OPEN_GATE 达成后应标记完成")
+	}
+	if room.GameState.FullState.GameWinner != "TRAITOR" {
+		t.Fatalf("OPEN_GATE 达成后应叛徒胜利, 实际是 %s", room.GameState.FullState.GameWinner)
+	}
+}
+
+func TestUpdateObjectives_EventTypeOverride_ItemCollectedForReach(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.CurrentScenario = &Scenario{
+		Name:             "Reach by Item Event",
+		TraitorObjective: buildTestObjective("Special Reach", "通过收集触发", "REACH", 8, map[string]interface{}{"eventType": "ITEM_COLLECTED", "target": "item_gate_key"}),
+	}
+	room.GameState.FullState.TraitorID = "player_1"
+
+	gm.UpdateObjectives(roomID, "ITEM_COLLECTED", map[string]interface{}{
+		"playerId": "player_1",
+		"itemId":   "item_gate_key",
+	})
+
+	obj := room.GameState.FullState.TraitorObjectives["player_1"]
+	if obj == nil || obj.Progress != 1 {
+		t.Fatal("params.eventType=ITEM_COLLECTED 的 REACH 目标应在收集后推进")
+	}
+}
+
+func TestObjectiveRuntimeRequiredProgress_ConvertAllHeroes(t *testing.T) {
+	state := &GameStateFull{
+		Players: map[string]*GamePlayer{
+			"traitor": {Team: "TRAITOR"},
+			"hero_1":  {Team: "HERO"},
+			"hero_2":  {Team: "HERO"},
+			"hero_3":  {Team: "HERO"},
+		},
+	}
+	obj := &Objective{
+		Name:   "Convert",
+		Type:   "CONVERT",
+		Params: map[string]interface{}{"target": "ALL_HEROES", "turns": 6, "eventType": "PLAYER_DEATH"},
+	}
+
+	if required := objectiveRuntimeRequiredProgress(state, obj); required != 3 {
+		t.Fatalf("CONVERT ALL_HEROES 的 required 应按英雄数量推导为 3, 实际是 %d", required)
+	}
+}
+
+func TestUpdateObjectives_PlayerDeath_ConvertTracksAllHeroes(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.Phase = GamePhaseHaunt
+	room.GameState.FullState.TraitorID = "player_1"
+	room.GameState.FullState.Players["player_1"].Team = "TRAITOR"
+	room.GameState.FullState.Players["player_2"].Team = "HERO"
+	room.GameState.FullState.Players["player_3"] = &GamePlayer{
+		ID:   "player_3",
+		Team: "HERO",
+		Character: CharacterDef{Name: "Hero 3", Attributes: map[string]Attribute{
+			"might":     {Current: 4, Max: 10, Floor: 0, Values: []int{0, 1, 2, 3, 4}},
+			"speed":     {Current: 4, Max: 10, Floor: 0, Values: []int{0, 1, 2, 3, 4}},
+			"sanity":    {Current: 4, Max: 10, Floor: 0, Values: []int{0, 1, 2, 3, 4}},
+			"knowledge": {Current: 4, Max: 10, Floor: 0, Values: []int{0, 1, 2, 3, 4}},
+		}},
+	}
+	room.GameState.FullState.CurrentScenario = &Scenario{
+		Name:             "Convert Test",
+		TraitorObjective: buildTestObjective("Convert All", "转化全部英雄", "CONVERT", 6, map[string]interface{}{"target": "ALL_HEROES"}),
+	}
+
+	room.GameState.FullState.Players["player_2"].IsDead = true
+	gm.UpdateObjectives(roomID, "PLAYER_DEATH", map[string]interface{}{"playerId": "player_2"})
+
+	obj := room.GameState.FullState.TraitorObjectives["player_1"]
+	if obj == nil {
+		t.Fatal("CONVERT 目标应在首个英雄死亡后创建进度")
+	}
+	if obj.Required != 2 {
+		t.Fatalf("required 应按英雄总数推导为 2, 实际是 %d", obj.Required)
+	}
+	if obj.Progress != 1 {
+		t.Fatalf("首个英雄死亡后 progress 应为 1, 实际是 %d", obj.Progress)
+	}
+	if room.GameState.FullState.GameWinner != "" {
+		t.Fatalf("仅 1 名英雄死亡时不应提前胜利, 实际是 %s", room.GameState.FullState.GameWinner)
+	}
+
+	room.GameState.FullState.Players["player_3"].IsDead = true
+	gm.UpdateObjectives(roomID, "PLAYER_DEATH", map[string]interface{}{"playerId": "player_3"})
+
+	if obj.Progress != 2 {
+		t.Fatalf("第二个英雄死亡后 progress 应为 2, 实际是 %d", obj.Progress)
+	}
+	if room.GameState.FullState.GameWinner != "TRAITOR" {
+		t.Fatalf("所有英雄都死亡后应判定叛徒胜利, 实际是 %s", room.GameState.FullState.GameWinner)
+	}
+}
+
+func TestModifyStat_PlayerDeathUpdatesConvertObjective(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.Phase = GamePhaseHaunt
+	room.GameState.FullState.TraitorID = "player_1"
+	room.GameState.FullState.Players["player_1"].Team = "TRAITOR"
+	room.GameState.FullState.Players["player_2"].Team = "HERO"
+	room.GameState.FullState.CurrentScenario = &Scenario{
+		Name:             "Convert Test",
+		TraitorObjective: buildTestObjective("Convert All", "转化全部英雄", "CONVERT", 6, map[string]interface{}{"target": "ALL_HEROES"}),
+	}
+
+	room.GameState.FullState.Players["player_2"].Character.Attributes["might"] = Attribute{
+		Current: 1,
+		Max:     10,
+		Floor:   0,
+		Values:  []int{0, 1, 2, 3, 4},
+	}
+
+	if err := gm.ModifyStat(roomID, "player_2", "might", -1); err != nil {
+		t.Fatalf("ModifyStat 不应失败: %v", err)
+	}
+
+	obj := room.GameState.FullState.TraitorObjectives["player_1"]
+	if obj == nil || obj.Progress != 1 {
+		t.Fatal("ModifyStat 导致死亡后应推进 CONVERT 目标")
+	}
+	if room.GameState.FullState.Players["player_2"].IsDead != true {
+		t.Fatal("ModifyStat 导致 might 归零后应标记玩家死亡")
+	}
+}
+
 // ==================== CheckVictory 测试 ====================
 
 func TestCheckVictory_TraitorWins_AllHeroesDead(t *testing.T) {
@@ -251,12 +406,12 @@ func TestCheckVictory_TraitorWins_AllHeroesDead(t *testing.T) {
 	room.GameState.FullState.Phase = GamePhaseHaunt
 	room.GameState.FullState.Players["player_1"].IsDead = false
 	room.GameState.FullState.Players["player_1"].Team = "TRAITOR"
-	room.GameState.FullState.Players["player_2"].IsDead = true  // 英雄死亡
+	room.GameState.FullState.Players["player_2"].IsDead = true // 英雄死亡
 	room.GameState.FullState.Players["player_2"].Team = "HERO"
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Test",
-		TraitorObjective: &Objective{Name: "T", Type: "ELIMINATE", Turns: 10},
-		HeroObjective: &Objective{Name: "H", Type: "SURVIVE", Turns: 10},
+		Name:             "Test",
+		TraitorObjective: buildTestObjective("T", "", "ELIMINATE", 10, nil),
+		HeroObjective:    buildTestObjective("H", "", "SURVIVE", 10, nil),
 	}
 
 	winner := gm.CheckVictory(roomID)
@@ -280,14 +435,14 @@ func TestCheckVictory_HeroWins_TraitorDead(t *testing.T) {
 	room := gm.Rooms[roomID]
 
 	room.GameState.FullState.Phase = GamePhaseHaunt
-	room.GameState.FullState.Players["player_1"].IsDead = true   // 叛徒死亡
+	room.GameState.FullState.Players["player_1"].IsDead = true // 叛徒死亡
 	room.GameState.FullState.Players["player_1"].Team = "TRAITOR"
 	room.GameState.FullState.Players["player_2"].IsDead = false
 	room.GameState.FullState.Players["player_2"].Team = "HERO"
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Test",
-		TraitorObjective: &Objective{Name: "T", Type: "ELIMINATE", Turns: 10},
-		HeroObjective: &Objective{Name: "H", Type: "SURVIVE", Turns: 10},
+		Name:             "Test",
+		TraitorObjective: buildTestObjective("T", "", "ELIMINATE", 10, nil),
+		HeroObjective:    buildTestObjective("H", "", "SURVIVE", 10, nil),
 	}
 
 	winner := gm.CheckVictory(roomID)
@@ -302,7 +457,7 @@ func TestCheckVictory_NotHauntPhase(t *testing.T) {
 	roomID := createTestRoomForLogic(gm)
 	room := gm.Rooms[roomID]
 
-	room.GameState.FullState.Phase = GamePhaseExploration  // 不是作祟阶段
+	room.GameState.FullState.Phase = GamePhaseExploration // 不是作祟阶段
 
 	winner := gm.CheckVictory(roomID)
 
@@ -324,19 +479,9 @@ func TestCheckVictory_TurnLimit_TraitorWins(t *testing.T) {
 	room.GameState.FullState.Players["player_2"].Team = "HERO"
 
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Test Haunt",
-		TraitorObjective: &Objective{
-			Name:        "Default",
-			Description: "默认目标",
-			Type:        "DEFAULT",
-			Turns:       10,  // 10 回合限制
-		},
-		HeroObjective: &Objective{
-			Name:        "Default",
-			Description: "默认目标",
-			Type:        "SURVIVE",
-			Turns:       10,
-		},
+		Name:             "Test Haunt",
+		TraitorObjective: buildTestObjective("Default", "默认目标", "DEFAULT", 10, nil),
+		HeroObjective:    buildTestObjective("Default", "默认目标", "SURVIVE", 10, nil),
 	}
 
 	winner := gm.CheckVictory(roomID)
@@ -359,25 +504,66 @@ func TestCheckVictory_TurnLimit_HeroWins(t *testing.T) {
 	room.GameState.FullState.Players["player_2"].Team = "HERO"
 
 	room.GameState.FullState.CurrentScenario = &Scenario{
-		Name: "Test Haunt",
-		TraitorObjective: &Objective{
-			Name:        "Default",
-			Description: "默认目标",
-			Type:        "ELIMINATE",  // 需要击杀英雄
-			Turns:       8,  // 8 回合
-		},
-		HeroObjective: &Objective{
-			Name:        "Survive",
-			Description: "生存",
-			Type:        "SURVIVE",
-			Turns:       10,  // 10 回合
-		},
+		Name:             "Test Haunt",
+		TraitorObjective: buildTestObjective("Default", "默认目标", "ELIMINATE", 8, nil),
+		HeroObjective:    buildTestObjective("Survive", "生存", "SURVIVE", 10, nil),
 	}
 
 	winner := gm.CheckVictory(roomID)
 
 	if winner != "HERO" {
 		t.Errorf("应该返回 HERO (叛徒未达成目标), 实际是 %s", winner)
+	}
+}
+
+func TestCheckObjectiveVictory_CollectRespectsParamsRequired(t *testing.T) {
+	gm := &GameManager{}
+	state := &GameStateFull{
+		Phase:     GamePhaseHaunt,
+		TraitorID: "traitor",
+		Players: map[string]*GamePlayer{
+			"traitor": {Team: "TRAITOR"},
+			"hero":    {Team: "HERO"},
+		},
+		CurrentScenario: &Scenario{
+			Name:             "Collect Test",
+			TraitorObjective: buildTestObjective("Collect", "收集关键物品", "COLLECT", 10, map[string]interface{}{"target": "item_key", "required": 2}),
+		},
+		TraitorObjectives: map[string]*PlayerObjective{
+			"traitor": {Progress: 1, Required: 2},
+		},
+	}
+
+	if winner := gm.checkObjectiveVictory(state); winner != "" {
+		t.Fatalf("进度未达到 required 时不应胜利, 实际是 %s", winner)
+	}
+
+	state.TraitorObjectives["traitor"].Progress = 2
+	if winner := gm.checkObjectiveVictory(state); winner != "TRAITOR" {
+		t.Fatalf("进度达到 required 后应叛徒胜利, 实际是 %s", winner)
+	}
+}
+
+func TestCheckVictory_TurnLimit_ConvertDoesNotAutoWinWithoutProgress(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.Phase = GamePhaseHaunt
+	room.GameState.FullState.TurnsSinceHaunt = 6
+	room.GameState.FullState.TraitorID = "player_1"
+	room.GameState.FullState.Players["player_1"].Team = "TRAITOR"
+	room.GameState.FullState.Players["player_2"].Team = "HERO"
+	room.GameState.FullState.CurrentScenario = &Scenario{
+		Name:             "Convert Test",
+		TraitorObjective: buildTestObjective("Convert All", "转化全部英雄", "CONVERT", 6, map[string]interface{}{"target": "ALL_HEROES"}),
+	}
+
+	if winner := gm.CheckVictory(roomID); winner != "" {
+		t.Fatalf("CONVERT 在未完成进度时达到回合限制不应自动胜利, 实际是 %s", winner)
+	}
+	if room.GameState.FullState.GameWinner != "" {
+		t.Fatalf("GameWinner 不应被设置, 实际是 %s", room.GameState.FullState.GameWinner)
 	}
 }
 
@@ -392,9 +578,9 @@ func TestCheckVictoryInternal_BothAlive(t *testing.T) {
 			"player_2": {IsDead: false, Team: "HERO"},
 		},
 		CurrentScenario: &Scenario{
-			Name: "Test",
-			TraitorObjective: &Objective{Name: "T", Type: "ELIMINATE", Turns: 10},
-			HeroObjective: &Objective{Name: "H", Type: "SURVIVE", Turns: 10},
+			Name:             "Test",
+			TraitorObjective: buildTestObjective("T", "", "ELIMINATE", 10, nil),
+			HeroObjective:    buildTestObjective("H", "", "SURVIVE", 10, nil),
 		},
 	}
 
@@ -410,13 +596,13 @@ func TestCheckVictoryInternal_AllTraitorsDead(t *testing.T) {
 	state := &GameStateFull{
 		Phase: GamePhaseHaunt,
 		Players: map[string]*GamePlayer{
-			"player_1": {IsDead: true, Team: "TRAITOR"},  // 叛徒死亡
+			"player_1": {IsDead: true, Team: "TRAITOR"}, // 叛徒死亡
 			"player_2": {IsDead: false, Team: "HERO"},
 		},
 		CurrentScenario: &Scenario{
-			Name: "Test",
-			TraitorObjective: &Objective{Name: "T", Type: "ELIMINATE", Turns: 10},
-			HeroObjective: &Objective{Name: "H", Type: "SURVIVE", Turns: 10},
+			Name:             "Test",
+			TraitorObjective: buildTestObjective("T", "", "ELIMINATE", 10, nil),
+			HeroObjective:    buildTestObjective("H", "", "SURVIVE", 10, nil),
 		},
 	}
 
@@ -430,8 +616,8 @@ func TestCheckVictoryInternal_AllTraitorsDead(t *testing.T) {
 func TestCheckVictoryInternal_NoScenario(t *testing.T) {
 	gm := &GameManager{}
 	state := &GameStateFull{
-		Phase:          GamePhaseHaunt,
-		Players:        map[string]*GamePlayer{},
+		Phase:           GamePhaseHaunt,
+		Players:         map[string]*GamePlayer{},
 		CurrentScenario: nil,
 	}
 

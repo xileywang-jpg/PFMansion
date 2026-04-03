@@ -46,10 +46,11 @@ go test ./game ./ws
 
 - raw_data 是正在收口中的原始编辑源
 - game/data 是后端运行时嵌入数据
-- data/source 仍保留部分前端静态数据入口
+- data/source 现主要用于历史 authoring / 生成脚本，不应再被运行时代码 import
 
 ### 现有脚本
 
+- npm run validate:runtime-data-boundaries: 校验运行时代码未重新依赖 data/source / 退役静态包装层
 - npm run build: 前端构建
 - npm run sync:scenarios: 运行 scripts/sync_scenarios.cjs
 - scripts/generate_assets.js: 从 raw_data 生成前端资源文件
@@ -61,6 +62,7 @@ go test ./game ./ws
 - 新内容优先先确定 raw_data 是否已有对应编辑源
 - 若需要新增运行时能力，先补 loader 与 schema，再补内容数据
 - 不要再新增“只在前端静态文件存在、后端不认识”的运行时配置
+- 若 build 因 runtime-data-boundaries 失败，优先把引用改到 /api/game/data 或后端同步链，而不是放宽脚本规则
 
 ## 4. 开发约束
 
