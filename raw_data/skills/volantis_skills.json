@@ -1,0 +1,117 @@
+{
+  "skill_divine_blessing": {
+    "id": "skill_divine_blessing",
+    "theme": "volantis",
+    "type": "SKILL",
+    "name": "神圣祝福",
+    "description": "祈求诸神的祝福，短时间内获得力量。",
+    "icon": "Sun",
+    "usage": {
+      "actionLabel": "祈福",
+      "isConsumable": false,
+      "target": "SELF",
+      "effects": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "might",
+          "amount": 2
+        },
+        {
+          "type": "MODIFY_STAT",
+          "stat": "sanity",
+          "amount": 1
+        },
+        {
+          "type": "LOG",
+          "message": "诸神的光芒照耀着你！",
+          "style": "success"
+        }
+      ]
+    }
+  },
+  "skill_shadow_step": {
+    "id": "skill_shadow_step",
+    "theme": "volantis",
+    "type": "SKILL",
+    "name": "幽影步",
+    "description": "短暂的幽影领域穿梭。",
+    "icon": "Cloud",
+    "usage": {
+      "actionLabel": "使用",
+      "isConsumable": false,
+      "target": "SELF",
+      "effects": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "speed",
+          "amount": 2
+        },
+        {
+          "type": "MODIFY_STAT",
+          "stat": "sanity",
+          "amount": -1
+        },
+        {
+          "type": "LOG",
+          "message": "你融入了幽影，再次出现时已在远方。",
+          "style": "success"
+        }
+      ]
+    }
+  },
+  "skill_truth_seeker": {
+    "id": "skill_truth_seeker",
+    "theme": "volantis",
+    "type": "SKILL",
+    "name": "真理探寻",
+    "description": "激发潜藏的知识。",
+    "icon": "Search",
+    "usage": {
+      "actionLabel": "使用",
+      "isConsumable": false,
+      "target": "SELF",
+      "effects": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "knowledge",
+          "amount": 2
+        },
+        {
+          "type": "LOG",
+          "message": "真相在你脑海中逐渐清晰！",
+          "style": "success"
+        }
+      ]
+    }
+  },
+  "skill_berserker_rage": {
+    "id": "skill_berserker_rage",
+    "theme": "volantis",
+    "type": "SKILL",
+    "name": "狂战士之怒",
+    "description": "燃烧生命换取极致的力量。",
+    "icon": "Flame",
+    "usage": {
+      "actionLabel": "使用",
+      "isConsumable": false,
+      "target": "SELF",
+      "effects": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "might",
+          "amount": 3
+        },
+        {
+          "type": "MODIFY_STAT",
+          "stat": "sanity",
+          "amount": -2
+        },
+        {
+          "type": "LOG",
+          "message": "你陷入了狂怒！力量暴增！",
+          "style": "alert"
+        }
+      ]
+    }
+  }
+}

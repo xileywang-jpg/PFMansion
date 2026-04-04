@@ -9,8 +9,20 @@ func buildTestObjective(name, description, objectiveType string, turns int, para
 		objectiveParams[key] = value
 	}
 	if _, ok := objectiveParams["eventType"]; !ok {
-		if eventType := objectiveEventType(&Objective{Type: objectiveType}); eventType != "" {
+		if eventType := defaultObjectiveEventTypeForType(objectiveType); eventType != "" {
 			objectiveParams["eventType"] = eventType
+		}
+	}
+	if _, ok := objectiveParams["required"]; !ok {
+		eventType, _ := objectiveParams["eventType"].(string)
+		target, _ := objectiveParams["target"].(string)
+		switch {
+		case eventType == "TURNS_SURVIVED" && turns > 0:
+			objectiveParams["required"] = turns
+		case eventType == "PLAYER_DEATH" && (target == "ALL_HEROES" || target == "ALL_ENEMIES"):
+			// 动态人数 required 由运行时推导。
+		default:
+			objectiveParams["required"] = 1
 		}
 	}
 	return &Objective{

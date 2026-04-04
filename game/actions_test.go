@@ -156,7 +156,7 @@ func TestPickupItem_AppliesPassiveEffectsAndEndsTurn(t *testing.T) {
 		ID:             "item_amulet",
 		Type:           "ITEM",
 		Name:           "神圣护身符",
-		PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1"}},
+		PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1", Stat: "sanity", Amount: 1}},
 	}}
 
 	before := player.Character.Attributes["sanity"].Current
@@ -374,7 +374,7 @@ func TestGiveItem_TransfersPassiveEffects(t *testing.T) {
 		ID:             "item_amulet",
 		Type:           "ITEM",
 		Name:           "神圣护身符",
-		PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1"}},
+		PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1", Stat: "sanity", Amount: 1}},
 	}}
 	gm.applyPassiveEffects(roomID, "player_1", fromPlayer.Items[0])
 
@@ -436,7 +436,7 @@ func TestDropItem_RemovesPassiveEffects(t *testing.T) {
 		ID:             "item_amulet",
 		Type:           "ITEM",
 		Name:           "神圣护身符",
-		PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1"}},
+		PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1", Stat: "sanity", Amount: 1}},
 	}}
 	gm.applyPassiveEffects(roomID, "player_1", player.Items[0])
 
@@ -458,8 +458,8 @@ func TestTradeItems_SwapsItemsAndPassiveEffects(t *testing.T) {
 	p2 := room.GameState.FullState.Players["player_2"]
 	p2.Position = p1.Position
 
-	p1.Items = []Card{{ID: "item_amulet", Type: "ITEM", Name: "神圣护身符", PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1"}}}}
-	p2.Items = []Card{{ID: "omen_dog", Type: "OMEN", Name: "幽灵猎犬", PassiveEffects: []PassiveEffect{{Type: "buff", Text: "speed +1"}}}}
+	p1.Items = []Card{{ID: "item_amulet", Type: "ITEM", Name: "神圣护身符", PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1", Stat: "sanity", Amount: 1}}}}
+	p2.Items = []Card{{ID: "omen_dog", Type: "OMEN", Name: "幽灵猎犬", PassiveEffects: []PassiveEffect{{Type: "buff", Text: "speed +1", Stat: "speed", Amount: 1}}}}
 	gm.applyPassiveEffects(roomID, "player_1", p1.Items[0])
 	gm.applyPassiveEffects(roomID, "player_2", p2.Items[0])
 
@@ -581,7 +581,7 @@ func TestExecuteTileInteraction_ForgeUsesConfiguredCardPool(t *testing.T) {
 	knowledge.Current = 5
 	player.Character.Attributes["knowledge"] = knowledge
 
-	pool := GetCardPoolByID("forge_legendary_weapons")
+	pool := GetCardPoolByID("forge_legendary_weapons", room.Theme)
 	if len(pool) == 0 {
 		t.Fatal("锻造配置卡池不应为空")
 	}

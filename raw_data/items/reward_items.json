@@ -1,6 +1,7 @@
 {
   "forge_athena_spear": {
     "id": "forge_athena_spear",
+    "theme": "volantis",
     "name": "雅典娜之矛",
     "description": "以智慧与秩序铸成的传奇长枪。",
     "icon": "Crosshair",
@@ -8,6 +9,7 @@
   },
   "forge_sunbow": {
     "id": "forge_sunbow",
+    "theme": "volantis",
     "name": "太阳神弓",
     "description": "箭矢会沿着光的轨迹飞行。",
     "icon": "Crosshair",
@@ -15,6 +17,7 @@
   },
   "forge_ares_blade": {
     "id": "forge_ares_blade",
+    "theme": "volantis",
     "name": "战神之刃",
     "description": "钢铁在它面前只配碎裂。",
     "icon": "Sword",
@@ -22,6 +25,7 @@
   },
   "forge_hermes_wings": {
     "id": "forge_hermes_wings",
+    "theme": "volantis",
     "name": "赫尔墨斯之翼",
     "description": "风会替持有者奔跑。",
     "icon": "Feather",
@@ -29,6 +33,7 @@
   },
   "forge_dionysus_cup": {
     "id": "forge_dionysus_cup",
+    "theme": "volantis",
     "name": "酒神金杯",
     "description": "狂喜与痛楚都在杯中摇晃。",
     "icon": "Goblet",
@@ -36,6 +41,7 @@
   },
   "forge_zeus_shield": {
     "id": "forge_zeus_shield",
+    "theme": "volantis",
     "name": "雷霆神盾",
     "description": "盾面深处滚动着静止的闪电。",
     "icon": "Shield",

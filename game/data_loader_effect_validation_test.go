@@ -2,16 +2,21 @@ package game
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
 func buildEffectValidationLoader() *DataLoader {
 	return &DataLoader{
 		Items: ItemsJSON{
-			Items:       []Card{{ID: "item_amulet", Type: "ITEM", Name: "护符"}},
-			RewardItems: []Card{{ID: "forge_athena_spear", Type: "WEAPON", Name: "雅典娜之矛"}},
-			Omens:       []Card{{ID: "omen_crystal_ball", Type: "OMEN", Name: "水晶球"}},
-			Skills:      []Card{{ID: "skill_sprint", Type: "SKILL", Name: "疾跑"}},
+			Items: ThemedCardsJSON{
+				Original: []Card{{ID: "item_amulet", Type: "ITEM", Name: "护符"}},
+			},
+			RewardItems: ThemedCardsJSON{Volantis: []Card{{ID: "forge_athena_spear", Type: "WEAPON", Name: "雅典娜之矛", Theme: "volantis"}}},
+			Omens: ThemedCardsJSON{
+				Original: []Card{{ID: "omen_crystal_ball", Type: "OMEN", Name: "水晶球"}},
+			},
+			Skills: ThemedCardsJSON{Original: []Card{{ID: "skill_sprint", Type: "SKILL", Name: "疾跑", Theme: "original"}}},
 		},
 		NamedLocationMap: map[string]Position{
 			"entry": {X: 0, Y: 0},
@@ -24,6 +29,51 @@ func TestValidateEffect_GiveItemRejectsUnknownReference(t *testing.T) {
 	err := d.validateEffect(Effect{Type: "GIVE_ITEM", ItemID: "item_missing"}, "test")
 	if err == nil {
 		t.Fatal("GIVE_ITEM 引用不存在 itemId 时应失败")
+	}
+}
+
+func TestCompileCardPools_RequiresExplicitTheme(t *testing.T) {
+	d := buildEffectValidationLoader()
+	d.Config = ConfigJSON{
+		CardPools: []CardPoolConfig{{
+			ID:      "forge_legendary_weapons",
+			CardIDs: []string{"forge_athena_spear"},
+		}},
+	}
+
+	err := d.compileCardPools()
+	if err == nil {
+		t.Fatal("配置卡池缺少显式 theme 时应失败")
+	}
+	if !strings.Contains(err.Error(), "缺少显式 theme") {
+		t.Fatalf("应返回缺少显式 theme 错误, 实际为: %v", err)
+	}
+}
+
+func TestCompileCardPools_RejectsThemeMismatch(t *testing.T) {
+	d := buildEffectValidationLoader()
+	d.Config = ConfigJSON{
+		CardPools: []CardPoolConfig{{
+			ID:      "forge_legendary_weapons",
+			Theme:   "original",
+			CardIDs: []string{"forge_athena_spear"},
+		}},
+	}
+
+	err := d.compileCardPools()
+	if err == nil {
+		t.Fatal("配置卡池 theme 与 rewardItems 主题不一致时应失败")
+	}
+	if !strings.Contains(err.Error(), "不一致") {
+		t.Fatalf("应返回主题不一致错误, 实际为: %v", err)
+	}
+}
+
+func TestValidateEffect_GiveItemRejectsMessageOnlyFallback(t *testing.T) {
+	d := buildEffectValidationLoader()
+	err := d.validateEffect(Effect{Type: "GIVE_ITEM", Message: "item_amulet"}, "test")
+	if err == nil {
+		t.Fatal("GIVE_ITEM 不应再接受 message 作为 itemId 兼容字段")
 	}
 }
 
@@ -51,11 +101,46 @@ func TestValidateEffect_AddStatusRequiresStatusType(t *testing.T) {
 	}
 }
 
+func TestValidateEffect_AddStatusRejectsLegacyAttributeFallback(t *testing.T) {
+	d := buildEffectValidationLoader()
+	err := d.validateEffect(Effect{Type: "ADD_STATUS", Attribute: "burning", Duration: 2}, "test")
+	if err == nil {
+		t.Fatal("ADD_STATUS 不应再接受 attribute 作为 statusType 兼容字段")
+	}
+}
+
+func TestValidateEffect_AddBuffRejectsMessageOnlyFallback(t *testing.T) {
+	d := buildEffectValidationLoader()
+	err := d.validateEffect(Effect{Type: "ADD_BUFF", Message: "速度 +1"}, "test")
+	if err == nil {
+		t.Fatal("ADD_BUFF 不应再接受 message 作为 buff 兼容字段")
+	}
+}
+
 func TestValidateEffect_AcceptsExplicitFields(t *testing.T) {
 	d := buildEffectValidationLoader()
 	err := d.validateEffect(Effect{Type: "GIVE_SKILL", SkillID: "skill_sprint"}, "test")
 	if err != nil {
 		t.Fatalf("显式字段合法时不应失败: %v", err)
+	}
+}
+
+func TestValidateEffect_GiveSkillRejectsMessageOnlyFallback(t *testing.T) {
+	d := buildEffectValidationLoader()
+	err := d.validateEffect(Effect{Type: "GIVE_SKILL", Message: "skill_sprint"}, "test")
+	if err == nil {
+		t.Fatal("GIVE_SKILL 不应再接受 message 作为 skillId 兼容字段")
+	}
+}
+
+func TestValidateEffect_RejectsLegacyEffectAliases(t *testing.T) {
+	d := buildEffectValidationLoader()
+	legacyTypes := []string{"gain_item", "narrative_log", "teleport"}
+
+	for _, effectType := range legacyTypes {
+		if err := d.validateEffect(Effect{Type: effectType}, "test"); err == nil {
+			t.Fatalf("legacy effect alias %s 应失败", effectType)
+		}
 	}
 }
 
@@ -67,6 +152,14 @@ func TestValidatePassiveEffect_AcceptsStructuredBuff(t *testing.T) {
 	}
 }
 
+func TestValidatePassiveEffect_RejectsTextOnlyBuffFallback(t *testing.T) {
+	d := buildEffectValidationLoader()
+	err := d.validatePassiveEffect(PassiveEffect{Type: "buff", Text: "理智 +1"}, "test")
+	if err == nil {
+		t.Fatal("passive buff 不应再接受 text-only 兼容字段")
+	}
+}
+
 func TestValidatePassiveEffect_RejectsUnknownSkillID(t *testing.T) {
 	d := buildEffectValidationLoader()
 	err := d.validatePassiveEffect(PassiveEffect{Type: "skill", SkillID: "skill_missing"}, "test")
@@ -75,9 +168,70 @@ func TestValidatePassiveEffect_RejectsUnknownSkillID(t *testing.T) {
 	}
 }
 
+func TestValidateSkillTreeGrantEffects_RejectsUnknownSkillID(t *testing.T) {
+	d := buildEffectValidationLoader()
+	d.SkillTrees = SkillTreesJSON{
+		Trees: ThemedSkillTreesJSON{
+			Original: []SkillTreeCategoryJSON{
+				{
+					ID:    "tree_survival",
+					Theme: "original",
+					Name:  "生存本能",
+					Nodes: []SkillTreeNodeJSON{{
+						ID:            "node_missing_skill",
+						Name:          "失效节点",
+						Description:   "引用了不存在的技能",
+						Cost:          1,
+						Icon:          "Zap",
+						GrantsSkillID: "skill_missing",
+					}},
+				},
+			},
+		},
+	}
+
+	err := d.validateSkillTreeGrantEffects()
+	if err == nil {
+		t.Fatal("skill tree grantsSkillId 引用不存在技能时应失败")
+	}
+}
+
+func TestGetThemedSkillTrees_ReturnsRequestedThemeOnly(t *testing.T) {
+	trees := ThemedSkillTreesJSON{
+		Original: []SkillTreeCategoryJSON{{ID: "tree_survival", Theme: "original", Name: "生存本能"}},
+		Volantis: []SkillTreeCategoryJSON{{ID: "tree_goldblood", Theme: "volantis", Name: "黄金裔传承"}},
+	}
+
+	originalTrees := getThemedSkillTrees(trees, "original")
+	if len(originalTrees) != 1 || originalTrees[0].ID != "tree_survival" {
+		t.Fatalf("original 技能树过滤结果错误: %#v", originalTrees)
+	}
+
+	volantisTrees := getThemedSkillTrees(trees, "volantis")
+	if len(volantisTrees) != 1 || volantisTrees[0].ID != "tree_goldblood" {
+		t.Fatalf("volantis 技能树过滤结果错误: %#v", volantisTrees)
+	}
+}
+
+func TestValidatePassiveEffect_RejectsSkillTextOnlyFallback(t *testing.T) {
+	d := buildEffectValidationLoader()
+	err := d.validatePassiveEffect(PassiveEffect{Type: "skill", Text: "获得技能：疾跑"}, "test")
+	if err == nil {
+		t.Fatal("passive skill 不应再接受 text 作为 skillId 兼容字段")
+	}
+}
+
+func TestValidatePassiveEffect_RejectsSpecialTextOnlyFallback(t *testing.T) {
+	d := buildEffectValidationLoader()
+	err := d.validatePassiveEffect(PassiveEffect{Type: "special", Text: "允许破坏墙壁"}, "test")
+	if err == nil {
+		t.Fatal("passive special 不应再接受 text 作为 specialKey 兼容字段")
+	}
+}
+
 func TestValidatePassiveEffect_RejectsUnknownTrigger(t *testing.T) {
 	d := buildEffectValidationLoader()
-	err := d.validatePassiveEffect(PassiveEffect{Type: "buff", Trigger: "ON_HIT", Text: "力量 +1"}, "test")
+	err := d.validatePassiveEffect(PassiveEffect{Type: "buff", Trigger: "ON_HIT", Stat: "might", Amount: 1}, "test")
 	if err == nil {
 		t.Fatal("passive trigger 非法时应失败")
 	}
@@ -99,11 +253,11 @@ func TestValidatePassiveEffect_AcceptsCombatDamageBonusWithNPCTypes(t *testing.T
 	}
 }
 
-func TestValidatePassiveEffect_RejectsUnsupportedLegacyPassiveText(t *testing.T) {
+func TestValidatePassiveEffect_RejectsBuffWithoutAmount(t *testing.T) {
 	d := buildEffectValidationLoader()
-	err := d.validatePassiveEffect(PassiveEffect{Type: "buff", Text: "攻击时额外造成 1 点伤害"}, "test")
+	err := d.validatePassiveEffect(PassiveEffect{Type: "buff", Stat: "might"}, "test")
 	if err == nil {
-		t.Fatal("不会被后端执行的 legacy passive 文本应失败")
+		t.Fatal("buff 缺少 amount 时应失败")
 	}
 }
 
@@ -205,6 +359,7 @@ func TestValidateAllScenarioObjectives_AcceptsValidEventType(t *testing.T) {
 					Params: map[string]interface{}{
 						"target":    "tile_exit",
 						"turns":     6,
+						"required":  1,
 						"eventType": "tile_reached",
 					},
 				},
@@ -214,6 +369,31 @@ func TestValidateAllScenarioObjectives_AcceptsValidEventType(t *testing.T) {
 
 	if err := d.validateAllScenarioObjectives(); err != nil {
 		t.Fatalf("合法 params.eventType 不应失败: %v", err)
+	}
+}
+
+func TestValidateAllScenarioObjectives_AcceptsDynamicRequiredForPlayerDeathTargets(t *testing.T) {
+	d := buildEffectValidationLoader()
+	d.Scenarios = HauntMatrixJSON{
+		Scenarios: map[string]Scenario{
+			"s1": {
+				ID:   "s1",
+				Name: "Scenario 1",
+				TraitorObjective: &Objective{
+					Name: "Eliminate",
+					Type: "ELIMINATE",
+					Params: map[string]interface{}{
+						"target":    "ALL_HEROES",
+						"turns":     6,
+						"eventType": "PLAYER_DEATH",
+					},
+				},
+			},
+		},
+	}
+
+	if err := d.validateAllScenarioObjectives(); err != nil {
+		t.Fatalf("PLAYER_DEATH + ALL_HEROES 的动态 required 不应失败: %v", err)
 	}
 }
 

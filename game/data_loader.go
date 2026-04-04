@@ -44,6 +44,7 @@ type ThemeConfig struct {
 
 type CardPoolConfig struct {
 	ID      string   `json:"id"`
+	Theme   string   `json:"theme"`
 	CardIDs []string `json:"cardIds"`
 }
 
@@ -68,17 +69,23 @@ type TileDeckJSON struct {
 	Volantis []TileDef `json:"volantis"`
 }
 
+// ThemedCardsJSON 按主题分组的卡牌集合
+type ThemedCardsJSON struct {
+	Original []Card `json:"original"`
+	Volantis []Card `json:"volantis"`
+}
+
 // EventsJSON 事件卡 JSON 结构
 type EventsJSON struct {
-	Events []Card `json:"events"`
+	Events ThemedCardsJSON `json:"events"`
 }
 
 // ItemsJSON 物品 JSON 结构
 type ItemsJSON struct {
-	Items       []Card `json:"items"`
-	RewardItems []Card `json:"rewardItems,omitempty"`
-	Omens       []Card `json:"omens"`
-	Skills      []Card `json:"skills"`
+	Items       ThemedCardsJSON `json:"items"`
+	RewardItems ThemedCardsJSON `json:"rewardItems,omitempty"`
+	Omens       ThemedCardsJSON `json:"omens"`
+	Skills      ThemedCardsJSON `json:"skills"`
 }
 
 // HauntMatrixJSON 剧本矩阵 JSON 结构
@@ -127,7 +134,6 @@ type SkillTreeNodeJSON struct {
 	RequiredTrait string                     `json:"requiredTrait,omitempty"`
 	GrantsSkillID string                     `json:"grantsSkillId,omitempty"`
 	GrantsEffects []SkillNodeGrantEffectJSON `json:"grantsEffects,omitempty"`
-	GrantsBuff    string                     `json:"grantsBuff,omitempty"`
 	Position      struct {
 		Row int `json:"row"`
 		Col int `json:"col"`
@@ -137,14 +143,20 @@ type SkillTreeNodeJSON struct {
 // SkillTreeCategoryJSON 技能树类别 JSON 结构
 type SkillTreeCategoryJSON struct {
 	ID          string              `json:"id"`
+	Theme       string              `json:"theme,omitempty"`
 	Name        string              `json:"name"`
 	Description string              `json:"description"`
 	Nodes       []SkillTreeNodeJSON `json:"nodes"`
 }
 
+type ThemedSkillTreesJSON struct {
+	Original []SkillTreeCategoryJSON `json:"original"`
+	Volantis []SkillTreeCategoryJSON `json:"volantis"`
+}
+
 // SkillTreesJSON 技能树 JSON 结构
 type SkillTreesJSON struct {
-	Trees []SkillTreeCategoryJSON `json:"trees"`
+	Trees ThemedSkillTreesJSON `json:"trees"`
 }
 
 // DataLoader 数据加载器
@@ -270,6 +282,7 @@ func normalizeSkillNodeGrantEffect(effect *SkillNodeGrantEffectJSON) {
 
 func normalizeSkillTrees(trees []SkillTreeCategoryJSON) {
 	for treeIndex := range trees {
+		trees[treeIndex].Theme = normalizeTheme(trees[treeIndex].Theme)
 		for nodeIndex := range trees[treeIndex].Nodes {
 			node := &trees[treeIndex].Nodes[nodeIndex]
 			for effectIndex := range node.GrantsEffects {
@@ -322,31 +335,72 @@ func normalizeCards(cards []Card) {
 	}
 }
 
+func normalizeThemedCards(cards *ThemedCardsJSON) {
+	if cards == nil {
+		return
+	}
+	normalizeCards(cards.Original)
+	normalizeCards(cards.Volantis)
+}
+
+func normalizeTheme(theme string) string {
+	switch strings.ToLower(strings.TrimSpace(theme)) {
+	case "volantis":
+		return "volantis"
+	default:
+		return "original"
+	}
+}
+
+func getCardsByTheme(cards ThemedCardsJSON, theme string) []Card {
+	if normalizeTheme(theme) == "volantis" {
+		return cards.Volantis
+	}
+	return cards.Original
+}
+
+func getAllThemedCards(cards ThemedCardsJSON) []Card {
+	result := make([]Card, 0, len(cards.Original)+len(cards.Volantis))
+	result = append(result, cards.Original...)
+	result = append(result, cards.Volantis...)
+	return result
+}
+
+func findCardByIDInSlice(cards []Card, id string) *Card {
+	for i := range cards {
+		if cards[i].ID == id {
+			return &cards[i]
+		}
+	}
+	return nil
+}
+
+func findCardByIDInThemes(cards ThemedCardsJSON, id string) *Card {
+	if card := findCardByIDInSlice(cards.Original, id); card != nil {
+		return card
+	}
+	return findCardByIDInSlice(cards.Volantis, id)
+}
+
+func themedCardCount(cards ThemedCardsJSON) int {
+	return len(cards.Original) + len(cards.Volantis)
+}
+
 func (d *DataLoader) findCardByID(id string) *Card {
-	for i := range d.Events.Events {
-		if d.Events.Events[i].ID == id {
-			return &d.Events.Events[i]
-		}
+	if card := findCardByIDInThemes(d.Events.Events, id); card != nil {
+		return card
 	}
-	for i := range d.Items.Items {
-		if d.Items.Items[i].ID == id {
-			return &d.Items.Items[i]
-		}
+	if card := findCardByIDInThemes(d.Items.Items, id); card != nil {
+		return card
 	}
-	for i := range d.Items.RewardItems {
-		if d.Items.RewardItems[i].ID == id {
-			return &d.Items.RewardItems[i]
-		}
+	if card := findCardByIDInThemes(d.Items.RewardItems, id); card != nil {
+		return card
 	}
-	for i := range d.Items.Omens {
-		if d.Items.Omens[i].ID == id {
-			return &d.Items.Omens[i]
-		}
+	if card := findCardByIDInThemes(d.Items.Omens, id); card != nil {
+		return card
 	}
-	for i := range d.Items.Skills {
-		if d.Items.Skills[i].ID == id {
-			return &d.Items.Skills[i]
-		}
+	if card := findCardByIDInThemes(d.Items.Skills, id); card != nil {
+		return card
 	}
 	return nil
 }
@@ -358,20 +412,32 @@ func (d *DataLoader) compileCardPools() error {
 		if poolID == "" {
 			return fmt.Errorf("配置卡池缺少 id")
 		}
+		poolTheme := strings.ToLower(strings.TrimSpace(pool.Theme))
+		switch poolTheme {
+		case "original", "volantis":
+		case "":
+			return fmt.Errorf("配置卡池 %s 缺少显式 theme", pool.ID)
+		default:
+			return fmt.Errorf("配置卡池 %s 使用了非法 theme %s", pool.ID, pool.Theme)
+		}
 		if len(pool.CardIDs) == 0 {
 			return fmt.Errorf("配置卡池 %s 没有 cardIds", pool.ID)
 		}
 
 		cards := make([]Card, 0, len(pool.CardIDs))
 		for _, cardID := range pool.CardIDs {
-			card := d.findCardByID(cardID)
+			card := findCardByIDInThemes(d.Items.RewardItems, cardID)
 			if card == nil {
 				return fmt.Errorf("配置卡池 %s 引用了不存在的卡牌 %s", pool.ID, cardID)
+			}
+			cardTheme := normalizeTheme(card.Theme)
+			if poolTheme != cardTheme {
+				return fmt.Errorf("配置卡池 %s 的 theme=%s 与 rewardItem %s 的 theme=%s 不一致", pool.ID, poolTheme, cardID, cardTheme)
 			}
 			cards = append(cards, *card)
 		}
 
-		d.CardPoolMap[poolID] = cards
+		d.CardPoolMap[poolTheme+":"+poolID] = cards
 	}
 	return nil
 }
@@ -396,20 +462,14 @@ func (d *DataLoader) isKnownItemID(itemID string) bool {
 	if itemID == "" {
 		return false
 	}
-	for _, card := range d.Items.Items {
-		if card.ID == itemID {
-			return true
-		}
+	if findCardByIDInThemes(d.Items.Items, itemID) != nil {
+		return true
 	}
-	for _, card := range d.Items.RewardItems {
-		if card.ID == itemID {
-			return true
-		}
+	if findCardByIDInThemes(d.Items.RewardItems, itemID) != nil {
+		return true
 	}
-	for _, card := range d.Items.Omens {
-		if card.ID == itemID {
-			return true
-		}
+	if findCardByIDInThemes(d.Items.Omens, itemID) != nil {
+		return true
 	}
 	return false
 }
@@ -419,25 +479,7 @@ func (d *DataLoader) isKnownSkillID(skillID string) bool {
 	if skillID == "" {
 		return false
 	}
-	for _, card := range d.Items.Skills {
-		if card.ID == skillID {
-			return true
-		}
-	}
-	return false
-}
-
-func (d *DataLoader) findSkillIDByName(skillName string) string {
-	skillName = strings.TrimSpace(skillName)
-	if skillName == "" {
-		return ""
-	}
-	for _, skill := range d.Items.Skills {
-		if strings.Contains(skill.Name, skillName) || strings.Contains(skillName, skill.Name) {
-			return skill.ID
-		}
-	}
-	return ""
+	return findCardByIDInThemes(d.Items.Skills, skillID) != nil
 }
 
 func isValidAttributeName(attr string) bool {
@@ -467,35 +509,8 @@ func isValidNPCTypeName(npcType string) bool {
 	}
 }
 
-func isSupportedLegacyPassiveBuffText(text string) bool {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return false
-	}
-
-	_, strippedText := inferLegacyPassiveTrigger(text)
-	strippedText = strings.ReplaceAll(strippedText, "，", ",")
-	parts := strings.Split(strippedText, ",")
-	matched := false
-
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		attrName, amount := parseAttributeChange(part)
-		if attrName == "" || amount == 0 {
-			return false
-		}
-		matched = true
-	}
-
-	return matched
-}
-
 func (d *DataLoader) validatePassiveEffect(passive PassiveEffect, context string) error {
 	typeName := strings.ToLower(strings.TrimSpace(passive.Type))
-	text := strings.TrimSpace(passive.Text)
 	trigger := normalizePassiveTrigger(passive.Trigger)
 	if !isValidPassiveTrigger(trigger) {
 		return fmt.Errorf("%s: passiveEffects.trigger 非法: %s", context, passive.Trigger)
@@ -503,20 +518,11 @@ func (d *DataLoader) validatePassiveEffect(passive PassiveEffect, context string
 
 	switch typeName {
 	case "buff", "debuff":
-		hasStructured := strings.TrimSpace(passive.Stat) != "" || passive.Amount != 0
-		if hasStructured {
-			if !isValidAttributeName(passive.Stat) {
-				return fmt.Errorf("%s: passiveEffects.%s 的 stat 非法: %s", context, typeName, passive.Stat)
-			}
-			if passive.Amount == 0 {
-				return fmt.Errorf("%s: passiveEffects.%s 缺少 amount", context, typeName)
-			}
+		if !isValidAttributeName(passive.Stat) {
+			return fmt.Errorf("%s: passiveEffects.%s 的 stat 非法: %s", context, typeName, passive.Stat)
 		}
-		if !hasStructured && text == "" {
-			return fmt.Errorf("%s: passiveEffects.%s 缺少 text 或结构化字段", context, typeName)
-		}
-		if !hasStructured && !isSupportedLegacyPassiveBuffText(text) {
-			return fmt.Errorf("%s: passiveEffects.%s 文本当前不会被后端执行，请迁移为结构化字段或改用 special/skill/combat_* 类型: %s", context, typeName, text)
+		if passive.Amount == 0 {
+			return fmt.Errorf("%s: passiveEffects.%s 缺少 amount", context, typeName)
 		}
 	case "skill":
 		if strings.TrimSpace(passive.SkillID) != "" {
@@ -525,17 +531,10 @@ func (d *DataLoader) validatePassiveEffect(passive PassiveEffect, context string
 			}
 			return nil
 		}
-		if strings.HasPrefix(text, "获得技能：") {
-			skillName := strings.TrimSpace(strings.TrimPrefix(text, "获得技能："))
-			if d.findSkillIDByName(skillName) == "" {
-				return fmt.Errorf("%s: passiveEffects.skill 文本无法匹配技能: %s", context, skillName)
-			}
-			return nil
-		}
-		return fmt.Errorf("%s: passiveEffects.skill 缺少 skillId 或兼容 text", context)
+		return fmt.Errorf("%s: passiveEffects.skill 缺少 skillId", context)
 	case "special":
-		if strings.TrimSpace(passive.SpecialKey) == "" && text == "" {
-			return fmt.Errorf("%s: passiveEffects.special 缺少 specialKey 或 text", context)
+		if strings.TrimSpace(passive.SpecialKey) == "" {
+			return fmt.Errorf("%s: passiveEffects.special 缺少 specialKey", context)
 		}
 	case "combat_buff", "combat_modifier":
 		if passive.Modifier == 0 {
@@ -592,14 +591,15 @@ func (d *DataLoader) validateEffectCondition(condition *Condition, context strin
 }
 
 func (d *DataLoader) validateEffect(effect Effect, context string) error {
+	if replacement, ok := deprecatedEffectAlias(effect.Type); ok {
+		return fmt.Errorf("%s: effect.type=%s 已废弃，请改用 %s", context, effect.Type, replacement)
+	}
+
 	effect = normalizeEffect(effect)
 
 	switch effect.Type {
 	case "GIVE_ITEM":
 		itemID := strings.TrimSpace(effect.ItemID)
-		if itemID == "" {
-			itemID = strings.TrimSpace(effect.Message)
-		}
 		if itemID == "" {
 			return fmt.Errorf("%s: GIVE_ITEM 缺少 itemId", context)
 		}
@@ -608,9 +608,6 @@ func (d *DataLoader) validateEffect(effect Effect, context string) error {
 		}
 	case "GIVE_SKILL":
 		skillID := strings.TrimSpace(effect.SkillID)
-		if skillID == "" {
-			skillID = strings.TrimSpace(effect.Message)
-		}
 		if skillID == "" {
 			return fmt.Errorf("%s: GIVE_SKILL 缺少 skillId", context)
 		}
@@ -628,16 +625,10 @@ func (d *DataLoader) validateEffect(effect Effect, context string) error {
 	case "ADD_STATUS":
 		statusType := strings.ToUpper(strings.TrimSpace(effect.StatusType))
 		if statusType == "" {
-			statusType = strings.ToUpper(strings.TrimSpace(effect.Attribute))
-		}
-		if statusType == "" {
-			statusType = strings.ToUpper(strings.TrimSpace(effect.Message))
-		}
-		if statusType == "" {
 			return fmt.Errorf("%s: ADD_STATUS 缺少 statusType", context)
 		}
 	case "ADD_BUFF", "REMOVE_BUFF":
-		if strings.TrimSpace(effect.Buff) == "" && strings.TrimSpace(effect.Message) == "" {
+		if strings.TrimSpace(effect.Buff) == "" {
 			return fmt.Errorf("%s: %s 缺少 buff", context, effect.Type)
 		}
 	case "IF":
@@ -658,6 +649,19 @@ func (d *DataLoader) validateEffect(effect Effect, context string) error {
 	}
 
 	return nil
+}
+
+func deprecatedEffectAlias(effectType string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(effectType)) {
+	case "teleport":
+		return "MOVE_PLAYER", true
+	case "narrative_log":
+		return "LOG", true
+	case "gain_item":
+		return "GIVE_ITEM", true
+	default:
+		return "", false
+	}
 }
 
 func (d *DataLoader) validateEffectSlice(effects []Effect, context string) error {
@@ -764,27 +768,32 @@ func (d *DataLoader) validateTileEffects(tiles []TileDef, theme string) error {
 }
 
 func (d *DataLoader) validateSkillTreeGrantEffects() error {
-	for treeIndex := range d.SkillTrees.Trees {
-		tree := &d.SkillTrees.Trees[treeIndex]
-		for nodeIndex := range tree.Nodes {
-			node := &tree.Nodes[nodeIndex]
-			for effectIndex := range node.GrantsEffects {
-				effect := node.GrantsEffects[effectIndex]
-				context := fmt.Sprintf("skillTrees[%s].nodes[%s].grantsEffects[%d]", tree.ID, node.ID, effectIndex)
-				switch effect.Type {
-				case "MODIFY_ATTRIBUTE":
-					if effect.Stat == "" {
-						return fmt.Errorf("%s: MODIFY_ATTRIBUTE 缺少 stat", context)
+	for _, trees := range [][]SkillTreeCategoryJSON{d.SkillTrees.Trees.Original, d.SkillTrees.Trees.Volantis} {
+		for treeIndex := range trees {
+			tree := &trees[treeIndex]
+			for nodeIndex := range tree.Nodes {
+				node := &tree.Nodes[nodeIndex]
+				if node.GrantsSkillID != "" && !d.isKnownSkillID(node.GrantsSkillID) {
+					return fmt.Errorf("skillTrees[%s].nodes[%s].grantsSkillId 引用了不存在的技能 %s", tree.ID, node.ID, node.GrantsSkillID)
+				}
+				for effectIndex := range node.GrantsEffects {
+					effect := node.GrantsEffects[effectIndex]
+					context := fmt.Sprintf("skillTrees[%s].nodes[%s].grantsEffects[%d]", tree.ID, node.ID, effectIndex)
+					switch effect.Type {
+					case "MODIFY_ATTRIBUTE":
+						if effect.Stat == "" {
+							return fmt.Errorf("%s: MODIFY_ATTRIBUTE 缺少 stat", context)
+						}
+						if effect.Amount == 0 {
+							return fmt.Errorf("%s: MODIFY_ATTRIBUTE 缺少 amount", context)
+						}
+					case "ADD_BUFF":
+						if strings.TrimSpace(effect.Buff) == "" {
+							return fmt.Errorf("%s: ADD_BUFF 缺少 buff", context)
+						}
+					default:
+						return fmt.Errorf("%s: 不支持的 grantsEffects.type=%s", context, effect.Type)
 					}
-					if effect.Amount == 0 {
-						return fmt.Errorf("%s: MODIFY_ATTRIBUTE 缺少 amount", context)
-					}
-				case "ADD_BUFF":
-					if strings.TrimSpace(effect.Buff) == "" {
-						return fmt.Errorf("%s: ADD_BUFF 缺少 buff", context)
-					}
-				default:
-					return fmt.Errorf("%s: 不支持的 grantsEffects.type=%s", context, effect.Type)
 				}
 			}
 		}
@@ -814,9 +823,9 @@ func (d *DataLoader) validateObjectiveDefinition(obj *Objective, context string)
 		return fmt.Errorf("%s: params.turns 必须大于 0", context)
 	}
 
-	required := objectiveRequiredProgress(obj)
-	if required <= 0 {
-		return fmt.Errorf("%s: objective required 必须大于 0", context)
+	required := objectiveParamInt(obj, "required")
+	if required <= 0 && !objectiveAllowsDynamicRequired(obj) {
+		return fmt.Errorf("%s: params.required 必须大于 0；只有 PLAYER_DEATH + ALL_HEROES/ALL_ENEMIES 可省略并由运行时推导", context)
 	}
 
 	eventType := objectiveParamString(obj, "eventType")
@@ -827,13 +836,13 @@ func (d *DataLoader) validateObjectiveDefinition(obj *Objective, context string)
 		return fmt.Errorf("%s: params.eventType 不支持: %s", context, eventType)
 	}
 
-	switch strings.ToUpper(strings.TrimSpace(obj.Type)) {
-	case "ELIMINATE", "CONVERT", "REACH", "COLLECT", "OPEN_GATE":
+	switch objectiveEventType(obj) {
+	case "PLAYER_DEATH", "TILE_REACHED", "ITEM_COLLECTED":
 		if strings.TrimSpace(objectiveParamString(obj, "target")) == "" {
-			return fmt.Errorf("%s: %s 目标缺少 params.target", context, obj.Type)
+			return fmt.Errorf("%s: %s 目标缺少 params.target", context, objectiveEventType(obj))
 		}
-	case "CUSTOM":
-		if strings.TrimSpace(objectiveParamString(obj, "customId")) == "" {
+	case "RITUAL_COMPLETED":
+		if strings.EqualFold(strings.TrimSpace(obj.Type), "CUSTOM") && strings.TrimSpace(objectiveParamString(obj, "customId")) == "" {
 			return fmt.Errorf("%s: CUSTOM 目标缺少 params.customId", context)
 		}
 	}
@@ -861,28 +870,53 @@ func (d *DataLoader) validateAllEffects() error {
 		return err
 	}
 
-	for i := range d.Events.Events {
-		if err := d.validateCardEffects(d.Events.Events[i], fmt.Sprintf("events[%s]", d.Events.Events[i].ID)); err != nil {
+	for i := range d.Events.Events.Original {
+		if err := d.validateCardEffects(d.Events.Events.Original[i], fmt.Sprintf("events.original[%s]", d.Events.Events.Original[i].ID)); err != nil {
 			return err
 		}
 	}
-	for i := range d.Items.Items {
-		if err := d.validateCardEffects(d.Items.Items[i], fmt.Sprintf("items[%s]", d.Items.Items[i].ID)); err != nil {
+	for i := range d.Events.Events.Volantis {
+		if err := d.validateCardEffects(d.Events.Events.Volantis[i], fmt.Sprintf("events.volantis[%s]", d.Events.Events.Volantis[i].ID)); err != nil {
 			return err
 		}
 	}
-	for i := range d.Items.RewardItems {
-		if err := d.validateCardEffects(d.Items.RewardItems[i], fmt.Sprintf("rewardItems[%s]", d.Items.RewardItems[i].ID)); err != nil {
+	for i := range d.Items.Items.Original {
+		if err := d.validateCardEffects(d.Items.Items.Original[i], fmt.Sprintf("items.original[%s]", d.Items.Items.Original[i].ID)); err != nil {
 			return err
 		}
 	}
-	for i := range d.Items.Omens {
-		if err := d.validateCardEffects(d.Items.Omens[i], fmt.Sprintf("omens[%s]", d.Items.Omens[i].ID)); err != nil {
+	for i := range d.Items.Items.Volantis {
+		if err := d.validateCardEffects(d.Items.Items.Volantis[i], fmt.Sprintf("items.volantis[%s]", d.Items.Items.Volantis[i].ID)); err != nil {
 			return err
 		}
 	}
-	for i := range d.Items.Skills {
-		if err := d.validateCardEffects(d.Items.Skills[i], fmt.Sprintf("skills[%s]", d.Items.Skills[i].ID)); err != nil {
+	for i := range d.Items.RewardItems.Original {
+		if err := d.validateCardEffects(d.Items.RewardItems.Original[i], fmt.Sprintf("rewardItems.original[%s]", d.Items.RewardItems.Original[i].ID)); err != nil {
+			return err
+		}
+	}
+	for i := range d.Items.RewardItems.Volantis {
+		if err := d.validateCardEffects(d.Items.RewardItems.Volantis[i], fmt.Sprintf("rewardItems.volantis[%s]", d.Items.RewardItems.Volantis[i].ID)); err != nil {
+			return err
+		}
+	}
+	for i := range d.Items.Omens.Original {
+		if err := d.validateCardEffects(d.Items.Omens.Original[i], fmt.Sprintf("omens.original[%s]", d.Items.Omens.Original[i].ID)); err != nil {
+			return err
+		}
+	}
+	for i := range d.Items.Omens.Volantis {
+		if err := d.validateCardEffects(d.Items.Omens.Volantis[i], fmt.Sprintf("omens.volantis[%s]", d.Items.Omens.Volantis[i].ID)); err != nil {
+			return err
+		}
+	}
+	for i := range d.Items.Skills.Original {
+		if err := d.validateCardEffects(d.Items.Skills.Original[i], fmt.Sprintf("skills.original[%s]", d.Items.Skills.Original[i].ID)); err != nil {
+			return err
+		}
+	}
+	for i := range d.Items.Skills.Volantis {
+		if err := d.validateCardEffects(d.Items.Skills.Volantis[i], fmt.Sprintf("skills.volantis[%s]", d.Items.Skills.Volantis[i].ID)); err != nil {
 			return err
 		}
 	}
@@ -920,17 +954,17 @@ func LoadData() error {
 		log.Printf("⚠️ 加载事件数据失败: %v", err)
 		return err
 	}
-	normalizeCards(dataLoader.Events.Events)
+	normalizeThemedCards(&dataLoader.Events.Events)
 
 	// 加载物品数据
 	if err := json.Unmarshal(itemsData, &dataLoader.Items); err != nil {
 		log.Printf("⚠️ 加载物品数据失败: %v", err)
 		return err
 	}
-	normalizeCards(dataLoader.Items.Items)
-	normalizeCards(dataLoader.Items.RewardItems)
-	normalizeCards(dataLoader.Items.Omens)
-	normalizeCards(dataLoader.Items.Skills)
+	normalizeThemedCards(&dataLoader.Items.Items)
+	normalizeThemedCards(&dataLoader.Items.RewardItems)
+	normalizeThemedCards(&dataLoader.Items.Omens)
+	normalizeThemedCards(&dataLoader.Items.Skills)
 
 	// 加载剧本数据
 	if err := json.Unmarshal(scenariosData, &dataLoader.Scenarios); err != nil {
@@ -949,7 +983,8 @@ func LoadData() error {
 		log.Printf("⚠️ 加载技能树数据失败: %v", err)
 		// 不返回错误，保持向后兼容
 	}
-	normalizeSkillTrees(dataLoader.SkillTrees.Trees)
+	normalizeSkillTrees(dataLoader.SkillTrees.Trees.Original)
+	normalizeSkillTrees(dataLoader.SkillTrees.Trees.Volantis)
 
 	if err := dataLoader.compileNamedLocations(); err != nil {
 		log.Printf("⚠️ 编译命名位置失败: %v", err)
@@ -969,16 +1004,16 @@ func LoadData() error {
 	log.Printf("✅ 数据加载完成: %d 主题, %d 房间, %d 事件, %d 牌堆物品, %d 奖励物品, %d 厄运, %d 技能, %d 配置卡池, %d 命名位置, %d 剧本, %d 角色, %d 技能树",
 		len(dataLoader.Config.Themes),
 		len(dataLoader.Tiles.Original)+len(dataLoader.Tiles.Volantis),
-		len(dataLoader.Events.Events),
-		len(dataLoader.Items.Items),
-		len(dataLoader.Items.RewardItems),
-		len(dataLoader.Items.Omens),
-		len(dataLoader.Items.Skills),
+		themedCardCount(dataLoader.Events.Events),
+		themedCardCount(dataLoader.Items.Items),
+		themedCardCount(dataLoader.Items.RewardItems),
+		themedCardCount(dataLoader.Items.Omens),
+		themedCardCount(dataLoader.Items.Skills),
 		len(dataLoader.CardPoolMap),
 		len(dataLoader.NamedLocationMap),
 		len(dataLoader.Scenarios.Scenarios),
 		len(dataLoader.Characters.Original)+len(dataLoader.Characters.Volantis),
-		len(dataLoader.SkillTrees.Trees))
+		len(dataLoader.SkillTrees.Trees.Original)+len(dataLoader.SkillTrees.Trees.Volantis))
 
 	return nil
 }
@@ -1087,7 +1122,16 @@ func GetEvents() []Card {
 	if dataLoader == nil {
 		return nil
 	}
-	return dataLoader.Events.Events
+	return getAllThemedCards(dataLoader.Events.Events)
+}
+
+// GetEventsByTheme 获取指定主题的事件卡
+func GetEventsByTheme(theme string) []Card {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return nil
+	}
+	return getCardsByTheme(dataLoader.Events.Events, theme)
 }
 
 // GetEventByID 根据ID获取事件
@@ -1096,12 +1140,7 @@ func GetEventByID(id string) *Card {
 	if dataLoader == nil {
 		return nil
 	}
-	for _, card := range dataLoader.Events.Events {
-		if card.ID == id {
-			return &card
-		}
-	}
-	return nil
+	return findCardByIDInThemes(dataLoader.Events.Events, id)
 }
 
 // GetScenarios 获取所有剧本
@@ -1119,7 +1158,16 @@ func GetItems() []Card {
 	if dataLoader == nil {
 		return nil
 	}
-	return dataLoader.Items.Items
+	return getAllThemedCards(dataLoader.Items.Items)
+}
+
+// GetItemsByTheme 获取指定主题的物品
+func GetItemsByTheme(theme string) []Card {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return nil
+	}
+	return getCardsByTheme(dataLoader.Items.Items, theme)
 }
 
 // GetItemByID 根据ID获取物品
@@ -1128,25 +1176,38 @@ func GetItemByID(id string) *Card {
 	if dataLoader == nil {
 		return nil
 	}
-	for _, card := range dataLoader.Items.Items {
-		if card.ID == id {
-			return &card
-		}
+	if card := findCardByIDInThemes(dataLoader.Items.Items, id); card != nil {
+		return card
 	}
-	for _, card := range dataLoader.Items.RewardItems {
-		if card.ID == id {
-			return &card
-		}
+	if card := findCardByIDInThemes(dataLoader.Items.RewardItems, id); card != nil {
+		return card
 	}
 	return nil
 }
 
-func GetCardPoolByID(id string) []Card {
+func GetRewardItems() []Card {
 	ensureDataLoaded()
 	if dataLoader == nil {
 		return nil
 	}
-	pool, ok := dataLoader.CardPoolMap[strings.ToLower(strings.TrimSpace(id))]
+	return getAllThemedCards(dataLoader.Items.RewardItems)
+}
+
+func GetRewardItemsByTheme(theme string) []Card {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return nil
+	}
+	return getCardsByTheme(dataLoader.Items.RewardItems, theme)
+}
+
+func GetCardPoolByID(id string, theme string) []Card {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return nil
+	}
+	theme = normalizeTheme(theme)
+	pool, ok := dataLoader.CardPoolMap[theme+":"+strings.ToLower(strings.TrimSpace(id))]
 	if !ok {
 		return nil
 	}
@@ -1173,7 +1234,16 @@ func GetOmens() []Card {
 	if dataLoader == nil {
 		return nil
 	}
-	return dataLoader.Items.Omens
+	return getAllThemedCards(dataLoader.Items.Omens)
+}
+
+// GetOmensByTheme 获取指定主题的厄运卡
+func GetOmensByTheme(theme string) []Card {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return nil
+	}
+	return getCardsByTheme(dataLoader.Items.Omens, theme)
 }
 
 // GetOmenByID 根据ID获取厄运
@@ -1182,12 +1252,7 @@ func GetOmenByID(id string) *Card {
 	if dataLoader == nil {
 		return nil
 	}
-	for _, card := range dataLoader.Items.Omens {
-		if card.ID == id {
-			return &card
-		}
-	}
-	return nil
+	return findCardByIDInThemes(dataLoader.Items.Omens, id)
 }
 
 // GetSkills 获取技能
@@ -1196,7 +1261,15 @@ func GetSkills() []Card {
 	if dataLoader == nil {
 		return nil
 	}
-	return dataLoader.Items.Skills
+	return getAllThemedCards(dataLoader.Items.Skills)
+}
+
+func GetSkillsByTheme(theme string) []Card {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return nil
+	}
+	return getCardsByTheme(dataLoader.Items.Skills, theme)
 }
 
 // GetSkillByID 根据ID获取技能
@@ -1205,12 +1278,7 @@ func GetSkillByID(id string) *Card {
 	if dataLoader == nil {
 		return nil
 	}
-	for _, card := range dataLoader.Items.Skills {
-		if card.ID == id {
-			return &card
-		}
-	}
-	return nil
+	return findCardByIDInThemes(dataLoader.Items.Skills, id)
 }
 
 // GetHauntMatrixByTheme 获取剧本矩阵
@@ -1287,13 +1355,35 @@ func GetCharacterAttributeValues(characterID, attributeName string) ([]int, int)
 
 // ==================== 技能树管理 ====================
 
+func getAllSkillTrees(trees ThemedSkillTreesJSON) []SkillTreeCategoryJSON {
+	result := make([]SkillTreeCategoryJSON, 0, len(trees.Original)+len(trees.Volantis))
+	result = append(result, trees.Original...)
+	result = append(result, trees.Volantis...)
+	return result
+}
+
+func getThemedSkillTrees(trees ThemedSkillTreesJSON, theme string) []SkillTreeCategoryJSON {
+	if normalizeTheme(theme) == "volantis" {
+		return trees.Volantis
+	}
+	return trees.Original
+}
+
 // GetSkillTrees 获取所有技能树
 func GetSkillTrees() []SkillTreeCategoryJSON {
 	ensureDataLoaded()
-	if dataLoader == nil || len(dataLoader.SkillTrees.Trees) == 0 {
+	if dataLoader == nil {
 		return []SkillTreeCategoryJSON{}
 	}
-	return dataLoader.SkillTrees.Trees
+	return getAllSkillTrees(dataLoader.SkillTrees.Trees)
+}
+
+func GetSkillTreesByTheme(theme string) []SkillTreeCategoryJSON {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return []SkillTreeCategoryJSON{}
+	}
+	return getThemedSkillTrees(dataLoader.SkillTrees.Trees, theme)
 }
 
 // GetSkillTreeByID 根据ID获取技能树
@@ -1322,7 +1412,6 @@ func GetSkillNode(nodeId string) *SkillTreeNodeJSON {
 type SkillNodeGrant struct {
 	GrantsSkillID string
 	GrantsEffects []SkillNodeGrantEffectJSON
-	GrantsBuff    string
 }
 
 // GetSkillNodeGrant 获取技能节点增益（供 data.go 调用）
@@ -1334,7 +1423,6 @@ func GetSkillNodeGrant(nodeId string) *SkillNodeGrant {
 	return &SkillNodeGrant{
 		GrantsSkillID: node.GrantsSkillID,
 		GrantsEffects: append([]SkillNodeGrantEffectJSON(nil), node.GrantsEffects...),
-		GrantsBuff:    node.GrantsBuff,
 	}
 }
 
@@ -1346,23 +1434,21 @@ func GetSkillNodeGrantFromJSON(nodeId string) *SkillNodeGrant {
 // ==================== 卡牌堆管理 ====================
 
 // InitDeck 初始化牌堆（从 JSON 加载数据）
-func InitDeck(cardType string) []Card {
+func InitDeck(cardType string, theme string) []Card {
+	ensureDataLoaded()
+	if dataLoader == nil {
+		return nil
+	}
+	theme = normalizeTheme(theme)
 	var cards []Card
 
 	switch cardType {
 	case "EVENT":
-		// 事件卡从单独的事件数据加载
-		for _, card := range dataLoader.Events.Events {
-			cards = append(cards, card)
-		}
+		cards = append(cards, GetEventsByTheme(theme)...)
 	case "ITEM":
-		for _, card := range dataLoader.Items.Items {
-			cards = append(cards, card)
-		}
+		cards = append(cards, GetItemsByTheme(theme)...)
 	case "OMEN":
-		for _, card := range dataLoader.Items.Omens {
-			cards = append(cards, card)
-		}
+		cards = append(cards, GetOmensByTheme(theme)...)
 	}
 
 	// 洗牌
@@ -1375,12 +1461,12 @@ func InitDeck(cardType string) []Card {
 
 // GetAllSkills 获取所有技能
 func GetAllSkills() []Card {
-	return dataLoader.Items.Skills
+	return GetSkills()
 }
 
 // FindSkillByName 模糊匹配技能名称
 func FindSkillByName(skillName string) string {
-	for _, skill := range dataLoader.Items.Skills {
+	for _, skill := range getAllThemedCards(dataLoader.Items.Skills) {
 		if strings.Contains(skill.Name, skillName) || strings.Contains(skillName, skill.Name) {
 			return skill.ID
 		}

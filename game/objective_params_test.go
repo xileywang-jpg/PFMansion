@@ -31,9 +31,9 @@ func TestObjectiveParamHelpers_PreferStructuredParams(t *testing.T) {
 }
 
 func TestObjectiveRequiredProgress_UsesStructuredParams(t *testing.T) {
-	survive := &Objective{Type: "SURVIVE", Params: map[string]interface{}{"turns": 12}}
+	survive := &Objective{Type: "SURVIVE", Params: map[string]interface{}{"turns": 12, "required": 12}}
 	if got := objectiveRequiredProgress(survive); got != 12 {
-		t.Fatalf("SURVIVE 无 params.required 时应读取 params.turns, 实际是 %d", got)
+		t.Fatalf("SURVIVE 应读取显式 params.required, 实际是 %d", got)
 	}
 
 	reach := &Objective{Type: "REACH", Params: map[string]interface{}{"turns": 12}}
@@ -42,12 +42,12 @@ func TestObjectiveRequiredProgress_UsesStructuredParams(t *testing.T) {
 	}
 
 	custom := &Objective{Type: "CUSTOM", Params: map[string]interface{}{"turns": 3}}
-	if got := objectiveRequiredProgress(custom); got != 3 {
-		t.Fatalf("CUSTOM 无 params.required 时应读取 params.turns, 实际是 %d", got)
+	if got := objectiveRequiredProgress(custom); got != 1 {
+		t.Fatalf("CUSTOM 无 params.required 时应默认 1, 实际是 %d", got)
 	}
 }
 
-func TestObjectiveRequiredProgress_UsesParamsTurnsForCustom(t *testing.T) {
+func TestObjectiveRequiredProgress_CustomNeedsExplicitRequired(t *testing.T) {
 	obj := &Objective{
 		Type: "CUSTOM",
 		Params: map[string]interface{}{
@@ -55,8 +55,25 @@ func TestObjectiveRequiredProgress_UsesParamsTurnsForCustom(t *testing.T) {
 		},
 	}
 
-	if got := objectiveRequiredProgress(obj); got != 9 {
-		t.Fatalf("CUSTOM 无顶层 turns 时应读取 params.turns, 实际是 %d", got)
+	if got := objectiveRequiredProgress(obj); got != 1 {
+		t.Fatalf("CUSTOM 无 params.required 时应默认 1, 实际是 %d", got)
+	}
+}
+
+func TestObjectiveAllowsDynamicRequired_PlayerDeathTargets(t *testing.T) {
+	allHeroes := &Objective{Type: "ELIMINATE", Params: map[string]interface{}{"eventType": "PLAYER_DEATH", "target": "ALL_HEROES"}}
+	if !objectiveAllowsDynamicRequired(allHeroes) {
+		t.Fatal("PLAYER_DEATH + ALL_HEROES 应允许运行时推导 required")
+	}
+
+	allEnemies := &Objective{Type: "ELIMINATE", Params: map[string]interface{}{"eventType": "PLAYER_DEATH", "target": "ALL_ENEMIES"}}
+	if !objectiveAllowsDynamicRequired(allEnemies) {
+		t.Fatal("PLAYER_DEATH + ALL_ENEMIES 应允许运行时推导 required")
+	}
+
+	reach := &Objective{Type: "REACH", Params: map[string]interface{}{"eventType": "TILE_REACHED", "target": "tile_exit"}}
+	if objectiveAllowsDynamicRequired(reach) {
+		t.Fatal("非 PLAYER_DEATH 多目标 objective 不应允许省略 required")
 	}
 }
 

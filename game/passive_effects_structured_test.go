@@ -47,6 +47,27 @@ func TestApplyPassiveEffects_UsesStructuredSkillID(t *testing.T) {
 	}
 }
 
+func TestApplyPassiveEffects_UsesStructuredSpecialKey(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	player := gm.Rooms[roomID].GameState.FullState.Players["player_1"]
+
+	gm.applyPassiveEffects(roomID, "player_1", Card{
+		ID:   "item_test_structured_special",
+		Type: "ITEM",
+		Name: "结构化特性遗物",
+		PassiveEffects: []PassiveEffect{{
+			Type:       "special",
+			SpecialKey: "wall_break",
+			Text:       "允许破坏墙壁",
+		}},
+	})
+
+	if len(player.Buffs) != 1 || player.Buffs[0] != "允许破坏墙壁" {
+		t.Fatalf("结构化 specialKey 被动效果未生效: %#v", player.Buffs)
+	}
+}
+
 func TestRemovePassiveEffects_RevertsStructuredBuffFields(t *testing.T) {
 	gm := setupTestGameManager()
 	roomID := createTestRoom(gm)
@@ -71,6 +92,30 @@ func TestRemovePassiveEffects_RevertsStructuredBuffFields(t *testing.T) {
 
 	if final.Current != baseline.Current {
 		t.Fatalf("结构化被动效果回退失败: baseline=%d final=%d", baseline.Current, final.Current)
+	}
+}
+
+func TestRemovePassiveEffects_RevertsStructuredSpecialKey(t *testing.T) {
+	gm := setupTestGameManager()
+	roomID := createTestRoom(gm)
+	player := gm.Rooms[roomID].GameState.FullState.Players["player_1"]
+
+	card := Card{
+		ID:   "item_test_structured_special",
+		Type: "ITEM",
+		Name: "结构化特性遗物",
+		PassiveEffects: []PassiveEffect{{
+			Type:       "special",
+			SpecialKey: "wall_break",
+			Text:       "允许破坏墙壁",
+		}},
+	}
+
+	gm.applyPassiveEffects(roomID, "player_1", card)
+	gm.removePassiveEffects(roomID, "player_1", card)
+
+	if len(player.Buffs) != 0 {
+		t.Fatalf("结构化 specialKey 被动效果回退失败: %#v", player.Buffs)
 	}
 }
 

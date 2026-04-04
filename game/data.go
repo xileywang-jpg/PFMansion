@@ -19,6 +19,7 @@ type PassiveEffect struct {
 type Card struct {
 	ID             string          `json:"id"`
 	Type           string          `json:"type"`            // EVENT, ITEM, OMEN
+	Theme          string          `json:"theme,omitempty"` // original, volantis
 	Name           string          `json:"name,omitempty"`  // 物品/技能/厄运名称
 	Title          string          `json:"title,omitempty"` // 事件标题（向后兼容）
 	Description    string          `json:"description"`

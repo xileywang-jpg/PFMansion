@@ -10,7 +10,7 @@
 import React, { useMemo } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { STARTING_TILE } from '../constants';
-import { Direction, TileDef, TileTrigger, Card } from '../types';
+import { Direction, TileDef, Card } from '../types';
 import * as Icons from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -51,8 +51,8 @@ const TileInspector: React.FC = () => {
     players, 
     activePlayerId, 
     pendingTile, 
+    getEventById,
     getTileById,
-    gameData,
     openTileInteraction,
     interactionState,
     activeCard,
@@ -102,12 +102,13 @@ const TileInspector: React.FC = () => {
 
   // 获取关联的事件详情
   const eventDetails = useMemo(() => {
-    if (!currentTile?.def.eventTrigger || !gameData?.events) {
+    if (!currentTile?.def.eventTrigger) {
       return null;
     }
-    const event = gameData.events.find((e: Card) => e.id === currentTile.def.eventTrigger);
+    const tileTheme = currentTile.def.id.startsWith('vol_') ? 'volantis' : 'original';
+    const event = getEventById(currentTile.def.eventTrigger, tileTheme) as Card | undefined;
     return event || null;
-  }, [currentTile, gameData]);
+  }, [currentTile, getEventById]);
 
   if (!currentTile) return null;
 
@@ -208,7 +209,7 @@ const TileInspector: React.FC = () => {
                 出口方向
               </span>
               <div className="flex gap-1.5">
-                {(['N', 'S', 'E', 'W'] as const).map(dir => {
+                {([Direction.North, Direction.South, Direction.East, Direction.West] as const).map(dir => {
                   const edge = instance.edges[dir];
                   const style = getEdgeStyle(edge);
                   return (
@@ -275,7 +276,9 @@ const TileInspector: React.FC = () => {
                         {entry.label}
                       </span>
                       {entry.repeatable && (
-                        <RefreshCw size={10} className={`${entry.colorClassName} ml-auto opacity-70`} title="可重复触发" />
+                        <span className="ml-auto opacity-70" title="可重复触发">
+                          <RefreshCw size={10} className={entry.colorClassName} />
+                        </span>
                       )}
                     </div>
                     <p className={`text-xs leading-snug ${entry.bodyClassName}`}>

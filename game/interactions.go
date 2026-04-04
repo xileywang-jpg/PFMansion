@@ -373,7 +373,7 @@ func (g *GameManager) ExecuteTileInteraction(roomID, playerID, interactionType s
 		if poolID == "" {
 			poolID = "forge_legendary_weapons"
 		}
-		pool := GetCardPoolByID(poolID)
+		pool := GetCardPoolByID(poolID, room.Theme)
 		if len(pool) == 0 {
 			return nil, fmt.Errorf("互动卡池未配置: %s", poolID)
 		}

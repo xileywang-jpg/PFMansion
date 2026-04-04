@@ -11,14 +11,21 @@ import React, { useState, useEffect } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Skull, Gem, Crosshair, Syringe, Package,
+  Skull, Gem,
   Sparkles, Check, ChevronRight, Loader2
 } from 'lucide-react';
-import * as Icons from 'lucide-react';
 
 // ==================== 图标映射 ====================
 
-const CARD_TYPE_CONFIG: Record<string, { icon: React.ComponentType<any>; color: string; bg: string; label: string }> = {
+type CardTypeConfig = {
+  icon: React.ComponentType<any>;
+  color: string;
+  bg: string;
+  borderColor: string;
+  label: string;
+};
+
+const CARD_TYPE_CONFIG: Record<string, CardTypeConfig> = {
   'OMEN': { 
     icon: Skull, 
     color: 'text-emerald-400', 
@@ -86,7 +93,7 @@ const FlipCard: React.FC<FlipCardProps> = ({ card, cardType, isRevealed }) => {
           className="absolute inset-0 w-full h-full rounded-2xl border-2 flex flex-col overflow-hidden shadow-2xl"
           style={{ 
             backfaceVisibility: 'hidden', 
-            rotateY: 180,
+            transform: 'rotateY(180deg)',
             borderColor: typeConfig.borderColor,
             background: 'linear-gradient(180deg, #1a1a2e 0%, #0f0f23 100%)'
           }}

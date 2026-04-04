@@ -1,0 +1,254 @@
+[
+  {
+    "id": "vol_aglaia",
+    "name": "阿格莱雅",
+    "description": "黄金裔的领袖，永恒之地的守护者。",
+    "traits": [
+      "领袖",
+      "光辉"
+    ],
+    "attributes": {
+      "might": {
+        "values": [
+          2,
+          3,
+          4,
+          5,
+          5,
+          6,
+          7,
+          8
+        ],
+        "startIndex": 3
+      },
+      "speed": {
+        "values": [
+          2,
+          3,
+          3,
+          4,
+          5,
+          5,
+          6,
+          7
+        ],
+        "startIndex": 2
+      },
+      "sanity": {
+        "values": [
+          3,
+          4,
+          5,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "startIndex": 3
+      },
+      "knowledge": {
+        "values": [
+          3,
+          4,
+          4,
+          5,
+          6,
+          7,
+          7,
+          8
+        ],
+        "startIndex": 3
+      }
+    }
+  },
+  {
+    "id": "vol_sifere",
+    "name": "赛飞儿",
+    "description": "来自多洛斯的猫咪怪盗。",
+    "traits": [
+      "迅捷",
+      "盗寇"
+    ],
+    "attributes": {
+      "might": {
+        "values": [
+          1,
+          2,
+          3,
+          4,
+          4,
+          5,
+          6,
+          6
+        ],
+        "startIndex": 2
+      },
+      "speed": {
+        "values": [
+          4,
+          5,
+          6,
+          6,
+          7,
+          7,
+          8,
+          9
+        ],
+        "startIndex": 3
+      },
+      "sanity": {
+        "values": [
+          2,
+          3,
+          4,
+          5,
+          5,
+          6,
+          7,
+          7
+        ],
+        "startIndex": 3
+      },
+      "knowledge": {
+        "values": [
+          2,
+          3,
+          4,
+          4,
+          5,
+          6,
+          6,
+          7
+        ],
+        "startIndex": 2
+      }
+    }
+  },
+  {
+    "id": "vol_mithrix",
+    "name": "万敌",
+    "description": "纷争之子，战斗本能刻入骨髓的战士。",
+    "traits": [
+      "好战",
+      "坚韧"
+    ],
+    "attributes": {
+      "might": {
+        "values": [
+          4,
+          5,
+          5,
+          6,
+          7,
+          7,
+          8,
+          9
+        ],
+        "startIndex": 4
+      },
+      "speed": {
+        "values": [
+          2,
+          3,
+          4,
+          4,
+          5,
+          5,
+          6,
+          7
+        ],
+        "startIndex": 2
+      },
+      "sanity": {
+        "values": [
+          1,
+          2,
+          3,
+          4,
+          4,
+          5,
+          5,
+          6
+        ],
+        "startIndex": 2
+      },
+      "knowledge": {
+        "values": [
+          1,
+          2,
+          3,
+          3,
+          4,
+          5,
+          5,
+          6
+        ],
+        "startIndex": 1
+      }
+    }
+  },
+  {
+    "id": "vol_athena",
+    "name": "雅典娜",
+    "description": "智慧与战争的女神。",
+    "traits": [
+      "智慧",
+      "预知"
+    ],
+    "attributes": {
+      "might": {
+        "values": [
+          2,
+          3,
+          4,
+          4,
+          5,
+          6,
+          6,
+          7
+        ],
+        "startIndex": 2
+      },
+      "speed": {
+        "values": [
+          2,
+          3,
+          4,
+          4,
+          5,
+          6,
+          6,
+          7
+        ],
+        "startIndex": 2
+      },
+      "sanity": {
+        "values": [
+          4,
+          5,
+          6,
+          6,
+          7,
+          8,
+          9,
+          9
+        ],
+        "startIndex": 4
+      },
+      "knowledge": {
+        "values": [
+          4,
+          5,
+          6,
+          7,
+          7,
+          8,
+          9,
+          9
+        ],
+        "startIndex": 5
+      }
+    }
+  }
+]

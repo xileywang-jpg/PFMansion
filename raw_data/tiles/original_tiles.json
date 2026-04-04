@@ -1,0 +1,231 @@
+[
+  {
+    "id": "tile_hallway",
+    "name": "嘎吱作响的走廊",
+    "description": "地板在你脚下发出阵阵呻吟",
+    "type": "corridor",
+    "floors": [
+      "GROUND"
+    ],
+    "edges": {
+      "N": "OPEN",
+      "S": "OPEN",
+      "E": "WALL",
+      "W": "WALL"
+    }
+  },
+  {
+    "id": "tile_library",
+    "name": "布满灰尘的图书馆",
+    "description": "禁忌的知识",
+    "type": "room",
+    "floors": [
+      "GROUND",
+      "UPPER"
+    ],
+    "edges": {
+      "N": "WALL",
+      "S": "OPEN",
+      "E": "OPEN",
+      "W": "WALL"
+    },
+    "cardSymbol": "OMEN",
+    "onEnterEffects": [
+      {
+        "type": "MODIFY_STAT",
+        "stat": "knowledge",
+        "amount": 1,
+        "message": "你在图书馆研究发现知识 +1"
+      }
+    ]
+  },
+  {
+    "id": "tile_conservatory",
+    "name": "温室",
+    "description": "枯死的植物",
+    "type": "room",
+    "floors": [
+      "GROUND"
+    ],
+    "edges": {
+      "N": "OPEN",
+      "S": "WALL",
+      "E": "WALL",
+      "W": "WALL"
+    },
+    "cardSymbol": "OMEN",
+    "onEnterEffects": [
+      {
+        "type": "MODIFY_STAT",
+        "stat": "sanity",
+        "amount": -1,
+        "message": "枯萎的植物让你感到不安，理智 -1"
+      }
+    ]
+  },
+  {
+    "id": "tile_kitchen",
+    "name": "厨房",
+    "description": "腐烂的气味",
+    "type": "room",
+    "floors": [
+      "GROUND",
+      "BASEMENT"
+    ],
+    "edges": {
+      "N": "OPEN",
+      "S": "WALL",
+      "E": "WALL",
+      "W": "OPEN"
+    },
+    "cardSymbol": "EVENT",
+    "onEnterEffects": [
+      {
+        "type": "MODIFY_STAT",
+        "stat": "sanity",
+        "amount": -1,
+        "message": "腐烂的气味让你作呕，理智 -1"
+      }
+    ]
+  },
+  {
+    "id": "tile_chapel",
+    "name": "废弃礼拜堂",
+    "description": "神圣不再",
+    "type": "room",
+    "floors": [
+      "GROUND",
+      "UPPER"
+    ],
+    "edges": {
+      "N": "OPEN",
+      "S": "WALL",
+      "E": "OPEN",
+      "W": "OPEN"
+    },
+    "cardSymbol": "OMEN",
+    "onEnterEffects": [
+      {
+        "type": "MODIFY_STAT",
+        "stat": "sanity",
+        "amount": 1,
+        "message": "礼拜堂让你感到一丝安宁，理智 +1"
+      }
+    ]
+  },
+  {
+    "id": "tile_basement",
+    "name": "地下室",
+    "description": "黑暗的深渊",
+    "type": "room",
+    "floors": [
+      "BASEMENT"
+    ],
+    "edges": {
+      "N": "WALL",
+      "S": "WALL",
+      "E": "OPEN",
+      "W": "OPEN"
+    },
+    "cardSymbol": "OMEN",
+    "onEnterEffects": [
+      {
+        "type": "MODIFY_STAT",
+        "stat": "sanity",
+        "amount": -2,
+        "message": "地下室的黑暗压迫着你，理智 -2"
+      }
+    ]
+  },
+  {
+    "id": "tile_attic",
+    "name": "阁楼",
+    "description": "尘埃与蜘蛛网",
+    "type": "room",
+    "floors": [
+      "UPPER"
+    ],
+    "edges": {
+      "N": "WALL",
+      "S": "OPEN",
+      "E": "WALL",
+      "W": "WALL"
+    },
+    "cardSymbol": "ITEM",
+    "onEnterEffects": [
+      {
+        "type": "MODIFY_STAT",
+        "stat": "knowledge",
+        "amount": 1,
+        "message": "阁楼里发现一些旧书籍，知识 +1"
+      }
+    ]
+  },
+  {
+    "id": "tile_dining",
+    "name": "餐厅",
+    "description": "腐败的盛宴",
+    "type": "room",
+    "floors": [
+      "GROUND",
+      "BASEMENT"
+    ],
+    "edges": {
+      "N": "OPEN",
+      "S": "OPEN",
+      "E": "WALL",
+      "W": "OPEN"
+    },
+    "cardSymbol": "ITEM",
+    "onEnterEffects": [
+      {
+        "type": "MODIFY_STAT",
+        "stat": "might",
+        "amount": 1,
+        "message": "找到一些食物，力量 +1"
+      }
+    ]
+  },
+  {
+    "id": "tile_gymnasium",
+    "name": "体育馆",
+    "description": "强身健体之所",
+    "type": "room",
+    "floors": [
+      "GROUND",
+      "BASEMENT"
+    ],
+    "edges": {
+      "N": "WALL",
+      "S": "WALL",
+      "E": "OPEN",
+      "W": "OPEN"
+    },
+    "cardSymbol": "ITEM",
+    "onEnterEffects": [
+      {
+        "type": "MODIFY_STAT",
+        "stat": "speed",
+        "amount": 1,
+        "message": "体育馆锻炼后，速度 +1"
+      }
+    ]
+  },
+  {
+    "id": "tile_vault",
+    "name": "金库",
+    "description": "财富的象征",
+    "type": "room",
+    "floors": [
+      "BASEMENT"
+    ],
+    "edges": {
+      "N": "OPEN",
+      "S": "WALL",
+      "E": "WALL",
+      "W": "WALL"
+    },
+    "cardSymbol": "ITEM",
+    "eventTrigger": "event_vault_chest"
+  }
+]

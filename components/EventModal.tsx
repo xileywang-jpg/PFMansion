@@ -4,6 +4,19 @@ import { useGameStore } from '../store/gameStore';
 import { useEventSystem } from '../hooks/useEventSystem';
 import { Dice5, MousePointerClick } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { AttributeName, Interaction } from '../types';
+
+function isAttributeCheckInteraction(
+    interaction: Interaction | undefined,
+): interaction is Interaction & { type: 'ATTRIBUTE_CHECK'; attribute: AttributeName } {
+    return interaction?.type === 'ATTRIBUTE_CHECK' && interaction.attribute !== undefined;
+}
+
+function isChoiceInteraction(
+    interaction: Interaction | undefined,
+): interaction is Interaction & { type: 'CHOICE' } {
+    return interaction?.type === 'CHOICE';
+}
 
 const CardResolutionModal: React.FC = () => {
     const { activeCard, players, activePlayerId, lastRollResult, lastCheckSuccess, activeRoll, resolveEventChoice } = useGameStore();
@@ -15,16 +28,29 @@ const CardResolutionModal: React.FC = () => {
 
     const cardTitle = activeCard.title || '未知卡牌';
     const interaction = activeCard.interaction;
-  const isAttributeCheck = interaction?.type === 'ATTRIBUTE_CHECK';
-  const isChoice = interaction?.type === 'CHOICE';
+    const attributeCheckInteraction = isAttributeCheckInteraction(interaction)
+        ? interaction
+        : null;
+    const choiceInteraction = isChoiceInteraction(interaction)
+        ? interaction
+        : null;
+    const isAttributeCheck = attributeCheckInteraction !== null;
+    const isChoice = choiceInteraction !== null;
 
-  const currentStatValue = isAttributeCheck && interaction && player 
-    ? player.character.attributes[interaction.attribute].current 
-    : 0;
-  
-  const threshold = isAttributeCheck && interaction ? interaction.difficulty : 0;
-  const attributeNameMap: any = { might: '力量', speed: '速度', sanity: '理智', knowledge: '知识' };
-  const attributeLabel = isAttributeCheck && interaction ? attributeNameMap[interaction.attribute] : '';
+    const currentStatValue = attributeCheckInteraction && player
+        ? player.character.attributes[attributeCheckInteraction.attribute].current
+        : 0;
+
+    const threshold = attributeCheckInteraction?.difficulty ?? 0;
+    const attributeNameMap: Record<AttributeName, string> = {
+        might: '力量',
+        speed: '速度',
+        sanity: '理智',
+        knowledge: '知识',
+    };
+    const attributeLabel = attributeCheckInteraction
+        ? attributeNameMap[attributeCheckInteraction.attribute]
+        : '';
 
   return (
     <AnimatePresence>
@@ -64,7 +90,7 @@ const CardResolutionModal: React.FC = () => {
                             <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-2 flex items-center gap-2">
                                 <MousePointerClick size={12} /> 做出选择
                             </div>
-                            {interaction.options.map((option, idx) => (
+                            {(choiceInteraction.options ?? []).map((option, idx) => (
                                 <button
                                     key={idx}
                                     onClick={() => {

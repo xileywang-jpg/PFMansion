@@ -134,6 +134,7 @@ func TestUpdateObjectives_TileReached_Hero(t *testing.T) {
 		Name:          "Block the Exit",
 		HeroObjective: buildTestObjective("Block Exit", "阻止叛徒到达出口", "REACH", 8, map[string]interface{}{"target": "tile_exit"}),
 	}
+	room.GameState.FullState.Players["player_2"].Team = "HERO"
 
 	gm.UpdateObjectives(roomID, "TILE_REACHED", map[string]interface{}{
 		"playerId": "player_2",
@@ -151,6 +152,28 @@ func TestUpdateObjectives_TileReached_Hero(t *testing.T) {
 
 	if obj.Progress != 1 {
 		t.Errorf("进度应该是 1, 实际是 %d", obj.Progress)
+	}
+}
+
+func TestUpdateObjectives_TileReached_HeroObjectiveCanWin(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.Phase = GamePhaseHaunt
+	room.GameState.FullState.CurrentScenario = &Scenario{
+		Name:          "Hero Reach",
+		HeroObjective: buildTestObjective("Block Exit", "英雄到达出口", "REACH", 8, map[string]interface{}{"target": "tile_exit"}),
+	}
+	room.GameState.FullState.Players["player_2"].Team = "HERO"
+
+	gm.UpdateObjectives(roomID, "TILE_REACHED", map[string]interface{}{
+		"playerId": "player_2",
+		"tileId":   "tile_exit",
+	})
+
+	if room.GameState.FullState.GameWinner != "HERO" {
+		t.Fatalf("英雄达成 REACH 目标后应获胜, 实际是 %s", room.GameState.FullState.GameWinner)
 	}
 }
 
@@ -305,8 +328,28 @@ func TestObjectiveRuntimeRequiredProgress_ConvertAllHeroes(t *testing.T) {
 		Params: map[string]interface{}{"target": "ALL_HEROES", "turns": 6, "eventType": "PLAYER_DEATH"},
 	}
 
-	if required := objectiveRuntimeRequiredProgress(state, obj); required != 3 {
+	if required := objectiveRuntimeRequiredProgress(state, obj, false); required != 3 {
 		t.Fatalf("CONVERT ALL_HEROES 的 required 应按英雄数量推导为 3, 实际是 %d", required)
+	}
+}
+
+func TestObjectiveRuntimeRequiredProgress_HeroEliminateAllEnemies(t *testing.T) {
+	state := &GameStateFull{
+		Players: map[string]*GamePlayer{
+			"traitor_1": {Team: "TRAITOR"},
+			"traitor_2": {Team: "TRAITOR"},
+			"hero_1":    {Team: "HERO"},
+			"hero_2":    {Team: "HERO"},
+		},
+	}
+	obj := &Objective{
+		Name:   "Arena",
+		Type:   "ELIMINATE",
+		Params: map[string]interface{}{"target": "ALL_ENEMIES", "turns": 6, "eventType": "PLAYER_DEATH"},
+	}
+
+	if required := objectiveRuntimeRequiredProgress(state, obj, true); required != 2 {
+		t.Fatalf("英雄 ELIMINATE ALL_ENEMIES 的 required 应按叛徒数量推导为 2, 实际是 %d", required)
 	}
 }
 
@@ -362,6 +405,28 @@ func TestUpdateObjectives_PlayerDeath_ConvertTracksAllHeroes(t *testing.T) {
 	}
 }
 
+func TestCheckVictory_TurnLimit_HeroReachDoesNotAutoWinWithoutProgress(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.Phase = GamePhaseHaunt
+	room.GameState.FullState.TurnsSinceHaunt = 8
+	room.GameState.FullState.TraitorID = "player_1"
+	room.GameState.FullState.Players["player_1"].Team = "TRAITOR"
+	room.GameState.FullState.Players["player_2"].Team = "HERO"
+	room.GameState.FullState.CurrentScenario = &Scenario{
+		Name:          "Reach Test",
+		HeroObjective: buildTestObjective("Reach Exit", "英雄到达出口", "REACH", 8, map[string]interface{}{"target": "tile_exit"}),
+	}
+
+	if winner := gm.CheckVictory(roomID); winner != "" {
+		t.Fatalf("REACH 未完成时不应在到达回合线后自动判定英雄胜利, 实际是 %s", winner)
+	}
+	if room.GameState.FullState.GameWinner != "" {
+		t.Fatalf("REACH 未完成时不应写入英雄胜利, 实际是 %s", room.GameState.FullState.GameWinner)
+	}
+}
 func TestModifyStat_PlayerDeathUpdatesConvertObjective(t *testing.T) {
 	gm := &GameManager{Rooms: make(map[string]*Room)}
 	roomID := createTestRoomForLogic(gm)
@@ -561,6 +626,29 @@ func TestCheckVictory_TurnLimit_ConvertDoesNotAutoWinWithoutProgress(t *testing.
 
 	if winner := gm.CheckVictory(roomID); winner != "" {
 		t.Fatalf("CONVERT 在未完成进度时达到回合限制不应自动胜利, 实际是 %s", winner)
+	}
+	if room.GameState.FullState.GameWinner != "" {
+		t.Fatalf("GameWinner 不应被设置, 实际是 %s", room.GameState.FullState.GameWinner)
+	}
+}
+
+func TestCheckVictory_TurnLimit_EliminateDoesNotAutoWinWithoutAllHeroesDead(t *testing.T) {
+	gm := &GameManager{Rooms: make(map[string]*Room)}
+	roomID := createTestRoomForLogic(gm)
+	room := gm.Rooms[roomID]
+
+	room.GameState.FullState.Phase = GamePhaseHaunt
+	room.GameState.FullState.TurnsSinceHaunt = 8
+	room.GameState.FullState.TraitorID = "player_1"
+	room.GameState.FullState.Players["player_1"].Team = "TRAITOR"
+	room.GameState.FullState.Players["player_2"].Team = "HERO"
+	room.GameState.FullState.CurrentScenario = &Scenario{
+		Name:             "Eliminate Test",
+		TraitorObjective: buildTestObjective("Eliminate Heroes", "消灭全部英雄", "ELIMINATE", 8, map[string]interface{}{"target": "ALL_HEROES"}),
+	}
+
+	if winner := gm.CheckVictory(roomID); winner != "" {
+		t.Fatalf("ELIMINATE 在英雄仍存活时达到回合限制不应自动胜利, 实际是 %s", winner)
 	}
 	if room.GameState.FullState.GameWinner != "" {
 		t.Fatalf("GameWinner 不应被设置, 实际是 %s", room.GameState.FullState.GameWinner)

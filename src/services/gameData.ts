@@ -31,12 +31,23 @@ export interface GameDataBundle {
   defaultTheme?: string;
   tiles: { original: any[]; volantis: any[] };
   items: any[];
+  rewardItems?: any[];
   omens: any[];
   skills: any[];
   events: any[];
   scenarios: Record<string, any>;
   skillTrees: any[];
   characters: { original: any[]; volantis: any[] };
+  themed?: {
+    tiles?: { original: any[]; volantis: any[] };
+    items?: { original: any[]; volantis: any[] };
+    rewardItems?: { original: any[]; volantis: any[] };
+    omens?: { original: any[]; volantis: any[] };
+    skills?: { original: any[]; volantis: any[] };
+    events?: { original: any[]; volantis: any[] };
+    skillTrees?: { original: any[]; volantis: any[] };
+    characters?: { original: any[]; volantis: any[] };
+  };
   version: number;
   timestamp: number;
 }
@@ -93,6 +104,7 @@ export async function fetchGameData(forceRefresh = false): Promise<GameDataBundl
 
     Log.info('✅ 数据加载成功（API）', {
       items: data.items.length,
+      rewardItems: data.rewardItems?.length ?? 0,
       omens: data.omens.length,
       skills: data.skills.length,
       events: data.events.length,

@@ -172,9 +172,9 @@ func (g *GameManager) StartGame(roomID string) error {
 			MovesRemaining: 3,
 			// 初始化卡牌牌堆
 			Decks: map[string][]Card{
-				"EVENT": InitDeck("EVENT"),
-				"ITEM":  InitDeck("ITEM"),
-				"OMEN":  InitDeck("OMEN"),
+				"EVENT": InitDeck("EVENT", theme),
+				"ITEM":  InitDeck("ITEM", theme),
+				"OMEN":  InitDeck("OMEN", theme),
 			},
 		},
 	}

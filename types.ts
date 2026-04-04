@@ -89,7 +89,6 @@ export interface SkillNode {
   requiredTrait?: string; // Specific character trait required (e.g., "Strong")
   grantsSkillId?: string; // Active skill ID
   grantsEffects?: SkillNodeGrantEffect[];
-  grantsBuff?: string; // Passive effect text
   position: { row: number; col: number }; // For visual layout
 }
 
@@ -103,6 +102,7 @@ export interface SkillNodeGrantEffect {
 
 export interface SkillTreeCategory {
   id: string;
+  theme?: 'original' | 'volantis';
   name: string;
   description: string;
   nodes: SkillNode[];
@@ -369,7 +369,8 @@ export interface ItemUsage {
 // P0-2 修复：完整的 Card 类型，对齐后端 data.go 中的 Card 结构
 export interface Card {
   id: string;
-  type: 'EVENT' | 'ITEM' | 'OMEN';
+  type: 'EVENT' | 'ITEM' | 'OMEN' | 'SKILL' | 'WEAPON';
+  theme?: 'original' | 'volantis';
   title: string;
   description: string;
   flavorText?: string;

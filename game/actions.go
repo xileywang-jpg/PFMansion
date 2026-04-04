@@ -202,7 +202,7 @@ func (g *GameManager) executeDeckDrawUnlocked(roomID, playerID, deckName string)
 		g.addLog(roomID, fmt.Sprintf("%s 获得了物品：%s", player.Character.Name, card.Name), "success")
 		g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("发现并收下了 %s。", card.Name), "success")
 		state.ActiveCard = nil
-		if winner := g.updateObjectivesUnlocked(state, "ITEM_COLLECTED", map[string]interface{}{"playerId": playerID, "itemId": card.ID}); winner != "" {
+		if winner := g.updateObjectivesUnlocked(state, NewObjectiveItemCollectedEvent(playerID, card.ID)); winner != "" {
 			return result, nil
 		}
 		return result, nil
@@ -235,7 +235,7 @@ func (g *GameManager) executeDeckDrawUnlocked(roomID, playerID, deckName string)
 		g.addLog(roomID, fmt.Sprintf("%s 获得了预兆：%s", player.Character.Name, card.Name), "success")
 		g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("将预兆 %s 留在了身上。", card.Name), "success")
 		state.ActiveCard = nil
-		if winner := g.updateObjectivesUnlocked(state, "ITEM_COLLECTED", map[string]interface{}{"playerId": playerID, "itemId": card.ID}); winner != "" {
+		if winner := g.updateObjectivesUnlocked(state, NewObjectiveItemCollectedEvent(playerID, card.ID)); winner != "" {
 			return result, nil
 		}
 		return result, nil
@@ -343,10 +343,7 @@ func (g *GameManager) completeMoveToExistingTileUnlocked(roomID, playerID string
 	})
 	g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("进入了 %s。", tileName), "info")
 	state.LastTriggeredTile = existingTile.DefID
-	if winner := g.updateObjectivesUnlocked(state, "TILE_REACHED", map[string]interface{}{
-		"playerId": playerID,
-		"tileId":   existingTile.DefID,
-	}); winner != "" {
+	if winner := g.updateObjectivesUnlocked(state, NewObjectiveTileReachedEvent(playerID, existingTile.DefID)); winner != "" {
 		return nil
 	}
 
@@ -434,16 +431,10 @@ func (g *GameManager) placePendingTileUnlocked(roomID, playerID string, state *G
 	})
 	g.addPersonalLogUnlocked(state, playerID, fmt.Sprintf("探索发现了 %s。", tileDef.Name), "success")
 	state.LastTriggeredTile = tileDef.ID
-	if winner := g.updateObjectivesUnlocked(state, "ROOM_EXPLORED", map[string]interface{}{
-		"playerId": playerID,
-		"count":    len(state.Map),
-	}); winner != "" {
+	if winner := g.updateObjectivesUnlocked(state, NewObjectiveRoomExploredEvent(playerID, len(state.Map))); winner != "" {
 		return nil
 	}
-	if winner := g.updateObjectivesUnlocked(state, "TILE_REACHED", map[string]interface{}{
-		"playerId": playerID,
-		"tileId":   tileDef.ID,
-	}); winner != "" {
+	if winner := g.updateObjectivesUnlocked(state, NewObjectiveTileReachedEvent(playerID, tileDef.ID)); winner != "" {
 		return nil
 	}
 
@@ -502,10 +493,7 @@ func (g *GameManager) finalizeRelocationUnlocked(roomID, playerID string, state 
 	}
 
 	state.LastTriggeredTile = targetTile.DefID
-	if winner := g.updateObjectivesUnlocked(state, "TILE_REACHED", map[string]interface{}{
-		"playerId": playerID,
-		"tileId":   targetTile.DefID,
-	}); winner != "" {
+	if winner := g.updateObjectivesUnlocked(state, NewObjectiveTileReachedEvent(playerID, targetTile.DefID)); winner != "" {
 		return nil
 	}
 
@@ -1167,10 +1155,7 @@ func (g *GameManager) PickupItem(roomID, playerID, itemID string) error {
 	if len(item.PassiveEffects) > 0 {
 		g.applyPassiveEffects(roomID, playerID, item)
 	}
-	if winner := g.updateObjectivesUnlocked(state.FullState, "ITEM_COLLECTED", map[string]interface{}{
-		"playerId": playerID,
-		"itemId":   item.ID,
-	}); winner != "" {
+	if winner := g.updateObjectivesUnlocked(state.FullState, NewObjectiveItemCollectedEvent(playerID, item.ID)); winner != "" {
 		return nil
 	}
 

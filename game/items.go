@@ -22,13 +22,13 @@ func normalizeEffectType(effectType string) string {
 		return "HEAL"
 	case "draw_card":
 		return "DRAW_CARD"
-	case "move_player", "teleport":
+	case "move_player":
 		return "MOVE_PLAYER"
-	case "log", "narrative_log":
+	case "log":
 		return "LOG"
 	case "if":
 		return "IF"
-	case "give_item", "gain_item":
+	case "give_item":
 		return "GIVE_ITEM"
 	case "give_skill":
 		return "GIVE_SKILL"
@@ -425,22 +425,6 @@ func normalizePassiveTrigger(trigger string) string {
 	}
 }
 
-func inferLegacyPassiveTrigger(text string) (string, string) {
-	trimmed := strings.TrimSpace(text)
-	switch {
-	case strings.HasPrefix(trimmed, "攻击时"):
-		return "ATTACK", strings.TrimSpace(strings.TrimPrefix(trimmed, "攻击时"))
-	case strings.HasPrefix(trimmed, "防御时"):
-		return "DEFENSE", strings.TrimSpace(strings.TrimPrefix(trimmed, "防御时"))
-	case strings.HasPrefix(trimmed, "回合结束时"):
-		return "END_TURN", strings.TrimSpace(strings.TrimPrefix(trimmed, "回合结束时"))
-	case strings.HasPrefix(trimmed, "进入房间时"):
-		return "ENTER_ROOM", strings.TrimSpace(strings.TrimPrefix(trimmed, "进入房间时"))
-	default:
-		return "", trimmed
-	}
-}
-
 func buildTriggeredPassiveText(trigger, effectText string) string {
 	trigger = normalizePassiveTrigger(trigger)
 	effectText = strings.TrimSpace(effectText)
@@ -459,31 +443,21 @@ func buildTriggeredPassiveText(trigger, effectText string) string {
 	return effectText
 }
 
-func resolveTriggeredPassiveDefinition(passive PassiveEffect, passiveType, rawText string) (string, string, bool) {
-	legacyTrigger, strippedText := inferLegacyPassiveTrigger(rawText)
+func resolveTriggeredPassiveDefinition(passive PassiveEffect, passiveType string) (string, string, bool) {
 	trigger := normalizePassiveTrigger(passive.Trigger)
 	if trigger == "" {
-		trigger = legacyTrigger
-	}
-	if trigger == "" {
 		return "", "", false
 	}
 
-	effectText := strippedText
-	if effectText == "" {
-		stat := strings.ToLower(strings.TrimSpace(passive.Stat))
-		if stat != "" && passive.Amount != 0 {
-			amount := passive.Amount
-			if passiveType == "debuff" && amount > 0 {
-				amount = -amount
-			}
-			effectText = fmt.Sprintf("%s %s", stat, formatSign(amount))
-		}
-	}
-
-	if effectText == "" {
+	stat := strings.ToLower(strings.TrimSpace(passive.Stat))
+	if stat == "" || passive.Amount == 0 {
 		return "", "", false
 	}
+	amount := passive.Amount
+	if passiveType == "debuff" && amount > 0 {
+		amount = -amount
+	}
+	effectText := fmt.Sprintf("%s %s", stat, formatSign(amount))
 
 	return trigger, effectText, true
 }
@@ -519,14 +493,10 @@ func (g *GameManager) parseAndApplyPassiveEffect(roomID, playerID string, passiv
 	switch passiveType {
 	case "skill":
 		skillID := strings.TrimSpace(passive.SkillID)
-		skillName := ""
-		if skillID == "" && strings.HasPrefix(text, "获得技能：") {
-			skillName = strings.TrimPrefix(text, "获得技能：")
-			skillID = g.getSkillIDByName(skillName)
-		}
 		if skillID == "" {
 			return
 		}
+		skillName := ""
 		if skillName == "" {
 			skill := GetSkill(skillID)
 			if skill != nil {
@@ -549,7 +519,7 @@ func (g *GameManager) parseAndApplyPassiveEffect(roomID, playerID string, passiv
 		}
 
 	case "buff", "debuff":
-		if trigger, effectText, ok := resolveTriggeredPassiveDefinition(passive, passiveType, text); ok {
+		if trigger, effectText, ok := resolveTriggeredPassiveDefinition(passive, passiveType); ok {
 			triggeredBuff := buildTriggeredPassiveText(trigger, effectText)
 			if triggeredBuff != "" {
 				player.Buffs = append(player.Buffs, triggeredBuff)
@@ -573,52 +543,17 @@ func (g *GameManager) parseAndApplyPassiveEffect(roomID, playerID string, passiv
 			}
 		}
 
-		// 属性加成/减少
-		// 支持格式: "力量 +1" "速度 +1" "理智 -1" "知识 +2"
-		// 多重: "知识 +2，理智 -1" 或 "知识+2,理智-1"
-		text = strings.ReplaceAll(text, "，", ",")
-		parts := strings.Split(text, ",")
-
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-
-			// 解析 "属性 +N" 或 "属性 -N"
-			attrName, amount := parseAttributeChange(part)
-			if attrName != "" && amount != 0 {
-				if attr, ok := player.Character.Attributes[attrName]; ok {
-					// debuff 类型仅在数值是正数时取反，避免把 "-1" 再反转成增益。
-					if passiveType == "debuff" && amount > 0 {
-						amount = -amount
-					}
-					attr.Current += amount
-					if attr.Current < attr.Floor {
-						attr.Current = attr.Floor
-					}
-					if attr.Current > attr.Max {
-						attr.Current = attr.Max
-					}
-					// 将修改后的属性存回 map
-					player.Character.Attributes[attrName] = attr
-					logMsg := fmt.Sprintf("%s 的 %s %s%d", player.Character.Name, attrName, formatSignForPassive(amount), amount)
-					g.addLog(roomID, logMsg, "info")
-				}
-			}
-		}
-
 	case "special":
-		// 特殊效果（如"允许破坏墙壁"）
-		specialText := text
-		if specialText == "" {
-			specialText = strings.TrimSpace(passive.SpecialKey)
-		}
-		if specialText == "" {
+		specialKey := strings.TrimSpace(passive.SpecialKey)
+		if specialKey == "" {
 			return
 		}
-		player.Buffs = append(player.Buffs, specialText)
-		g.addLog(roomID, fmt.Sprintf("%s 获得效果: %s", player.Character.Name, specialText), "info")
+		displayText := text
+		if displayText == "" {
+			displayText = specialKey
+		}
+		player.Buffs = append(player.Buffs, displayText)
+		g.addLog(roomID, fmt.Sprintf("%s 获得效果: %s", player.Character.Name, displayText), "info")
 	}
 }
 
@@ -641,14 +576,10 @@ func (g *GameManager) parseAndRemovePassiveEffect(roomID string, passive Passive
 	switch passiveType {
 	case "skill":
 		skillID := strings.TrimSpace(passive.SkillID)
-		skillName := ""
-		if skillID == "" && strings.HasPrefix(text, "获得技能：") {
-			skillName = strings.TrimPrefix(text, "获得技能：")
-			skillID = g.getSkillIDByName(skillName)
-		}
 		if skillID == "" {
 			return
 		}
+		skillName := ""
 		if skillName == "" {
 			skill := GetSkill(skillID)
 			if skill != nil {
@@ -666,7 +597,7 @@ func (g *GameManager) parseAndRemovePassiveEffect(roomID string, passive Passive
 		}
 
 	case "buff", "debuff":
-		if trigger, effectText, ok := resolveTriggeredPassiveDefinition(passive, passiveType, text); ok {
+		if trigger, effectText, ok := resolveTriggeredPassiveDefinition(passive, passiveType); ok {
 			triggeredBuff := buildTriggeredPassiveText(trigger, effectText)
 			if triggeredBuff != "" && removeBuffByText(player, triggeredBuff) {
 				g.addLog(roomID, fmt.Sprintf("%s 失去了条件增益: %s", player.Character.Name, triggeredBuff), "info")
@@ -689,38 +620,14 @@ func (g *GameManager) parseAndRemovePassiveEffect(roomID string, passive Passive
 			}
 		}
 
-		text = strings.ReplaceAll(text, "，", ",")
-		parts := strings.Split(text, ",")
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-
-			attrName, amount := parseAttributeChange(part)
-			if attrName == "" || amount == 0 {
-				continue
-			}
-			if attr, ok := player.Character.Attributes[attrName]; ok {
-				if passiveType == "debuff" && amount > 0 {
-					amount = -amount
-				}
-				attr.Current -= amount
-				if attr.Current < attr.Floor {
-					attr.Current = attr.Floor
-				}
-				if attr.Current > attr.Max {
-					attr.Current = attr.Max
-				}
-				player.Character.Attributes[attrName] = attr
-				g.addLog(roomID, fmt.Sprintf("%s 的 %s 失去了 %d 点加成", player.Character.Name, attrName, amount), "info")
-			}
-		}
-
 	case "special":
+		specialKey := strings.TrimSpace(passive.SpecialKey)
+		if specialKey == "" {
+			return
+		}
 		specialText := text
 		if specialText == "" {
-			specialText = strings.TrimSpace(passive.SpecialKey)
+			specialText = specialKey
 		}
 		if removeBuffByText(player, specialText) {
 			g.addLog(roomID, fmt.Sprintf("%s 失去了效果: %s", player.Character.Name, specialText), "info")
@@ -782,24 +689,6 @@ func parseAttributeChange(s string) (string, int) {
 	fmt.Sscanf(numStr, "%d", &amount)
 
 	return attrName, amount
-}
-
-// getSkillIDByName 根据技能名获取技能ID
-func (g *GameManager) getSkillIDByName(skillName string) string {
-	// 简单匹配
-	nameToID := map[string]string{
-		"嗜血打击": "skill_vampiric_strike",
-		"爆发":   "skill_sprint",
-		"冥想":   "skill_meditate",
-		"闪避":   "skill_dodge",
-	}
-
-	if id, ok := nameToID[skillName]; ok {
-		return id
-	}
-
-	// 尝试模糊匹配
-	return FindSkillByName(skillName)
 }
 
 // ApplyConditionalBuffs 应用条件触发的增益（需要在特定动作时调用）
@@ -939,10 +828,6 @@ func (g *GameManager) UnlockSkillNode(roomID, playerID, nodeId string) error {
 			if message != "" {
 				g.addLog(roomID, fmt.Sprintf("%s 获得了增益: %s", player.Character.Name, message), "info")
 			}
-		}
-
-		if len(grant.GrantsEffects) == 0 && grant.GrantsBuff != "" {
-			g.addLog(roomID, fmt.Sprintf("%s 的技能节点 %s 仍使用旧版 grantsBuff 配置，请迁移到 grantsEffects", player.Character.Name, nodeId), "alert")
 		}
 	}
 

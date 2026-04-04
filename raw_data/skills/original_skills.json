@@ -1,0 +1,109 @@
+{
+  "skill_vampiric_strike": {
+    "id": "skill_vampiric_strike",
+    "theme": "original",
+    "type": "SKILL",
+    "name": "嗜血打击",
+    "description": "攻击敌人并吸取其生命。",
+    "icon": "Zap",
+    "usage": {
+      "actionLabel": "使用",
+      "isConsumable": false,
+      "target": "OPPONENT",
+      "effects": [
+        {
+          "type": "DAMAGE",
+          "stat": "might",
+          "amount": 2,
+          "target": "SELECTED_PARTNER"
+        },
+        {
+          "type": "HEAL",
+          "stat": "might",
+          "amount": 1,
+          "target": "SELF"
+        },
+        {
+          "type": "LOG",
+          "message": "你从敌人身上吸取了生命力！",
+          "style": "success"
+        }
+      ]
+    }
+  },
+  "skill_sprint": {
+    "id": "skill_sprint",
+    "theme": "original",
+    "type": "SKILL",
+    "name": "爆发",
+    "description": "消耗理智换取爆发移动。",
+    "icon": "Zap",
+    "usage": {
+      "actionLabel": "使用",
+      "isConsumable": false,
+      "target": "SELF",
+      "effects": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "sanity",
+          "amount": -1
+        },
+        {
+          "type": "MODIFY_STAT",
+          "stat": "speed",
+          "amount": 2
+        },
+        {
+          "type": "LOG",
+          "message": "你感到一阵天旋地转，速度暴增！",
+          "style": "alert"
+        }
+      ]
+    }
+  },
+  "skill_meditate": {
+    "id": "skill_meditate",
+    "theme": "original",
+    "type": "SKILL",
+    "name": "冥想",
+    "description": "原地恢复理智。",
+    "icon": "Moon",
+    "usage": {
+      "actionLabel": "使用",
+      "isConsumable": false,
+      "target": "SELF",
+      "effects": [
+        {
+          "type": "HEAL",
+          "stat": "sanity",
+          "amount": 2
+        },
+        {
+          "type": "LOG",
+          "message": "你进入冥想状态，思绪逐渐平静。",
+          "style": "success"
+        }
+      ]
+    }
+  },
+  "skill_dodge": {
+    "id": "skill_dodge",
+    "theme": "original",
+    "type": "SKILL",
+    "name": "闪避",
+    "description": "提升防御闪避下一次攻击。",
+    "icon": "Wind",
+    "usage": {
+      "actionLabel": "使用",
+      "isConsumable": false,
+      "target": "SELF",
+      "effects": [
+        {
+          "type": "LOG",
+          "message": "你进入闪避姿态。",
+          "style": "info"
+        }
+      ]
+    }
+  }
+}

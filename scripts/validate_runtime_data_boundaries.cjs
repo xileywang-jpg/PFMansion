@@ -15,7 +15,7 @@ const RUNTIME_TARGETS = [
 const ALLOWED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
 const FORBIDDEN_PATTERNS = [
   {
-    name: 'data/source runtime import',
+    name: 'removed static export import',
     test: (specifier) => /(^|\/)data\/source(\/|$)/.test(specifier),
   },
   {

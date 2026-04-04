@@ -1,0 +1,494 @@
+{
+  "event_burning_man": {
+    "id": "event_burning_man",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "一个被火焰包围的鬼魅人影在你面前无声地尖叫。",
+    "flavorText": "这火焰虽是幻象，但恐惧却真实无比。",
+    "icon": "Flame",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "sanity",
+      "difficulty": 4,
+      "success": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "knowledge",
+          "amount": 1,
+          "message": "你意识到这只是幻象并获得了洞察力。"
+        },
+        {
+          "type": "LOG",
+          "message": "火焰如同出现时一样迅速熄灭了。",
+          "style": "narrative"
+        }
+      ],
+      "failure": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "sanity",
+          "amount": -1,
+          "message": "剧烈的恐惧灼伤了你的精神。"
+        },
+        {
+          "type": "LOG",
+          "message": "你惊恐地逃离现场。",
+          "style": "narrative"
+        }
+      ]
+    },
+    "title": "燃烧之人"
+  },
+  "event_creaky_floor": {
+    "id": "event_creaky_floor",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "脚下的木头伴随着刺耳的断裂声突然崩塌。",
+    "flavorText": "下方的黑暗在等待着你。",
+    "icon": "ArrowDown",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "speed",
+      "difficulty": 3,
+      "success": [
+        {
+          "type": "LOG",
+          "message": "你千钧一发之际跳到了安全地带。",
+          "style": "narrative"
+        }
+      ],
+      "failure": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "might",
+          "amount": -1,
+          "message": "坠落造成了 1 点物理伤害。"
+        },
+        {
+          "type": "LOG",
+          "message": "你重重地摔在冰冷的石板地上。",
+          "style": "narrative"
+        }
+      ]
+    },
+    "title": "腐烂的地板"
+  },
+  "event_ghost_whisper": {
+    "id": "event_ghost_whisper",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "一个声音从阴影中低语着你的名字。\"离开这里...\"它嘶嘶作响。",
+    "icon": "Ghost",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "sanity",
+      "difficulty": 4,
+      "success": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "knowledge",
+          "amount": 1,
+          "message": "你稳住了心神，从低语中捕捉到了线索。"
+        }
+      ],
+      "failure": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "sanity",
+          "amount": -1,
+          "message": "这声音像爪子一样撕扯着你的理智。"
+        }
+      ]
+    },
+    "title": "幽灵低语"
+  },
+  "event_vines": {
+    "id": "event_vines",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "枯死的植物突然像活了一样，紧紧缠住了你的双脚！",
+    "icon": "Trees",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "might",
+      "difficulty": 3,
+      "success": [
+        {
+          "type": "LOG",
+          "message": "你轻松挣脱了这些枯萎的藤蔓。",
+          "style": "narrative"
+        }
+      ],
+      "failure": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "speed",
+          "amount": -1,
+          "message": "长刺刺伤了你的腿，行动受阻。"
+        }
+      ]
+    },
+    "title": "纠缠的藤蔓"
+  },
+  "event_vault_chest": {
+    "id": "event_vault_chest",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "金库的中心放着一个沉重的铁箱，需要巨大的力量才能撬开。",
+    "icon": "Lock",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "might",
+      "difficulty": 3,
+      "success": [
+        {
+          "type": "DRAW_CARD",
+          "deck": "ITEM",
+          "message": "你用力撬开了锁，发现了里面的宝藏！"
+        }
+      ],
+      "failure": [
+        {
+          "type": "LOG",
+          "message": "锁纹丝不动。也许下次运气会好点。",
+          "style": "narrative"
+        }
+      ]
+    },
+    "title": "上锁的宝箱"
+  },
+  "event_coffin": {
+    "id": "event_coffin",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "你发现了一个打开的棺材，里面躺着一具苍白的躯体。",
+    "icon": "Moon",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "CHOICE",
+      "options": [
+        {
+          "label": "打入木桩 (需要匕首)",
+          "effects": [
+            {
+              "type": "IF",
+              "condition": {
+                "op": "HAS_ITEM",
+                "itemId": "item_dagger"
+              },
+              "then": [
+                {
+                  "type": "LOG",
+                  "message": "怪物在尖叫中化为灰烬！你获得了它的力量。",
+                  "style": "success"
+                },
+                {
+                  "type": "MODIFY_STAT",
+                  "stat": "might",
+                  "amount": 1
+                }
+              ],
+              "else": [
+                {
+                  "type": "LOG",
+                  "message": "你手里没有合适的武器！怪物苏醒了并袭击了你！",
+                  "style": "alert"
+                },
+                {
+                  "type": "MODIFY_STAT",
+                  "stat": "might",
+                  "amount": -2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "label": "搜身",
+          "effects": [
+            {
+              "type": "LOG",
+              "message": "你忍着恐惧搜寻了一番，发现了一些有用的东西。",
+              "style": "info"
+            },
+            {
+              "type": "DRAW_CARD",
+              "deck": "ITEM"
+            }
+          ]
+        },
+        {
+          "label": "悄悄离开",
+          "effects": [
+            {
+              "type": "LOG",
+              "message": "你屏住呼吸离开了房间，决定不打扰它。",
+              "style": "narrative"
+            }
+          ]
+        }
+      ]
+    },
+    "title": "漆黑的棺材"
+  },
+  "event_strange_book": {
+    "id": "event_strange_book",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "书架上有一本古老的书籍，封面上的符号让你感到不安。",
+    "icon": "Book",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "knowledge",
+      "difficulty": 3,
+      "success": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "knowledge",
+          "amount": 2,
+          "message": "你理解了书中的奥秘，知识大幅提升！"
+        },
+        {
+          "type": "LOG",
+          "message": "禁忌的知识让你对这个世界有了新的认识。",
+          "style": "success"
+        }
+      ],
+      "failure": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "sanity",
+          "amount": -1,
+          "message": "书中的内容让你的理智受到了冲击。"
+        },
+        {
+          "type": "LOG",
+          "message": "你合上了书，不敢再翻开它。",
+          "style": "narrative"
+        }
+      ]
+    },
+    "title": "禁忌之书"
+  },
+  "event_crystal_orb": {
+    "id": "event_crystal_orb",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "房间中央摆放着一个发光的水晶球，里面似乎有影像在流动。",
+    "icon": "Sparkles",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "knowledge",
+      "difficulty": 4,
+      "success": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "knowledge",
+          "amount": 1,
+          "message": "水晶球向你展示了大厦的秘密通道！"
+        },
+        {
+          "type": "LOG",
+          "message": "你发现了隐藏路径。",
+          "style": "success"
+        }
+      ],
+      "failure": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "sanity",
+          "amount": -1,
+          "message": "水晶球的影像让你头晕目眩。"
+        }
+      ]
+    },
+    "title": "水晶球"
+  },
+  "event_blood_stain": {
+    "id": "event_blood_stain",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "墙上的血迹像是某种仪式的一部分，还在微微发亮。",
+    "icon": "Droplet",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "CHOICE",
+      "options": [
+        {
+          "label": "进行调查",
+          "effects": [
+            {
+              "type": "MODIFY_STAT",
+              "stat": "knowledge",
+              "amount": 1,
+              "message": "你发现这是某种黑暗仪式的痕迹。"
+            },
+            {
+              "type": "LOG",
+              "message": "调查让你获得了有用的情报。",
+              "style": "info"
+            }
+          ]
+        },
+        {
+          "label": "触摸血迹",
+          "effects": [
+            {
+              "type": "MODIFY_STAT",
+              "stat": "sanity",
+              "amount": -1,
+              "message": "一阵寒意顺着指尖传遍全身。"
+            },
+            {
+              "type": "LOG",
+              "message": "你感到一股不属于这个世界的力量。",
+              "style": "alert"
+            }
+          ]
+        },
+        {
+          "label": "忽视它",
+          "effects": [
+            {
+              "type": "LOG",
+              "message": "你决定不理会这个可疑的痕迹。",
+              "style": "narrative"
+            }
+          ]
+        }
+      ]
+    },
+    "title": "神秘血迹"
+  },
+  "event_mirror": {
+    "id": "event_mirror",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "一面大镜子碎裂在地，镜中的你似乎...不太对劲。",
+    "icon": "CircleDot",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "ATTRIBUTE_CHECK",
+      "attribute": "sanity",
+      "difficulty": 3,
+      "success": [
+        {
+          "type": "LOG",
+          "message": "你稳住了心神，镜中的异象消失了。",
+          "style": "narrative"
+        }
+      ],
+      "failure": [
+        {
+          "type": "MODIFY_STAT",
+          "stat": "sanity",
+          "amount": -2,
+          "message": "镜中的你向你伸出了手！理智大幅下降！"
+        },
+        {
+          "type": "LOG",
+          "message": "你惊恐地打碎了剩余的镜面。",
+          "style": "alert"
+        }
+      ]
+    },
+    "title": "破碎的镜子"
+  },
+  "event_underground_lake": {
+    "id": "event_underground_lake",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "你来到一个地下洞穴，平静的湖面反射着诡异的光芒。",
+    "icon": "Waves",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "CHOICE",
+      "options": [
+        {
+          "label": "饮用湖水",
+          "effects": [
+            {
+              "type": "MODIFY_STAT",
+              "stat": "speed",
+              "amount": 1,
+              "message": "湖水清凉甘甜，你感到身体轻盈了许多！"
+            },
+            {
+              "type": "LOG",
+              "message": "你获得了神秘的力量。",
+              "style": "success"
+            }
+          ]
+        },
+        {
+          "label": "继续前进",
+          "effects": [
+            {
+              "type": "LOG",
+              "message": "你绕过了湖水，继续探索。",
+              "style": "narrative"
+            }
+          ]
+        }
+      ]
+    },
+    "title": "地下湖"
+  },
+  "event_abandoned_camp": {
+    "id": "event_abandoned_camp",
+    "type": "EVENT",
+    "theme": "original",
+    "description": "一个探险队留下的临时营地，看起来他们遭遇了什么可怕的事情。",
+    "icon": "Tent",
+    "triggerType": "ON_ENTER",
+    "interaction": {
+      "type": "CHOICE",
+      "options": [
+        {
+          "label": "搜寻物资",
+          "effects": [
+            {
+              "type": "DRAW_CARD",
+              "deck": "ITEM",
+              "message": "你找到了幸存者留下的补给！"
+            }
+          ]
+        },
+        {
+          "label": "调查痕迹",
+          "effects": [
+            {
+              "type": "MODIFY_STAT",
+              "stat": "knowledge",
+              "amount": 1,
+              "message": "你发现了他们遭遇了什么。"
+            },
+            {
+              "type": "LOG",
+              "message": "调查让你获得了重要的情报。",
+              "style": "info"
+            }
+          ]
+        },
+        {
+          "label": "离开",
+          "effects": [
+            {
+              "type": "LOG",
+              "message": "你感到不安，迅速离开了这里。",
+              "style": "narrative"
+            }
+          ]
+        }
+      ]
+    },
+    "title": "废弃营地"
+  }
+}

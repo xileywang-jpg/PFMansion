@@ -66,7 +66,7 @@ func TestDrawCard_ItemUsesUnifiedCollection(t *testing.T) {
 			ID:             "item_amulet",
 			Type:           "ITEM",
 			Name:           "神圣护身符",
-			PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1"}},
+			PassiveEffects: []PassiveEffect{{Type: "buff", Text: "sanity +1", Stat: "sanity", Amount: 1}},
 		}},
 		"EVENT": {},
 		"OMEN":  {},

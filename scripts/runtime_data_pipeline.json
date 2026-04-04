@@ -1,0 +1,88 @@
+{
+  "generatedTargets": [
+    {
+      "name": "runtime config bundle",
+      "source": "raw_data/config/config.json",
+      "builder": "scripts/compile_json_bundle.cjs",
+      "builderArgs": [
+        "raw_data/config/config.json",
+        "game/data/config.json"
+      ],
+      "targets": [
+        "game/data/config.json"
+      ]
+    },
+    {
+      "name": "runtime tile bundle",
+      "source": "raw_data/tiles",
+      "builder": "scripts/compile_tile_bundle.cjs",
+      "builderArgs": [
+        "raw_data/tiles",
+        "game/data/tiles.json"
+      ],
+      "targets": [
+        "game/data/tiles.json"
+      ]
+    },
+    {
+      "name": "runtime event bundle",
+      "source": "raw_data/events",
+      "builder": "scripts/compile_event_bundle.cjs",
+      "builderArgs": [
+        "raw_data/events",
+        "game/data/events.json"
+      ],
+      "targets": [
+        "game/data/events.json"
+      ]
+    },
+    {
+      "name": "runtime item bundle",
+      "source": "raw_data/items/base_items.json",
+      "builder": "scripts/compile_item_bundle.cjs",
+      "builderArgs": [
+        "raw_data/items/base_items.json",
+        "raw_data/items/reward_items.json",
+        "raw_data/skills",
+        "game/data/items.json"
+      ],
+      "targets": [
+        "game/data/items.json"
+      ]
+    },
+    {
+      "name": "runtime character bundle",
+      "source": "raw_data/characters",
+      "builder": "scripts/compile_character_bundle.cjs",
+      "builderArgs": [
+        "raw_data/characters",
+        "game/data/characters.json"
+      ],
+      "targets": [
+        "game/data/characters.json"
+      ]
+    },
+    {
+      "name": "runtime skill tree bundle",
+      "source": "raw_data/skillTrees/base_skill_trees.json",
+      "builder": "scripts/compile_skill_tree_bundle.cjs",
+      "builderArgs": [
+        "raw_data/skillTrees/base_skill_trees.json",
+        "game/data/skillTrees.json"
+      ],
+      "targets": [
+        "game/data/skillTrees.json"
+      ]
+    },
+    {
+      "name": "scenario runtime bundle",
+      "source": "raw_data/scenarios/runtime_scenarios.json",
+      "builder": "scripts/sync_scenarios.cjs",
+      "targets": [
+        "game/data/scenarios.json"
+      ]
+    }
+  ],
+  "manualRuntimeTargets": [],
+  "historicalPipelines": []
+}

@@ -241,9 +241,6 @@ func handleConditionalEffect(g *GameManager, roomID, playerID string, _ *GameSta
 func handleGiveItemEffect(g *GameManager, roomID, _ string, _ *GameStateFull, player *GamePlayer, effect Effect) {
 	itemID := effect.ItemID
 	if itemID == "" {
-		itemID = effect.Message
-	}
-	if itemID == "" {
 		return
 	}
 	item := GetItem(itemID)
@@ -256,9 +253,6 @@ func handleGiveItemEffect(g *GameManager, roomID, _ string, _ *GameStateFull, pl
 
 func handleGiveSkillEffect(g *GameManager, roomID, _ string, _ *GameStateFull, player *GamePlayer, effect Effect) {
 	skillID := effect.SkillID
-	if skillID == "" {
-		skillID = effect.Message
-	}
 	if skillID == "" {
 		return
 	}
@@ -276,26 +270,6 @@ func handleGiveSkillEffect(g *GameManager, roomID, _ string, _ *GameStateFull, p
 	g.addLog(roomID, fmt.Sprintf("%s 习得了技能: %s", player.Character.Name, skillName), "success")
 }
 
-func resolveStatusType(effect Effect) string {
-	if effect.StatusType != "" {
-		return effect.StatusType
-	}
-	if effect.Attribute != "" {
-		return strings.ToUpper(strings.TrimSpace(effect.Attribute))
-	}
-	if effect.Message != "" {
-		return strings.ToUpper(strings.TrimSpace(effect.Message))
-	}
-	return ""
-}
-
-func resolveBuffText(effect Effect) string {
-	if effect.Buff != "" {
-		return effect.Buff
-	}
-	return effect.Message
-}
-
 func handleRollEffect(g *GameManager, roomID, playerID string, state *GameStateFull, player *GamePlayer, effect Effect) {
 	attrName := effect.Attribute
 	if attrName == "" {
@@ -311,49 +285,28 @@ func handleRollEffect(g *GameManager, roomID, playerID string, state *GameStateF
 }
 
 func handleAddStatusEffect(g *GameManager, roomID, _ string, _ *GameStateFull, player *GamePlayer, effect Effect) {
-	statusType := resolveStatusType(effect)
+	statusType := strings.ToUpper(strings.TrimSpace(effect.StatusType))
 	if statusType == "" {
 		return
 	}
 	duration := effect.Duration
 	if duration == 0 {
-		if effect.Amount != 0 {
-			duration = effect.Amount
-		} else {
-			duration = -1
-		}
-	}
-	source := effect.Source
-	if source == "" {
-		source = effect.Message
-	}
-	faction := effect.Faction
-	if faction == "" {
-		faction = effect.Style
-	}
-	statusAmount := effect.StatusAmt
-	if statusAmount == 0 {
-		statusAmount = effect.Difficulty
-	}
-	damage := effect.Damage
-	if damage == 0 && effect.Duration == 0 {
-		// 兼容旧字段复用：部分历史数据把 amount 既当持续回合又当伤害。
-		damage = effect.Amount
+		duration = -1
 	}
 	status := StatusEffect{
 		Type:     statusType,
 		Duration: duration,
-		Source:   source,
-		Damage:   damage,
-		Faction:  faction,
-		Amount:   statusAmount,
+		Source:   effect.Source,
+		Damage:   effect.Damage,
+		Faction:  effect.Faction,
+		Amount:   effect.StatusAmt,
 	}
 	player.StatusEffects = append(player.StatusEffects, status)
 	g.addLog(roomID, fmt.Sprintf("%s 获得了状态: %s (持续 %d 回合)", player.Character.Name, statusType, duration), "info")
 }
 
 func handleAddBuffEffect(g *GameManager, roomID, _ string, _ *GameStateFull, player *GamePlayer, effect Effect) {
-	buffText := resolveBuffText(effect)
+	buffText := strings.TrimSpace(effect.Buff)
 	if buffText == "" {
 		return
 	}
@@ -362,7 +315,7 @@ func handleAddBuffEffect(g *GameManager, roomID, _ string, _ *GameStateFull, pla
 }
 
 func handleRemoveBuffEffect(g *GameManager, roomID, _ string, _ *GameStateFull, player *GamePlayer, effect Effect) {
-	buffText := resolveBuffText(effect)
+	buffText := strings.TrimSpace(effect.Buff)
 	if buffText == "" {
 		return
 	}

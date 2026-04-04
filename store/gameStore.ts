@@ -93,16 +93,16 @@ interface GameState {
   setGameData: (data: GameDataBundle) => void;
   
   // 数据访问辅助函数
-  getAllItems: () => any[];
-  getItemById: (id: string) => any | undefined;
-  getAllOmens: () => any[];
-  getOmenById: (id: string) => any | undefined;
-  getAllEvents: () => any[];
-  getEventById: (id: string) => any | undefined;
-  getAllSkills: () => any[];
-  getSkillById: (id: string) => any | undefined;
-  getSkillTrees: () => any[];
-  getSkillNodeById: (id: string) => any | undefined;
+  getAllItems: (theme?: string) => any[];
+  getItemById: (id: string, theme?: string) => any | undefined;
+  getAllOmens: (theme?: string) => any[];
+  getOmenById: (id: string, theme?: string) => any | undefined;
+  getAllEvents: (theme?: string) => any[];
+  getEventById: (id: string, theme?: string) => any | undefined;
+  getAllSkills: (theme?: string) => any[];
+  getSkillById: (id: string, theme?: string) => any | undefined;
+  getSkillTrees: (theme?: string) => any[];
+  getSkillNodeById: (id: string, theme?: string) => any | undefined;
   getScenarios: () => Record<string, any>;
   getScenarioById: (id: string) => any | undefined;
   getTilesByTheme: (theme?: string) => any[];
@@ -269,53 +269,53 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 注意: 静态数据必须来自后端 API /api/game/data
 
   // 获取所有物品
-  getAllItems: (): any[] => {
-    return readAllItems(get().gameData);
+  getAllItems: (theme?: string): any[] => {
+    return readAllItems(get().gameData, theme);
   },
 
   // 根据ID获取物品
-  getItemById: (id: string): any | undefined => {
-    return readItemById(get().gameData, id);
+  getItemById: (id: string, theme?: string): any | undefined => {
+    return readItemById(get().gameData, id, theme);
   },
 
   // 获取所有厄运
-  getAllOmens: (): any[] => {
-    return readAllOmens(get().gameData);
+  getAllOmens: (theme?: string): any[] => {
+    return readAllOmens(get().gameData, theme);
   },
 
   // 根据ID获取厄运
-  getOmenById: (id: string): any | undefined => {
-    return readOmenById(get().gameData, id);
+  getOmenById: (id: string, theme?: string): any | undefined => {
+    return readOmenById(get().gameData, id, theme);
   },
 
   // 获取所有事件
-  getAllEvents: (): any[] => {
-    return readAllEvents(get().gameData);
+  getAllEvents: (theme?: string): any[] => {
+    return readAllEvents(get().gameData, theme);
   },
 
   // 根据ID获取事件
-  getEventById: (id: string): any | undefined => {
-    return readEventById(get().gameData, id);
+  getEventById: (id: string, theme?: string): any | undefined => {
+    return readEventById(get().gameData, id, theme);
   },
 
   // 获取所有技能
-  getAllSkills: (): any[] => {
-    return readAllSkills(get().gameData);
+  getAllSkills: (theme?: string): any[] => {
+    return readAllSkills(get().gameData, theme);
   },
 
   // 根据ID获取技能
-  getSkillById: (id: string): any | undefined => {
-    return readSkillById(get().gameData, id);
+  getSkillById: (id: string, theme?: string): any | undefined => {
+    return readSkillById(get().gameData, id, theme);
   },
 
   // 获取技能树
-  getSkillTrees: (): any[] => {
-    return readSkillTrees(get().gameData);
+  getSkillTrees: (theme?: string): any[] => {
+    return readSkillTrees(get().gameData, theme);
   },
 
   // 根据ID获取技能节点
-  getSkillNodeById: (id: string): any | undefined => {
-    return readSkillNodeById(get().gameData, id);
+  getSkillNodeById: (id: string, theme?: string): any | undefined => {
+    return readSkillNodeById(get().gameData, id, theme);
   },
 
   // 获取剧本

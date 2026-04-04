@@ -29,6 +29,16 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
+  "include": [
+    "components/**/*",
+    "hooks/**/*",
+    "src/**/*",
+    "store/**/*",
+    "utils/**/*",
+    "ws/**/*",
+    "constants.ts",
+    "types.ts"
+  ],
   "exclude": [
     "node_modules",
     "doc",

@@ -28,19 +28,6 @@ func TestHandleGiveSkillEffect_UsesExplicitSkillID(t *testing.T) {
 	}
 }
 
-func TestHandleGiveItemEffect_MessageFallbackRemainsCompatible(t *testing.T) {
-	gm := setupTestGameManager()
-	roomID := createTestRoom(gm)
-	state := gm.Rooms[roomID].GameState.FullState
-	player := state.Players["player_1"]
-
-	gm.applyEffect(roomID, "player_1", Effect{Type: "GIVE_ITEM", Message: "item_amulet"})
-
-	if len(player.Items) != 1 || player.Items[0].ID != "item_amulet" {
-		t.Fatalf("GIVE_ITEM 旧版 message 兼容路径失效, 实际为 %#v", player.Items)
-	}
-}
-
 func TestResolveMovePlayerTarget_UsesConfiguredNamedLocation(t *testing.T) {
 	player := &GamePlayer{Position: Position{X: 2, Y: 3}}
 	expected, ok := GetNamedLocationByID("basement")
@@ -130,18 +117,5 @@ func TestHandleAddStatusEffect_UsesExplicitStatusFields(t *testing.T) {
 	}
 	if status.Duration != 2 || status.Damage != 1 || status.Faction != "enemy" || status.Source != "event_fire" || status.Amount != 3 {
 		t.Fatalf("状态字段映射错误: %#v", status)
-	}
-}
-
-func TestHandleAddBuffEffect_MessageFallbackRemainsCompatible(t *testing.T) {
-	gm := setupTestGameManager()
-	roomID := createTestRoom(gm)
-	state := gm.Rooms[roomID].GameState.FullState
-	player := state.Players["player_1"]
-
-	gm.applyEffect(roomID, "player_1", Effect{Type: "ADD_BUFF", Message: "速度 +1"})
-
-	if len(player.Buffs) != 1 || player.Buffs[0] != "速度 +1" {
-		t.Fatalf("ADD_BUFF 旧版 message 兼容路径失效, 实际为 %#v", player.Buffs)
 	}
 }

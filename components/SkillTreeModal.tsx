@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Lock, Check, Brain, Shield, Wind, Zap, Book, Heart, Cross, Moon, MousePointerClick, ChevronRight } from 'lucide-react';
-import { SkillNode } from '../types';
+import { SkillNode, SkillTreeCategory } from '../types';
 
 function getGrantEffectLabel(node: SkillNode): string[] {
     if (node.grantsEffects && node.grantsEffects.length > 0) {
@@ -11,22 +11,20 @@ function getGrantEffectLabel(node: SkillNode): string[] {
             .map(effect => effect.description || effect.buff || '')
             .filter(Boolean);
     }
-    if (node.grantsBuff) {
-        return [node.grantsBuff];
-    }
     return [];
 }
 
 const SkillTreeModal: React.FC = () => {
-        const { ui, toggleSkillTree, players, activePlayerId, unlockSkillNode, getSkillTrees } = useGameStore();
+      const { ui, toggleSkillTree, players, activePlayerId, unlockSkillNode, getSkillTrees } = useGameStore();
   const player = players[activePlayerId];
-    const skillTrees = getSkillTrees();
+  const playerTheme = player?.character?.id?.startsWith('vol_') ? 'volantis' : 'original';
+      const skillTrees = getSkillTrees(playerTheme) as SkillTreeCategory[];
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const selectedNode = useMemo(() => {
      if (!selectedNodeId) return null;
          for(const tree of skillTrees) {
-         const found = tree.nodes.find(n => n.id === selectedNodeId);
+         const found = tree.nodes.find((n: SkillNode) => n.id === selectedNodeId);
          if(found) return found;
      }
      return null;
@@ -303,7 +301,7 @@ const SkillTreeModal: React.FC = () => {
                             </div>
                             
                             <div className="grid grid-cols-3 gap-y-16 gap-x-6">
-                                {tree.nodes.map(node => renderNode(node, tree.nodes))}
+                                {tree.nodes.map((node: SkillNode) => renderNode(node, tree.nodes))}
                             </div>
                         </div>
                     ))}

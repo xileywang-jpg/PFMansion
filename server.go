@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -221,6 +222,55 @@ func main() {
 	// ==================== 游戏数据 API ====================
 	// 静态卡牌数据（items, omens, skills, events, scenarios, characters, skillTrees, tiles）
 
+	normalizeThemeParam := func(r *http.Request) string {
+		theme := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("theme")))
+		switch theme {
+		case "volantis":
+			return "volantis"
+		case "original":
+			return "original"
+		default:
+			return ""
+		}
+	}
+
+	buildThemedData := func() map[string]interface{} {
+		return map[string]interface{}{
+			"tiles": map[string]interface{}{
+				"original": game.GetTileDeckByTheme("original"),
+				"volantis": game.GetTileDeckByTheme("volantis"),
+			},
+			"items": map[string]interface{}{
+				"original": game.GetItemsByTheme("original"),
+				"volantis": game.GetItemsByTheme("volantis"),
+			},
+			"rewardItems": map[string]interface{}{
+				"original": game.GetRewardItemsByTheme("original"),
+				"volantis": game.GetRewardItemsByTheme("volantis"),
+			},
+			"omens": map[string]interface{}{
+				"original": game.GetOmensByTheme("original"),
+				"volantis": game.GetOmensByTheme("volantis"),
+			},
+			"skills": map[string]interface{}{
+				"original": game.GetSkillsByTheme("original"),
+				"volantis": game.GetSkillsByTheme("volantis"),
+			},
+			"events": map[string]interface{}{
+				"original": game.GetEventsByTheme("original"),
+				"volantis": game.GetEventsByTheme("volantis"),
+			},
+			"skillTrees": map[string]interface{}{
+				"original": game.GetSkillTreesByTheme("original"),
+				"volantis": game.GetSkillTreesByTheme("volantis"),
+			},
+			"characters": map[string]interface{}{
+				"original": game.GetCharactersByTheme("original"),
+				"volantis": game.GetCharactersByTheme("volantis"),
+			},
+		}
+	}
+
 	// 获取所有游戏数据
 	mux.HandleFunc("/api/game/data/all", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -235,16 +285,18 @@ func main() {
 				"original": game.GetTileDeckByTheme("original"),
 				"volantis": game.GetTileDeckByTheme("volantis"),
 			},
-			"items":      game.GetItems(),
-			"omens":      game.GetOmens(),
-			"skills":     game.GetSkills(),
-			"events":     game.GetEvents(),
-			"scenarios":  game.GetScenarios(),
-			"skillTrees": game.GetSkillTrees(),
+			"items":       game.GetItems(),
+			"rewardItems": game.GetRewardItems(),
+			"omens":       game.GetOmens(),
+			"skills":      game.GetSkills(),
+			"events":      game.GetEvents(),
+			"scenarios":   game.GetScenarios(),
+			"skillTrees":  game.GetSkillTrees(),
 			"characters": map[string]interface{}{
 				"original": game.GetCharactersByTheme("original"),
 				"volantis": game.GetCharactersByTheme("volantis"),
 			},
+			"themed": buildThemedData(),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -258,10 +310,47 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		theme := normalizeThemeParam(r)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=300")
+		if theme != "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"items": game.GetItemsByTheme(theme),
+				"theme": theme,
+			})
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"items": game.GetItems(),
+			"themed": map[string]interface{}{
+				"original": game.GetItemsByTheme("original"),
+				"volantis": game.GetItemsByTheme("volantis"),
+			},
+		})
+	})
+
+	// 获取奖励物品数据
+	mux.HandleFunc("/api/game/data/reward-items", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		theme := normalizeThemeParam(r)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		if theme != "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"rewardItems": game.GetRewardItemsByTheme(theme),
+				"theme":       theme,
+			})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"rewardItems": game.GetRewardItems(),
+			"themed": map[string]interface{}{
+				"original": game.GetRewardItemsByTheme("original"),
+				"volantis": game.GetRewardItemsByTheme("volantis"),
+			},
 		})
 	})
 
@@ -271,10 +360,22 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		theme := normalizeThemeParam(r)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=300")
+		if theme != "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"omens": game.GetOmensByTheme(theme),
+				"theme": theme,
+			})
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"omens": game.GetOmens(),
+			"themed": map[string]interface{}{
+				"original": game.GetOmensByTheme("original"),
+				"volantis": game.GetOmensByTheme("volantis"),
+			},
 		})
 	})
 
@@ -284,10 +385,22 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		theme := normalizeThemeParam(r)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=300")
+		if theme != "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"skills": game.GetSkillsByTheme(theme),
+				"theme":  theme,
+			})
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"skills": game.GetSkills(),
+			"themed": map[string]interface{}{
+				"original": game.GetSkillsByTheme("original"),
+				"volantis": game.GetSkillsByTheme("volantis"),
+			},
 		})
 	})
 
@@ -297,10 +410,22 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		theme := normalizeThemeParam(r)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=300")
+		if theme != "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"events": game.GetEventsByTheme(theme),
+				"theme":  theme,
+			})
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"events": game.GetEvents(),
+			"themed": map[string]interface{}{
+				"original": game.GetEventsByTheme("original"),
+				"volantis": game.GetEventsByTheme("volantis"),
+			},
 		})
 	})
 
@@ -341,10 +466,22 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		theme := normalizeThemeParam(r)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=300")
+		if theme != "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"skillTrees": game.GetSkillTreesByTheme(theme),
+				"theme":      theme,
+			})
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"skillTrees": game.GetSkillTrees(),
+			"themed": map[string]interface{}{
+				"original": game.GetSkillTreesByTheme("original"),
+				"volantis": game.GetSkillTreesByTheme("volantis"),
+			},
 		})
 	})
 

@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "npm run validate:runtime-data-boundaries",
+    "prebuild": "npm run compile:runtime-data && npm run validate:runtime-data-boundaries",
     "build": "vite build",
     "preview": "vite preview",
+    "compile:runtime-data": "node scripts/compile_runtime_data.cjs",
     "sync:scenarios": "node scripts/sync_scenarios.cjs",
+    "validate:authoring-data": "node scripts/validate_authoring_data.cjs",
     "validate:runtime-data-boundaries": "node scripts/validate_runtime_data_boundaries.cjs"
   },
   "dependencies": {

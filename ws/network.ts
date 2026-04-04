@@ -324,7 +324,7 @@ function handleCardDrawn(msg: ServerMessage) {
   if (activeCard) {
     // 设置 activeCard 以显示卡牌弹窗
     store.setState({ activeCard });
-    store.showFeedback(`抽到: ${activeCard.title || activeCard.name || '卡牌'}`, 'info');
+    store.showFeedback(`抽到: ${activeCard.title || '卡牌'}`, 'info');
   }
 }
 
